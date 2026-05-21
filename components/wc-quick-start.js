@@ -1,7 +1,4 @@
-import {
-    htmlToElement,
-    VERSION,
-} from "./index.js";
+import {htmlToElement} from "./index.js";
 import {handleGameStart, handleGameResume, playClickSound} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
@@ -141,14 +138,14 @@ class QuickStart extends HTMLElement {
         const html = /*html*/ `
             <div class="frame home-frame${saved ? ' home-frame--in-progress' : ''}">
                 <div class="top-bar home-top-bar">
-                    <div class="home-brand-chip" aria-label="le ludo">${QUAD_CHIP_SVG(26)}</div>
+                    <div class="home-brand-chip" aria-label="leludo">${QUAD_CHIP_SVG(26)}</div>
                     <div class="top-bar-title home-top-spacer"></div>
                     <wc-settings></wc-settings>
                 </div>
 
                 <div class="home-hero">
-                    <div class="home-die">${DICE_SVG(6, 48)}</div>
-                    <h1 class="home-title">le&nbsp;ludo.</h1>
+                    <div class="home-die"><div class="home-die-inner">${DICE_SVG(6, 48)}</div></div>
+                    <h1 class="home-title">leludo</h1>
                     <p class="home-tagline">A quiet, faithful take on the classic four-player race.</p>
                 </div>
 
@@ -158,7 +155,6 @@ class QuickStart extends HTMLElement {
                     ${saved
                         ? `<button class="new-game-btn cta-secondary">Start a new game</button>`
                         : `<button class="new-game-btn cta-primary">New game</button>`}
-                    <div class="home-version">v${VERSION}</div>
                 </div>
             </div>
         `
@@ -179,6 +175,53 @@ class QuickStart extends HTMLElement {
         }
 
         this.appendChild(el)
+        this._startHomeDieCycle()
+    }
+
+    _startHomeDieCycle() {
+        this._stopHomeDieCycle()
+        const die = this.querySelector('.home-die')
+        const inner = this.querySelector('.home-die-inner')
+        if (!die || !inner) return
+
+        let colorIdx = 0
+        let face = 6
+
+        const cycle = () => {
+            colorIdx = (colorIdx + 1) % 4
+            die.style.backgroundColor = `hsl(var(--player-${colorIdx}))`
+            die.style.setProperty('--pulse-color', `hsl(var(--player-${colorIdx}) / 0.55)`)
+            inner.classList.remove('dice-rolling')
+            void inner.offsetWidth
+            inner.classList.add('dice-rolling')
+
+            let n = 0
+            const rollId = setInterval(() => {
+                if (n >= 5) {
+                    face = Math.floor(Math.random() * 6) + 1
+                    inner.innerHTML = DICE_SVG(face, 48)
+                    clearInterval(rollId)
+                    return
+                }
+                face = (face % 6) + 1
+                inner.innerHTML = DICE_SVG(face, 48)
+                n++
+            }, 70)
+            this._homeDieRollId = rollId
+        }
+
+        this._homeDieInterval = setInterval(cycle, 2200)
+    }
+
+    _stopHomeDieCycle() {
+        if (this._homeDieInterval) clearInterval(this._homeDieInterval)
+        if (this._homeDieRollId) clearInterval(this._homeDieRollId)
+        this._homeDieInterval = null
+        this._homeDieRollId = null
+    }
+
+    disconnectedCallback() {
+        this._stopHomeDieCycle()
     }
 
     _readSavedGame() {
@@ -228,6 +271,7 @@ class QuickStart extends HTMLElement {
     }
 
     showSetupScreen() {
+        this._stopHomeDieCycle()
         this.innerHTML = ""
 
         const html = /*html*/ `

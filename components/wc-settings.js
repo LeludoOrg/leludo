@@ -68,7 +68,7 @@ function buildSettingsOverlay() {
 
             <div class="settings-body">
                 <div class="settings-title-wrap">
-                    <h2 class="settings-title">Preferences.</h2>
+                    <h2 class="settings-title">Preferences</h2>
                 </div>
 
                 <div class="settings-groups">
