@@ -62,13 +62,13 @@ function buildSettingsOverlay() {
         <div class="frame">
             <div class="top-bar">
                 <button id="settings-back" class="icon-btn">${ICON_BACK}</button>
-                <div class="top-bar-title">Settings</div>
+                <div class="top-bar-title"></div>
                 <div class="icon-btn-spacer"></div>
             </div>
 
             <div class="settings-body">
                 <div class="settings-title-wrap">
-                    <h2 class="settings-title">Preferences.</h2>
+                    <h2 class="settings-title">Preferences</h2>
                 </div>
 
                 <div class="settings-groups">
@@ -124,7 +124,7 @@ function buildSettingsOverlay() {
                             <span class="about-key">Version</span>
                             <span class="about-value-mono">${VERSION}</span>
                         </div>
-                        <div class="about-row">
+                        <div class="about-row about-row--separator">
                             <span class="about-key">Source</span>
                             <a href="https://github.com/LeludoOrg/leludo" class="about-value-mono about-link">github.com/LeludoOrg/leludo</a>
                         </div>

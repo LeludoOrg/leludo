@@ -3,6 +3,22 @@
    scripts/render-logic.js (renderPauseScoreboard).
    ============================================================ */
 
+#pause-menu .pause-body {
+    text-align: center;
+}
+
+#pause-menu .pause-body .body-helper {
+    margin: 0 auto;
+    max-width: none;
+    padding-bottom: var(--space-8);
+}
+
+#pause-menu .pause-body .pause-scoreboard,
+#pause-menu .pause-body .section-label,
+#pause-menu .pause-body #pm-turn-count {
+    text-align: left;
+}
+
 #pause-menu .pause-scoreboard {
     padding: 0 14px;
 }

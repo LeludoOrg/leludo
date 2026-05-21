@@ -180,6 +180,86 @@ test.describe('Token animation speed', () => {
     });
 });
 
+test.describe('Token rendering inside cells', () => {
+    test('stacked tokens stay inside the cell (no inline baseline overflow)', async ({ page }) => {
+        // Regression: wc-token's inner <svg> was inline by default, so the
+        // line-box baseline strut pushed the rendered svg ~4–5px below the
+        // wc-token box. On small viewports (24px cells) the pawns visibly
+        // fell below the cell border when 2+ tokens shared a cell.
+        // Fix: wc-token svg { display: block; } — removes the strut.
+        await page.goto('/?positions=39,39,39,39&player=0');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+
+        const data = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            const cell = document.getElementById('m39');
+            mod.updateCellStacking(cell);
+            const cellRect = cell.getBoundingClientRect();
+            return Array.from(cell.querySelectorAll('wc-token')).map(t => {
+                const svg = t.querySelector('svg');
+                const sr = svg.getBoundingClientRect();
+                return {
+                    svgBottom: sr.bottom,
+                    cellBottom: cellRect.bottom,
+                    svgTop: sr.top,
+                    cellTop: cellRect.top,
+                    svgDisplay: getComputedStyle(svg).display,
+                };
+            });
+        });
+
+        expect(data.length).toBe(4);
+        for (const t of data) {
+            expect(t.svgDisplay).toBe('block');
+            // svg must not extend below the cell (tolerate 0.5px sub-pixel)
+            expect(t.svgBottom - t.cellBottom).toBeLessThanOrEqual(0.5);
+            // svg must not extend above the cell either
+            expect(t.cellTop - t.svgTop).toBeLessThanOrEqual(0.5);
+        }
+    });
+});
+
+test.describe('Finish-cell token stacking', () => {
+    test('finished tokens get applyFinishStacking on game-start (not piled at 0,0)', async ({ page }) => {
+        // Regression: handleGameStart (and handleGameResume) appended tokens
+        // to p?s6 finish cells via plain appendChild without calling
+        // updateCellStacking. Result: every finished token rendered at the
+        // top-left of its finish-tri parent — which, combined with
+        // clip-path on overlapping triangles, meant only P0's and P1's
+        // finished tokens were visible (piled in top-left of finish-zone)
+        // and P2/P3 finished tokens were clipped out entirely. To a user
+        // this looked like "all finished tokens turned green" (P0 colormap).
+        // Fix: handleGameStart + handleGameResume must updateCellStacking
+        // on every cell they appended tokens into.
+        await page.goto('/?positions=56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+
+        const data = await page.evaluate(() => {
+            return ['p0s6', 'p1s6', 'p2s6', 'p3s6'].map(id => {
+                const cell = document.getElementById(id);
+                const tokens = Array.from(cell.querySelectorAll(':scope > wc-token'));
+                return tokens.map(t => ({
+                    cellId: id,
+                    style: t.getAttribute('style') || '',
+                }));
+            }).flat();
+        });
+
+        expect(data.length).toBe(16);
+        // every finished token must have absolute positioning applied
+        // by applyFinishStacking (without it, tokens pile at 0,0 of cell)
+        for (const t of data) {
+            expect(t.style).toContain('position: absolute');
+            expect(t.style).toMatch(/top:\s*\d+(\.\d+)?%/);
+            expect(t.style).toMatch(/left:\s*\d+(\.\d+)?%/);
+        }
+    });
+});
+
 test.describe('Player color utilities', () => {
     test('.player-bg-N classes resolve to four distinct colors', async ({ page }) => {
         await page.goto('/');

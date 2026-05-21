@@ -21,6 +21,7 @@ import {
     resumeGame,
     showGame,
     showPauseMenu,
+    updateCellStacking,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -250,6 +251,7 @@ export function handleGameStart(quickStartId, namesByPlayerIndex) {
     const params = new URLSearchParams(window.location.search)
     const initPositions = params.get("positions")?.split(",")
 
+    const containersToRestack = new Set();
     playerTypes.forEach((playerType, playerIndex) => {
         if (playerType) {
             playerTokenPositions[playerIndex].forEach((tokenPosition, tokenIndex) => {
@@ -262,10 +264,14 @@ export function handleGameStart(quickStartId, namesByPlayerIndex) {
 
                 const containerId = getTokenContainerId(playerIndex, tokenIndex, initialPosition)
                 const targetContainer = document.getElementById(containerId)
-                if (targetContainer) targetContainer.appendChild(token)
+                if (targetContainer) {
+                    targetContainer.appendChild(token)
+                    containersToRestack.add(targetContainer)
+                }
             })
         }
     })
+    containersToRestack.forEach(cell => updateCellStacking(cell));
 
     const player = params.get("player");
     if (player) {
@@ -601,6 +607,7 @@ export function handleGameResume() {
 
     showGame();
 
+    const containersToRestack = new Set();
     playerTypes.forEach((playerType, playerIndex) => {
         if (playerType && saved.positions[playerIndex]) {
             saved.positions[playerIndex].forEach((pos, tokenIndex) => {
@@ -609,10 +616,26 @@ export function handleGameResume() {
                 token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
                 const containerId = getTokenContainerId(playerIndex, tokenIndex, pos);
                 const container = document.getElementById(containerId);
-                if (container) container.appendChild(token);
+                if (container) {
+                    container.appendChild(token);
+                    containersToRestack.add(container);
+                }
             });
         }
     });
+    containersToRestack.forEach(cell => updateCellStacking(cell));
+
+    if (shouldEndGame(playerTypes, playerTokenPositions)) {
+        document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
+        document.getElementById("game").classList.add("hidden");
+        releaseWakeLock();
+        clearSavedGame();
+        return;
+    }
+
+    if (isPlayerFinishedPure(playerTokenPositions[currentPlayerIndex])) {
+        updateCurrentPlayer();
+    }
 
     moveDice(currentPlayerIndex);
     handleDiceMoved();
