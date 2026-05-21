@@ -79,7 +79,7 @@ export function shouldEndGame(playerTypes, playerTokenPositions) {
         }
     });
     const allHumansDoneVsBots = hasAnyHuman && remainingHumans === 0 && numberOfRemainingPlayers > 0;
-    return numberOfRemainingPlayers === 1 || allHumansDoneVsBots;
+    return numberOfRemainingPlayers <= 1 || allHumansDoneVsBots;
 }
 
 /**

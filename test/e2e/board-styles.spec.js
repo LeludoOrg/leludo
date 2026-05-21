@@ -221,6 +221,45 @@ test.describe('Token rendering inside cells', () => {
     });
 });
 
+test.describe('Finish-cell token stacking', () => {
+    test('finished tokens get applyFinishStacking on game-start (not piled at 0,0)', async ({ page }) => {
+        // Regression: handleGameStart (and handleGameResume) appended tokens
+        // to p?s6 finish cells via plain appendChild without calling
+        // updateCellStacking. Result: every finished token rendered at the
+        // top-left of its finish-tri parent — which, combined with
+        // clip-path on overlapping triangles, meant only P0's and P1's
+        // finished tokens were visible (piled in top-left of finish-zone)
+        // and P2/P3 finished tokens were clipped out entirely. To a user
+        // this looked like "all finished tokens turned green" (P0 colormap).
+        // Fix: handleGameStart + handleGameResume must updateCellStacking
+        // on every cell they appended tokens into.
+        await page.goto('/?positions=56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+
+        const data = await page.evaluate(() => {
+            return ['p0s6', 'p1s6', 'p2s6', 'p3s6'].map(id => {
+                const cell = document.getElementById(id);
+                const tokens = Array.from(cell.querySelectorAll(':scope > wc-token'));
+                return tokens.map(t => ({
+                    cellId: id,
+                    style: t.getAttribute('style') || '',
+                }));
+            }).flat();
+        });
+
+        expect(data.length).toBe(16);
+        // every finished token must have absolute positioning applied
+        // by applyFinishStacking (without it, tokens pile at 0,0 of cell)
+        for (const t of data) {
+            expect(t.style).toContain('position: absolute');
+            expect(t.style).toMatch(/top:\s*\d+(\.\d+)?%/);
+            expect(t.style).toMatch(/left:\s*\d+(\.\d+)?%/);
+        }
+    });
+});
+
 test.describe('Player color utilities', () => {
     test('.player-bg-N classes resolve to four distinct colors', async ({ page }) => {
         await page.goto('/');
