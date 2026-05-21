@@ -89,8 +89,9 @@ export function resetInputLock() {
 
 let _paused = false;
 let _pendingResume = null;
-const _pendingTimers = new Set();
+const _pendingTimers = new Map();
 
+export function _scheduleTurnForTest(fn, delay) { return scheduleTurn(fn, delay); }
 function scheduleTurn(fn, delay) {
     if (_paused) { _pendingResume = fn; return; }
     const id = setTimeout(() => {
@@ -98,14 +99,17 @@ function scheduleTurn(fn, delay) {
         if (_paused) { _pendingResume = fn; return; }
         fn();
     }, delay);
-    _pendingTimers.add(id);
+    _pendingTimers.set(id, fn);
 }
 
 export function isGameLogicPaused() { return _paused; }
 
 export function pauseGameLogic() {
     _paused = true;
-    _pendingTimers.forEach(clearTimeout);
+    for (const [id, fn] of _pendingTimers) {
+        clearTimeout(id);
+        _pendingResume = fn;
+    }
     _pendingTimers.clear();
 }
 

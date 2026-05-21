@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     acquireInputLock,
     releaseInputLock,
@@ -7,6 +7,7 @@ import {
     pauseGameLogic,
     resumeGameLogic,
     isGameLogicPaused,
+    _scheduleTurnForTest,
 } from '../../scripts/game-events.js';
 
 beforeEach(() => {
@@ -71,5 +72,28 @@ describe('pause / resume flag', () => {
         pauseGameLogic();
         expect(() => resumeGameLogic()).not.toThrow();
         expect(isGameLogicPaused()).toBe(false);
+    });
+
+    // Regression: pausing while a bot-turn callback was queued via
+    // scheduleTurn used to drop the callback on the floor — clearTimeout
+    // killed the timer without saving the fn into _pendingResume, so the
+    // bot stayed frozen until the human clicked dice/pawn to resume.
+    it('pausing while a scheduleTurn timer is in flight preserves the callback for resume', async () => {
+        vi.useFakeTimers();
+        try {
+            const fn = vi.fn();
+            _scheduleTurnForTest(fn, 600);
+            // Pause before the timer fires.
+            vi.advanceTimersByTime(100);
+            pauseGameLogic();
+            // Advance past the original delay — fn must not fire while paused.
+            vi.advanceTimersByTime(2000);
+            expect(fn).not.toHaveBeenCalled();
+            // Resume — pending fn should fire synchronously.
+            resumeGameLogic();
+            expect(fn).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
