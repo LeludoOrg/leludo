@@ -50,6 +50,26 @@ wc-quick-start .home-frame--in-progress .home-hero {
 wc-quick-start .home-die {
     line-height: 0;
     margin-bottom: var(--space-5);
+    padding: 8px;
+    border-radius: 14px;
+    background-color: hsl(var(--player-0));
+    --pulse-color: hsl(var(--player-0) / 0.55);
+    animation: home-die-pulse 2s ease-in-out infinite;
+    transition: background-color 0.45s ease-in-out;
+}
+
+wc-quick-start .home-die-inner {
+    display: inline-block;
+    line-height: 0;
+}
+
+@keyframes home-die-pulse {
+    0%, 100% { box-shadow: 0 0 0 0  var(--pulse-color); }
+    50%      { box-shadow: 0 0 0 12px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-quick-start .home-die { animation: none; }
 }
 
 wc-quick-start .home-title {
@@ -181,12 +201,19 @@ wc-quick-start .home-version {
 
 /* ----- Setup ----- */
 
+wc-quick-start .setup-body {
+    text-align: center;
+}
+
+wc-quick-start .setup-body .display-title {
+    text-align: center;
+}
+
 wc-quick-start .setup-helper {
     font-size: 14px;
     opacity: 0.5;
-    padding: var(--space-2) var(--space-1) var(--space-4);
-    max-width: 320px;
-    margin: 0;
+    padding: var(--space-2) var(--space-1) var(--space-8);
+    margin: 0 auto;
 }
 
 wc-quick-start .seat-list {
