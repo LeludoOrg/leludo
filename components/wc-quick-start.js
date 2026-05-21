@@ -278,7 +278,7 @@ class QuickStart extends HTMLElement {
             <div class="frame">
                 <div class="top-bar">
                     <button class="back-btn icon-btn">${ICON_BACK}</button>
-                    <div class="top-bar-title">Setup</div>
+                    <div class="top-bar-title"></div>
                     <wc-settings></wc-settings>
                 </div>
 
