@@ -1,7 +1,7 @@
 import {
     htmlToElement
 } from "./index.js"
-import {handleGamePause, handleOnTokenMove, playClickSound} from "../scripts/index.js";
+import {dispatch, COMMANDS, playClickSound} from "../scripts/index.js";
 
 //language=HTML
 const STAR_D = "M12 2.2l2.8 6.3 6.8.5-5.2 4.4 1.6 6.6L12 16.6l-6 3.4 1.6-6.6L2.4 9l6.8-.5z";
@@ -202,7 +202,7 @@ class Board extends HTMLElement {
 
         boardElement.querySelector("#g-pause-btn").addEventListener("click", () => {
             playClickSound()
-            handleGamePause()
+            dispatch({ type: COMMANDS.PAUSE })
         })
 
         const cellIdPattern = /^(h-\d-\d|m\d+|p\ds[1-6])$/;
@@ -216,7 +216,7 @@ class Board extends HTMLElement {
                 const playerIndex = +parts[1];
                 const tokenIndex = +parts[2];
                 playClickSound();
-                handleOnTokenMove(playerIndex, tokenIndex);
+                dispatch({ type: COMMANDS.SELECT_TOKEN, playerIndex, tokenIndex });
             });
         });
 

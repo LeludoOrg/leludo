@@ -1,75 +1,83 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-    acquireInputLock,
-    releaseInputLock,
-    resetInputLock,
-    isInputLocked,
     pauseGameLogic,
     resumeGameLogic,
     isGameLogicPaused,
     _scheduleTurnForTest,
-} from '../../scripts/game-events.js';
+} from '../../scripts/command-handler.js';
+import { reducer, EVENTS } from '../../scripts/game-reducer.js';
+import { initialGameState, PHASES } from '../../scripts/game-state.js';
 
 beforeEach(() => {
-    resetInputLock();
     if (isGameLogicPaused()) resumeGameLogic();
 });
 
-describe('input lock', () => {
-    it('isInputLocked is false by default', () => {
-        expect(isInputLocked()).toBe(false);
+describe('phase machine', () => {
+    it('initial phase is AWAITING_ROLL', () => {
+        expect(initialGameState().phase).toBe(PHASES.AWAITING_ROLL);
     });
 
-    it('acquireInputLock + releaseInputLock toggles state', () => {
-        acquireInputLock();
-        expect(isInputLocked()).toBe(true);
-        releaseInputLock();
-        expect(isInputLocked()).toBe(false);
+    it('DICE_ROLL_STARTED transitions to ROLLING', () => {
+        const s = initialGameState();
+        reducer(s, { type: EVENTS.DICE_ROLL_STARTED });
+        expect(s.phase).toBe(PHASES.ROLLING);
     });
 
-    it('nested acquireInputLock requires equal releases', () => {
-        acquireInputLock();
-        acquireInputLock();
-        expect(isInputLocked()).toBe(true);
-        releaseInputLock();
-        expect(isInputLocked()).toBe(true);
-        releaseInputLock();
-        expect(isInputLocked()).toBe(false);
+    it('MOVABLE_TOKENS_DETERMINED transitions to AWAITING_SELECTION + records movable list', () => {
+        const s = initialGameState();
+        reducer(s, { type: EVENTS.MOVABLE_TOKENS_DETERMINED, playerIndex: 0, tokenIndexes: [1, 3] });
+        expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
+        expect(s.movableTokenIndexes).toEqual([1, 3]);
     });
 
-    it('releaseInputLock from unlocked state is a no-op (depth never goes negative)', () => {
-        releaseInputLock();
-        releaseInputLock();
-        expect(isInputLocked()).toBe(false);
-        acquireInputLock();
-        expect(isInputLocked()).toBe(true);
-        releaseInputLock();
-        expect(isInputLocked()).toBe(false);
+    it('TOKEN_MOVED transitions to ANIMATING', () => {
+        const s = initialGameState();
+        s.playerTokenPositions[0] = [-1, -1, -1, -1];
+        reducer(s, {
+            type: EVENTS.TOKEN_MOVED,
+            playerIndex: 0,
+            tokenIndex: 0,
+            fromPosition: -1,
+            toPosition: 0,
+        });
+        expect(s.phase).toBe(PHASES.ANIMATING);
     });
 
-    it('resetInputLock zeros depth regardless of how many acquires were pending', () => {
-        acquireInputLock();
-        acquireInputLock();
-        acquireInputLock();
-        resetInputLock();
-        expect(isInputLocked()).toBe(false);
+    it('TURN_ADVANCED returns to AWAITING_ROLL and clears movable list', () => {
+        const s = initialGameState();
+        s.movableTokenIndexes = [0, 2];
+        s.phase = PHASES.ANIMATING;
+        reducer(s, { type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 1 });
+        expect(s.phase).toBe(PHASES.AWAITING_ROLL);
+        expect(s.movableTokenIndexes).toEqual([]);
     });
 
-    // Regression: an earlier version inserted a fullscreen invisible div
-    // (#input-lock-overlay) while the lock was held to swallow double-clicks.
-    // That overlay also swallowed clicks on the top-bar pause/settings icons,
-    // making them unresponsive during a dice roll or token move. Double-click
-    // protection is handled by the isInputLocked() gate in handlers — no DOM.
-    it('acquireInputLock does not inject a page-level overlay', () => {
-        expect(document.getElementById('input-lock-overlay')).toBeNull();
-        acquireInputLock();
-        expect(document.getElementById('input-lock-overlay')).toBeNull();
-        releaseInputLock();
-        expect(document.getElementById('input-lock-overlay')).toBeNull();
+    it('TURN_REPEATS returns to AWAITING_ROLL', () => {
+        const s = initialGameState();
+        s.phase = PHASES.ANIMATING;
+        reducer(s, { type: EVENTS.TURN_REPEATS });
+        expect(s.phase).toBe(PHASES.AWAITING_ROLL);
+    });
+
+    it('GAME_ENDED transitions to GAME_ENDED', () => {
+        const s = initialGameState();
+        reducer(s, { type: EVENTS.GAME_ENDED, winnerIndex: 2 });
+        expect(s.phase).toBe(PHASES.GAME_ENDED);
+    });
+
+    it('GAME_PAUSED stashes phase, GAME_RESUMED_FROM_PAUSE restores', () => {
+        const s = initialGameState();
+        s.phase = PHASES.AWAITING_SELECTION;
+        reducer(s, { type: EVENTS.GAME_PAUSED });
+        expect(s.phase).toBe(PHASES.PAUSED);
+        expect(s.phaseBeforePause).toBe(PHASES.AWAITING_SELECTION);
+        reducer(s, { type: EVENTS.GAME_RESUMED_FROM_PAUSE });
+        expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
+        expect(s.phaseBeforePause).toBeNull();
     });
 });
 
-describe('pause / resume flag', () => {
+describe('pause / resume scheduler', () => {
     it('isGameLogicPaused is false by default', () => {
         expect(isGameLogicPaused()).toBe(false);
     });
@@ -96,17 +104,22 @@ describe('pause / resume flag', () => {
         try {
             const fn = vi.fn();
             _scheduleTurnForTest(fn, 600);
-            // Pause before the timer fires.
             vi.advanceTimersByTime(100);
             pauseGameLogic();
-            // Advance past the original delay — fn must not fire while paused.
             vi.advanceTimersByTime(2000);
             expect(fn).not.toHaveBeenCalled();
-            // Resume — pending fn should fire synchronously.
             resumeGameLogic();
             expect(fn).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    // Regression: an earlier version inserted a fullscreen invisible div
+    // (#input-lock-overlay) to swallow double-clicks. That overlay also
+    // swallowed clicks on the top-bar pause/settings icons. The phase
+    // machine handles double-click protection without any DOM overlay.
+    it('the phase machine alone gates input — no page-level overlay exists', () => {
+        expect(document.getElementById('input-lock-overlay')).toBeNull();
     });
 });

@@ -2,7 +2,8 @@ import {
     htmlToElement
 } from "./index.js"
 import {
-    handleDiceRoll,
+    dispatch,
+    COMMANDS,
 } from "../scripts/index.js";
 
 //language=HTML
@@ -67,7 +68,7 @@ class Dice extends HTMLElement {
 
     handleDiceClick() {
         if (this.dataset.active === "true") {
-            handleDiceRoll()
+            dispatch({ type: COMMANDS.ROLL_DICE })
         }
     }
 }
