@@ -1,5 +1,5 @@
 import {htmlToElement} from "./index.js"
-import {playerCaptures, playerNames, playerRanks, playerTimes, playerTypes, playClickSound, restartGame} from "../scripts/index.js";
+import {playerCaptures, playerNames, playerRanks, playerTimes, playerTypes, playClickSound, dispatch, COMMANDS} from "../scripts/index.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
 
@@ -261,7 +261,7 @@ class GameEnd extends HTMLElement {
 
         el.querySelector("#play-again").addEventListener("click", () => {
             playClickSound();
-            restartGame();
+            dispatch({ type: COMMANDS.RESTART_GAME });
         });
 
         el.querySelector("#share-btn").addEventListener("click", async (ev) => {

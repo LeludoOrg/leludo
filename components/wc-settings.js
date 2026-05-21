@@ -1,11 +1,16 @@
 import {
-    setAssistFlag,
+    dispatch,
+    COMMANDS,
     pauseGameLogic,
     resumeGameLogic,
     isGameLogicPaused,
     isSoundMuted,
     setSoundMuted,
 } from "../scripts/index.js";
+
+function setAssistFlag(flag, value) {
+    dispatch({ type: COMMANDS.SET_ASSIST_FLAG, flag, value });
+}
 
 const ASSIST_TOGGLES = [
     { id: 's-auto-roll', flag: 'autoRollDice', label: 'Auto-roll dice', storageKey: 'assist-auto-roll', default: false },
