@@ -432,7 +432,7 @@ export async function handleOnTokenMove(playerIndex, tokenIndex) {
                 const capturedSvg = capturedToken?.children[0];
                 if (capturedSvg) {
                     capturedSvg.classList.add("token-captured");
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 320));
                     capturedSvg.classList.remove("token-captured");
                 }
                 await updateTokenContainer(pi, ti, playerTokenPositions[pi][ti], -1)

@@ -1,0 +1,57 @@
+import { describe, it, expect } from 'vitest';
+import { getContainerPath } from '../../scripts/render-logic.js';
+
+describe('getContainerPath — forward movement', () => {
+    it('builds per-step mark IDs from current+1 to new (inclusive)', () => {
+        // P0 mark index === token position (13*0 = 0). Move from 3 to 7
+        // should produce 4 hops: m4, m5, m6, m7.
+        expect(getContainerPath(0, 0, 3, 7)).toEqual(['m4', 'm5', 'm6', 'm7']);
+    });
+
+    it('returns single home container id for new === -1 when from home', () => {
+        expect(getContainerPath(0, 0, -1, -1)).toEqual(['h-0-0']);
+    });
+
+    it('returns single id for new === 0 (start-cell short-circuit)', () => {
+        // Position 0 short-circuits to a single hop onto the player's
+        // start cell (mark index 13*playerIndex). For P2 that's m26.
+        expect(getContainerPath(2, 1, -1, 0)).toEqual(['m26']);
+    });
+
+    it('handles home-stretch destinations (p<player>s<index>)', () => {
+        // Position 53 → home stretch index 3 for P1.
+        const path = getContainerPath(1, 0, 50, 53);
+        expect(path).toEqual(['p1s1', 'p1s2', 'p1s3']);
+    });
+});
+
+describe('getContainerPath — capture trace-back', () => {
+    it('walks captured P0 token backwards through every track cell, then home', () => {
+        // Captured at position 5 → trace m4, m3, m2, m1, then h-0-0.
+        // Regression: pre-fix returned ['h-0-0'] only, so the captured
+        // token teleported off the board.
+        expect(getContainerPath(0, 0, 5, -1)).toEqual([
+            'm4', 'm3', 'm2', 'm1', 'h-0-0',
+        ]);
+    });
+
+    it('uses player-relative mark index when walking back', () => {
+        // P1: getMarkIndex(1, pos) = (pos + 13) % 52.
+        // Captured at pos 3 → m(2+13)=m15, m(1+13)=m14, then home.
+        expect(getContainerPath(1, 2, 3, -1)).toEqual(['m15', 'm14', 'h-1-2']);
+    });
+
+    it('captured at position 1 (the start cell) walks straight home', () => {
+        // Edge case: only the home id, no track steps to retrace.
+        expect(getContainerPath(0, 0, 1, -1)).toEqual(['h-0-0']);
+    });
+
+    it('full-lap capture produces 49 retrace steps + home', () => {
+        // Captured at position 50 (one before re-entering home stretch).
+        const path = getContainerPath(0, 0, 50, -1);
+        expect(path.length).toBe(50);
+        expect(path[0]).toBe('m49');
+        expect(path[48]).toBe('m1');
+        expect(path[49]).toBe('h-0-0');
+    });
+});
