@@ -52,16 +52,6 @@ let currentPlayerIndex = 2;
 let currentDiceRoll = 1;
 let consecutiveSixesCount = 0
 let inputLockDepth = 0;
-let inputLockOverlay = null;
-
-function ensureInputLockOverlay() {
-    if (inputLockOverlay) return inputLockOverlay;
-    inputLockOverlay = document.createElement('div');
-    inputLockOverlay.id = 'input-lock-overlay';
-    inputLockOverlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;pointer-events:auto;display:none;';
-    document.body.appendChild(inputLockOverlay);
-    return inputLockOverlay;
-}
 
 export function isInputLocked() {
     return inputLockDepth > 0;
@@ -69,28 +59,22 @@ export function isInputLocked() {
 
 export function acquireInputLock() {
     inputLockDepth++;
-    if (inputLockDepth === 1) {
-        ensureInputLockOverlay().style.display = 'block';
-    }
 }
 
 export function releaseInputLock() {
     if (inputLockDepth === 0) return;
     inputLockDepth--;
-    if (inputLockDepth === 0 && inputLockOverlay) {
-        inputLockOverlay.style.display = 'none';
-    }
 }
 
 export function resetInputLock() {
     inputLockDepth = 0;
-    if (inputLockOverlay) inputLockOverlay.style.display = 'none';
 }
 
 let _paused = false;
 let _pendingResume = null;
-const _pendingTimers = new Set();
+const _pendingTimers = new Map();
 
+export function _scheduleTurnForTest(fn, delay) { return scheduleTurn(fn, delay); }
 function scheduleTurn(fn, delay) {
     if (_paused) { _pendingResume = fn; return; }
     const id = setTimeout(() => {
@@ -98,14 +82,17 @@ function scheduleTurn(fn, delay) {
         if (_paused) { _pendingResume = fn; return; }
         fn();
     }, delay);
-    _pendingTimers.add(id);
+    _pendingTimers.set(id, fn);
 }
 
 export function isGameLogicPaused() { return _paused; }
 
 export function pauseGameLogic() {
     _paused = true;
-    _pendingTimers.forEach(clearTimeout);
+    for (const [id, fn] of _pendingTimers) {
+        clearTimeout(id);
+        _pendingResume = fn;
+    }
     _pendingTimers.clear();
 }
 
@@ -432,7 +419,7 @@ export async function handleOnTokenMove(playerIndex, tokenIndex) {
                 const capturedSvg = capturedToken?.children[0];
                 if (capturedSvg) {
                     capturedSvg.classList.add("token-captured");
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 320));
                     capturedSvg.classList.remove("token-captured");
                 }
                 await updateTokenContainer(pi, ti, playerTokenPositions[pi][ti], -1)

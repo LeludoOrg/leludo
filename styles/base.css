@@ -456,14 +456,15 @@ table td {
     animation: dice-shake 0.45s ease-in-out;
 }
 
-@keyframes capture-pulse {
-    0% { transform: scale(1); opacity: 1; }
-    30% { transform: scale(1.15); opacity: 0.8; }
-    100% { transform: scale(0); opacity: 0; }
+@keyframes capture-hit {
+    0%   { transform: scale(1);    filter: brightness(1) saturate(1); }
+    35%  { transform: scale(1.35); filter: brightness(1.5) saturate(1.6) drop-shadow(0 0 6px rgba(255,80,80,0.85)); }
+    100% { transform: scale(1);    filter: brightness(1) saturate(1); }
 }
 
 .token-captured {
-    animation: capture-pulse 0.5s ease-in forwards;
+    animation: capture-hit 0.32s ease-out;
+    transform-origin: center;
 }
 
 @keyframes active-dice-pulse {

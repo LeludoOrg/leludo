@@ -104,6 +104,9 @@ async function setTheme(page, theme) {
 async function main() {
     await mkdir(outDir, { recursive: true });
 
+    const skip = new Set((process.env.SKIP_SCENES || '').split(',').map(s => s.trim()).filter(Boolean));
+    const only = new Set((process.env.ONLY_SCENES || '').split(',').map(s => s.trim()).filter(Boolean));
+
     const browser = await chromium.launch();
     for (const theme of ['light', 'dark']) {
         const ctx = await browser.newContext({
@@ -120,6 +123,8 @@ async function main() {
         }, theme);
 
         for (const scene of scenes) {
+            if (skip.has(scene.name)) { console.log(`- skip ${scene.name}-${theme}`); continue; }
+            if (only.size && !only.has(scene.name)) continue;
             const page = await ctx.newPage();
             try {
                 await scene.go(page);

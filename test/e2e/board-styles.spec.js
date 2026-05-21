@@ -260,6 +260,42 @@ test.describe('Finish-cell token stacking', () => {
     });
 });
 
+test.describe('Capture animation', () => {
+    test('.token-captured uses capture-hit (no scale-to-zero pulse)', async ({ page }) => {
+        // Regression: pre-fix .token-captured played capture-pulse which
+        // scaled to 0 + opacity 0, then was removed — making the captured
+        // token visibly disappear and reappear before the home-bound
+        // animation. The replacement keyframe (capture-hit) flashes the
+        // token at scale 1.35 and returns to 1, so it never vanishes.
+        await page.goto('/');
+        const animName = await page.evaluate(() => {
+            const probe = document.createElement('div');
+            probe.className = 'token-captured';
+            probe.style.cssText = 'position:fixed;top:-1000px;width:10px;height:10px;';
+            document.body.appendChild(probe);
+            const name = getComputedStyle(probe).animationName;
+            probe.remove();
+            return name;
+        });
+        expect(animName).toBe('capture-hit');
+    });
+
+    test('captured token traces back through every track cell, then home', async ({ page }) => {
+        // Regression: pre-fix updateTokenContainer(pi, ti, currentPos, -1)
+        // returned a 1-element path [home], so the captured token
+        // teleported off the board. The trace-back path walks every track
+        // square the token crossed (currentPos-1 .. 1) before landing
+        // home — turns the capture into a painful-fun cinematic.
+        // Verifies via getContainerPath (no full game flow required).
+        await page.goto('/');
+        const path = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            return mod.getContainerPath(0, 0, 6, -1);
+        });
+        expect(path).toEqual(['m5', 'm4', 'm3', 'm2', 'm1', 'h-0-0']);
+    });
+});
+
 test.describe('Player color utilities', () => {
     test('.player-bg-N classes resolve to four distinct colors', async ({ page }) => {
         await page.goto('/');
