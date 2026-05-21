@@ -104,7 +104,18 @@ export function animateDiceRoll(currentDiceRoll) {
     });
 }
 
-function getContainerPath(playerIndex, tokenIndex, currentPosition, newPosition) {
+export function getContainerPath(playerIndex, tokenIndex, currentPosition, newPosition) {
+    // Capture trace-back: walk the captured token back along every track
+    // square it crossed before dropping it into its home base. Makes the
+    // loss painfully fun to watch instead of a teleport.
+    if (newPosition === -1 && currentPosition > 0 && currentPosition <= 50) {
+        const path = [];
+        for (let pos = currentPosition - 1; pos >= 1; pos--) {
+            path.push(getTokenContainerId(playerIndex, tokenIndex, pos));
+        }
+        path.push(getTokenContainerId(playerIndex, tokenIndex, -1));
+        return path;
+    }
     if ([-1, 0].includes(newPosition)) {
         return [getTokenContainerId(playerIndex, tokenIndex, newPosition)];
     }
@@ -232,6 +243,7 @@ function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
 
 export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition) {
 
+    const isCaptureReturn = newTokenPosition === -1 && currentTokenPosition > 0 && currentTokenPosition <= 50;
     const path = getContainerPath(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition);
     const element = getTokenElement(playerIndex, tokenIndex);
 
@@ -242,6 +254,12 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         const sourceCell = element.parentElement;
 
         element.dataset.moving = 'true';
+        // Snapshot visual position before clearStackStyles snaps the element
+        // back to its flow position. Stacked tokens (n>=2) sit at absolute
+        // offsets; without this the element teleports to (0,0) of its cell
+        // before the first translate fires — the "disappear then reappear
+        // offset" symptom on captures.
+        const visualRect = element.getBoundingClientRect();
         clearStackStyles(element);
         updateCellStacking(sourceCell);
         element.style.willChange = 'transform';
@@ -249,6 +267,23 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         element.style.zIndex = '50';
 
         const originRect = element.getBoundingClientRect();
+        const compDx = visualRect.left - originRect.left;
+        const compDy = visualRect.top - originRect.top;
+        if (Math.abs(compDx) > 0.5 || Math.abs(compDy) > 0.5) {
+            element.style.transition = 'none';
+            element.style.transform = `translate(${compDx}px, ${compDy}px)`;
+            void element.offsetWidth;
+            element.style.transition = '';
+        }
+
+        const stepMs = isCaptureReturn
+            ? Math.max(45, Math.min(110, Math.floor(1500 / path.length)))
+            : null;
+        if (stepMs !== null) {
+            element.style.transition = `transform ${stepMs}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+        }
+        const fallbackMs = stepMs !== null ? stepMs + 120 : 400;
+
         let stepIndex = 0;
 
         function step() {
@@ -256,6 +291,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
                 element.style.willChange = '';
                 element.style.position = '';
                 element.style.zIndex = '';
+                element.style.transition = '';
                 element.style.removeProperty('transform');
                 finalContainer.appendChild(element);
                 delete element.dataset.moving;
@@ -264,7 +300,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
                 return;
             }
 
-            playStepSound();
+            if (!isCaptureReturn) playStepSound();
             const isFinalStep = stepIndex === path.length - 1;
             const targetId = path[stepIndex];
             const isFinishCell = /^p\ds6$/.test(targetId);
@@ -316,7 +352,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             waitForTransitionEnd(element, () => {
                 stepIndex++;
                 requestAnimationFrame(step);
-            });
+            }, fallbackMs);
         }
 
         requestAnimationFrame(step);
