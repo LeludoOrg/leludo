@@ -282,12 +282,12 @@ class QuickStart extends HTMLElement {
                     <wc-settings></wc-settings>
                 </div>
 
-                <h2 class="display-title">Who&rsquo;s<br>playing?</h2>
-                <p id="setup-helper" class="setup-helper" data-default="Each seat is either a person on this phone or a bot. Tap the pill to switch." data-edit="Rename your seat. Tap return when you&rsquo;re done.">Each seat is either a person on this phone or a bot. Tap the pill to switch.</p>
+                <div class="frame-body setup-body">
+                    <h2 class="display-title">Who&rsquo;s playing?</h2>
+                    <p id="setup-helper" class="setup-helper" data-default="Each seat is either a person on this phone or a bot.<br>Tap the pill to switch." data-edit="Rename your seat. Tap return when you&rsquo;re done.">Each seat is either a person on this phone or a bot.<br>Tap the pill to switch.</p>
 
-                <div id="seat-list" class="seat-list"></div>
-
-                <div style="flex:1"></div>
+                    <div id="seat-list" class="seat-list"></div>
+                </div>
 
                 <div class="frame-footer">
                     <button class="start-btn cta-primary">Start game</button>
