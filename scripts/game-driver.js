@@ -17,6 +17,7 @@ import {
     shouldEndGame,
     computeLeftoverRankOrder,
 } from './turn-rules.js';
+import { EVENTS } from './game-reducer.js';
 
 /**
  * Seedable PRNG (mulberry32). Returns a function compatible with Math.random.
@@ -47,23 +48,28 @@ function listMovableTokenIndexes(playerTokens, dice) {
 
 function applyMove(positions, playerIndex, tokenIndex, dice) {
     const next = cloneBoard(positions);
-    const newPos = getTokenNewPosition(next[playerIndex][tokenIndex], dice);
+    const fromPos = next[playerIndex][tokenIndex];
+    const newPos = getTokenNewPosition(fromPos, dice);
     next[playerIndex][tokenIndex] = newPos;
 
     const captured = findCapturedOpponents(playerIndex, newPos, next);
     let captureCount = 0;
+    const capturedList = [];
     for (let pi = 0; pi < captured.length; pi++) {
         const list = captured[pi];
         if (!list) continue;
         for (const ti of list) {
             next[pi][ti] = -1;
             captureCount++;
+            capturedList.push({ playerIndex: pi, tokenIndex: ti });
         }
     }
     return {
         next,
+        fromPosition: fromPos,
         newPosition: newPos,
         captureCount,
+        captured: capturedList,
         tripComplete: isTripComplete(newPos),
     };
 }
@@ -116,24 +122,39 @@ export function runGame(opts) {
     let ended = false;
     let winner = -1;
 
+    const events = [];
+    events.push({
+        type: EVENTS.GAME_STARTED,
+        quickStartId: null,
+        gameStartedAt: 0,
+        playerTypes: playerTypes.slice(),
+        botPersonalities: personalities.slice(),
+        playerNames: ['', '', '', ''],
+        playerTokenPositions: positions.map(p => p ? p.slice() : null),
+        currentPlayerIndex,
+    });
+
     while (turns++ < maxTurns) {
         if (positions[currentPlayerIndex] === null) {
             // Should never happen given valid inputs, guard anyway.
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) break;
+            events.push({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
             currentPlayerIndex = next;
             continue;
         }
 
         const dice = generateDiceRoll(rng);
+        events.push({ type: EVENTS.DICE_ROLLED, value: dice });
         if (dice === 6) consecutiveSixes++;
         else consecutiveSixes = 0;
 
         if (consecutiveSixes === 3) {
-            // Three sixes -> lose turn.
+            events.push({ type: EVENTS.THREE_SIXES_LOST });
             consecutiveSixes = 0;
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }
+            events.push({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
             currentPlayerIndex = next;
             continue;
         }
@@ -144,6 +165,7 @@ export function runGame(opts) {
             consecutiveSixes = 0;
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }
+            events.push({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
             currentPlayerIndex = next;
             continue;
         }
@@ -153,6 +175,21 @@ export function runGame(opts) {
         if (tokenIndex < 0) tokenIndex = movable[0];
 
         const result = applyMove(positions, currentPlayerIndex, tokenIndex, dice);
+        events.push({
+            type: EVENTS.TOKEN_MOVED,
+            playerIndex: currentPlayerIndex,
+            tokenIndex,
+            fromPosition: result.fromPosition,
+            toPosition: result.newPosition,
+        });
+        for (const cap of result.captured) {
+            events.push({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: currentPlayerIndex,
+                capturedPlayerIndex: cap.playerIndex,
+                capturedTokenIndex: cap.tokenIndex,
+            });
+        }
         for (let pi = 0; pi < 4; pi++) {
             for (let ti = 0; ti < 4; ti++) {
                 if (positions[pi] && result.next[pi] && positions[pi][ti] !== result.next[pi][ti]) {
@@ -165,11 +202,26 @@ export function runGame(opts) {
         let isGameDone = false;
         if (result.tripComplete && isPlayerFinished(positions[currentPlayerIndex])) {
             ranks[currentPlayerIndex] = ++lastRank;
+            events.push({
+                type: EVENTS.PLAYER_FINISHED,
+                playerIndex: currentPlayerIndex,
+                rank: lastRank,
+                time: 0,
+            });
             if (shouldEndGame(playerTypes, positions)) {
                 computeLeftoverRankOrder(playerTypes, positions, ranks)
-                    .forEach(pi => { ranks[pi] = ++lastRank; });
+                    .forEach(pi => {
+                        ranks[pi] = ++lastRank;
+                        events.push({
+                            type: EVENTS.LEFTOVER_RANKED,
+                            playerIndex: pi,
+                            rank: lastRank,
+                            time: 0,
+                        });
+                    });
                 isGameDone = true;
                 if (winner === -1) winner = currentPlayerIndex;
+                events.push({ type: EVENTS.GAME_ENDED, winnerIndex: winner });
             } else if (winner === -1) {
                 winner = currentPlayerIndex;
             }
@@ -184,10 +236,11 @@ export function runGame(opts) {
         if (!playsAgain) {
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }
+            events.push({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
             currentPlayerIndex = next;
             consecutiveSixes = 0;
         }
     }
 
-    return { positions, ranks, captures, turns, ended, lastRank, winner };
+    return { positions, ranks, captures, turns, ended, lastRank, winner, events };
 }

@@ -1,5 +1,5 @@
 import {htmlToElement} from "./index.js";
-import {handleGameStart, handleGameResume, playClickSound} from "../scripts/index.js";
+import {dispatch, COMMANDS, playClickSound} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 
@@ -170,7 +170,7 @@ class QuickStart extends HTMLElement {
         if (resumeEl) {
             resumeEl.addEventListener("click", () => {
                 playClickSound()
-                handleGameResume()
+                dispatch({ type: COMMANDS.RESUME_SAVED_GAME })
             })
         }
 
@@ -495,7 +495,7 @@ class QuickStart extends HTMLElement {
         }
 
         const quickStartId = `qs,${humanCount},${botCount},${humanColors.join(",")}`
-        handleGameStart(quickStartId, namesByPlayerIndex)
+        dispatch({ type: COMMANDS.START_GAME, quickStartId, namesByPlayerIndex })
     }
 
 }

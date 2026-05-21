@@ -2,7 +2,8 @@ import {
     htmlToElement
 } from "./index.js"
 import {
-    handleOnTokenMove,
+    dispatch,
+    COMMANDS,
 } from "../scripts/index.js";
 
 //language=HTML
@@ -71,7 +72,7 @@ class Token extends HTMLElement {
     handleTokenClick(playerIndex, tokenIndex) {
         const isTokenActive = this.children[0].classList.contains("animate-bounce");
         if (isTokenActive) {
-            handleOnTokenMove(playerIndex, tokenIndex)
+            dispatch({ type: COMMANDS.SELECT_TOKEN, playerIndex, tokenIndex })
         }
     }
 }
