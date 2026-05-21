@@ -153,7 +153,7 @@ class QuickStart extends HTMLElement {
 
                 <div class="home-footer">
                     ${saved
-                        ? `<button class="new-game-btn cta-secondary">Start a new game</button>`
+                        ? `<button class="new-game-btn cta-primary">Start a new game</button>`
                         : `<button class="new-game-btn cta-primary">New game</button>`}
                 </div>
             </div>
