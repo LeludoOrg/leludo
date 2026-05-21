@@ -54,6 +54,19 @@ describe('input lock', () => {
         resetInputLock();
         expect(isInputLocked()).toBe(false);
     });
+
+    // Regression: an earlier version inserted a fullscreen invisible div
+    // (#input-lock-overlay) while the lock was held to swallow double-clicks.
+    // That overlay also swallowed clicks on the top-bar pause/settings icons,
+    // making them unresponsive during a dice roll or token move. Double-click
+    // protection is handled by the isInputLocked() gate in handlers — no DOM.
+    it('acquireInputLock does not inject a page-level overlay', () => {
+        expect(document.getElementById('input-lock-overlay')).toBeNull();
+        acquireInputLock();
+        expect(document.getElementById('input-lock-overlay')).toBeNull();
+        releaseInputLock();
+        expect(document.getElementById('input-lock-overlay')).toBeNull();
+    });
 });
 
 describe('pause / resume flag', () => {

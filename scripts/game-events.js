@@ -52,16 +52,6 @@ let currentPlayerIndex = 2;
 let currentDiceRoll = 1;
 let consecutiveSixesCount = 0
 let inputLockDepth = 0;
-let inputLockOverlay = null;
-
-function ensureInputLockOverlay() {
-    if (inputLockOverlay) return inputLockOverlay;
-    inputLockOverlay = document.createElement('div');
-    inputLockOverlay.id = 'input-lock-overlay';
-    inputLockOverlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:transparent;pointer-events:auto;display:none;';
-    document.body.appendChild(inputLockOverlay);
-    return inputLockOverlay;
-}
 
 export function isInputLocked() {
     return inputLockDepth > 0;
@@ -69,22 +59,15 @@ export function isInputLocked() {
 
 export function acquireInputLock() {
     inputLockDepth++;
-    if (inputLockDepth === 1) {
-        ensureInputLockOverlay().style.display = 'block';
-    }
 }
 
 export function releaseInputLock() {
     if (inputLockDepth === 0) return;
     inputLockDepth--;
-    if (inputLockDepth === 0 && inputLockOverlay) {
-        inputLockOverlay.style.display = 'none';
-    }
 }
 
 export function resetInputLock() {
     inputLockDepth = 0;
-    if (inputLockOverlay) inputLockOverlay.style.display = 'none';
 }
 
 let _paused = false;
