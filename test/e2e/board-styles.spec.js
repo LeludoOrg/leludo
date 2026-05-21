@@ -180,6 +180,47 @@ test.describe('Token animation speed', () => {
     });
 });
 
+test.describe('Token rendering inside cells', () => {
+    test('stacked tokens stay inside the cell (no inline baseline overflow)', async ({ page }) => {
+        // Regression: wc-token's inner <svg> was inline by default, so the
+        // line-box baseline strut pushed the rendered svg ~4–5px below the
+        // wc-token box. On small viewports (24px cells) the pawns visibly
+        // fell below the cell border when 2+ tokens shared a cell.
+        // Fix: wc-token svg { display: block; } — removes the strut.
+        await page.goto('/?positions=39,39,39,39&player=0');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+
+        const data = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            const cell = document.getElementById('m39');
+            mod.updateCellStacking(cell);
+            const cellRect = cell.getBoundingClientRect();
+            return Array.from(cell.querySelectorAll('wc-token')).map(t => {
+                const svg = t.querySelector('svg');
+                const sr = svg.getBoundingClientRect();
+                return {
+                    svgBottom: sr.bottom,
+                    cellBottom: cellRect.bottom,
+                    svgTop: sr.top,
+                    cellTop: cellRect.top,
+                    svgDisplay: getComputedStyle(svg).display,
+                };
+            });
+        });
+
+        expect(data.length).toBe(4);
+        for (const t of data) {
+            expect(t.svgDisplay).toBe('block');
+            // svg must not extend below the cell (tolerate 0.5px sub-pixel)
+            expect(t.svgBottom - t.cellBottom).toBeLessThanOrEqual(0.5);
+            // svg must not extend above the cell either
+            expect(t.cellTop - t.svgTop).toBeLessThanOrEqual(0.5);
+        }
+    });
+});
+
 test.describe('Player color utilities', () => {
     test('.player-bg-N classes resolve to four distinct colors', async ({ page }) => {
         await page.goto('/');
