@@ -200,8 +200,11 @@ function applyFinishStacking(cell, tokens) {
 export function updateCellStacking(cell) {
     if (!cell) return;
     const allTokens = Array.from(cell.querySelectorAll(':scope > wc-token'));
-    allTokens.forEach(clearStackStyles);
+    // Only relayout settled tokens. A token mid-animation (moving='true') is
+    // pinned position:absolute and out of flow — clearing its styles here would
+    // drop it back into flow and shove/hide the settled tokens. Leave it alone.
     const tokens = allTokens.filter(t => t.dataset.moving !== 'true');
+    tokens.forEach(clearStackStyles);
     const n = tokens.length;
 
     const badge = cell.querySelector('.stack-badge');

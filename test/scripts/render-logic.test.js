@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getContainerPath, pinTokenForCapture } from '../../scripts/render-logic.js';
+import { getContainerPath, pinTokenForCapture, updateCellStacking } from '../../scripts/render-logic.js';
 
 describe('getContainerPath — forward movement', () => {
     it('builds per-step mark IDs from current+1 to new (inclusive)', () => {
@@ -87,5 +87,35 @@ describe('pinTokenForCapture', () => {
         expect(token.style.left).toBe('20px');  // 220 - 200
         expect(token.style.width).toBe('24px');
         expect(token.style.height).toBe('24px');
+    });
+});
+
+describe('updateCellStacking — pinned (moving) tokens', () => {
+    it('leaves a moving token pinned out of flow while restacking the rest', () => {
+        // Regression: updateCellStacking used to clear EVERY child's styles,
+        // including a captured token pinned position:absolute mid-animation.
+        // That dropped it back into flow and shoved/hid the just-landed
+        // capturing token until the captured token finally reached home
+        // ("capturer disappears until captured pawn gets home").
+        const cell = document.createElement('div');
+        cell.id = 'm7';
+
+        const captured = document.createElement('wc-token'); // mid-animation, pinned
+        captured.dataset.moving = 'true';
+        captured.style.cssText = 'position:absolute;top:20px;left:20px;width:24px;height:24px;';
+
+        const lander = document.createElement('wc-token'); // just settled, in flow
+        lander.style.cssText = 'position:absolute;top:4%;left:4%;'; // leftover stack styles
+
+        cell.appendChild(captured);
+        cell.appendChild(lander);
+
+        updateCellStacking(cell);
+
+        // Pinned token untouched — still out of flow.
+        expect(captured.style.position).toBe('absolute');
+        expect(captured.style.top).toBe('20px');
+        // Sole settled token cleared back to flow (n<=1 → no stack styles).
+        expect(lander.style.position).toBe('');
     });
 });
