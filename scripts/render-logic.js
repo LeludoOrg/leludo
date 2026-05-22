@@ -126,6 +126,26 @@ export function getContainerPath(playerIndex, tokenIndex, currentPosition, newPo
     return path;
 }
 
+// Pin a soon-to-be-captured token absolutely at its current visual spot so it
+// leaves the cell's flow. Without this, the captured token lingers as a flow
+// child while the capturing token lands in the same cell — two flow tokens lay
+// out side by side, shoving the lander into a second slot until the captured
+// token finally animates home (the "lander sits in the cell below for a split
+// second" flicker).
+export function pinTokenForCapture(element) {
+    const cell = element.parentElement;
+    if (!cell) return;
+    const cellRect = cell.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    cell.style.position = 'relative';
+    element.style.position = 'absolute';
+    element.style.top = `${rect.top - cellRect.top}px`;
+    element.style.left = `${rect.left - cellRect.left}px`;
+    element.style.width = `${rect.width}px`;
+    element.style.height = `${rect.height}px`;
+    element.dataset.moving = 'true';
+}
+
 function clearStackStyles(t) {
     t.style.removeProperty('position');
     t.style.removeProperty('width');

@@ -33,6 +33,7 @@ import {
     showGame,
     showPauseMenu,
     updateCellStacking,
+    pinTokenForCapture,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -302,7 +303,7 @@ async function selectToken(playerIndex, tokenIndex, emit) {
         for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
             for (const ti of pt) {
                 const t = getTokenElement(pi, ti);
-                if (t) t.dataset.moving = 'true';
+                if (t) pinTokenForCapture(t);
             }
         }
 
