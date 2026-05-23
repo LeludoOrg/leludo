@@ -2,6 +2,7 @@ import {htmlToElement} from "./index.js";
 import {dispatch, COMMANDS, playClickSound} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
+import {goTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
@@ -116,6 +117,7 @@ class QuickStart extends HTMLElement {
     connectedCallback() {
         this.showHomeScreen()
         document.addEventListener("bot-name-pool-changed", () => this._reshuffleBotNames())
+        registerScreenHandler('setup', () => this.showHomeScreen())
     }
 
     _reshuffleBotNames() {
@@ -164,6 +166,7 @@ class QuickStart extends HTMLElement {
         el.querySelector(".new-game-btn").addEventListener("click", () => {
             playClickSound()
             this.showSetupScreen()
+            goTo('setup')
         })
 
         const resumeEl = el.querySelector(".resume-card")
@@ -299,7 +302,7 @@ class QuickStart extends HTMLElement {
 
         el.querySelector(".back-btn").addEventListener("click", () => {
             playClickSound()
-            this.showHomeScreen()
+            navBack()
         })
 
         el.querySelector(".start-btn").addEventListener("click", () => {

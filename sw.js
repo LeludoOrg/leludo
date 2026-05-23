@@ -33,6 +33,7 @@ const PRECACHE = [
   'components/wc-user-icon.js',
   'scripts/index.js',
   'scripts/audio.js',
+  'scripts/nav-history.js',
   'scripts/bot-ai.js',
   'scripts/bot-names.js',
   'scripts/command-handler.js',
