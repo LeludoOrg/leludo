@@ -456,14 +456,14 @@ table td {
     animation: dice-shake 0.45s ease-in-out;
 }
 
-@keyframes capture-hit {
-    0%   { transform: scale(1);    filter: brightness(1) saturate(1); }
-    35%  { transform: scale(1.35); filter: brightness(1.5) saturate(1.6) drop-shadow(0 0 6px rgba(255,80,80,0.85)); }
-    100% { transform: scale(1);    filter: brightness(1) saturate(1); }
+@keyframes home-arrive {
+    0%   { transform: scale(0.55); opacity: 0; }
+    60%  { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1);    opacity: 1; }
 }
 
-.token-captured {
-    animation: capture-hit 0.32s ease-out;
+wc-token.token-arriving {
+    animation: home-arrive 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     transform-origin: center;
 }
 

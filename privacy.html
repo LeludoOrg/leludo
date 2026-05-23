@@ -13,7 +13,7 @@
 
     <script>
         (function () {
-            var stored = localStorage.getItem('theme') || 'light';
+            var stored = localStorage.getItem('theme') || 'system';
             var resolved = stored === 'system'
                 ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
                 : stored;

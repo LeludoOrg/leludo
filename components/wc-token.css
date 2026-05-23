@@ -26,3 +26,12 @@ wc-token svg {
     transition: transform 300ms ease-out;
     filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
 }
+
+/* God mode (debug, localhost-only) — selected pawn awaiting a target cell */
+@keyframes god-selected-pulse {
+    0%, 100% { filter: drop-shadow(0 0 4px #ff00ff) drop-shadow(0 0 8px #ff00ff); }
+    50%      { filter: drop-shadow(0 0 10px #ff00ff) drop-shadow(0 0 16px #ff00ff); }
+}
+wc-token .god-selected {
+    animation: god-selected-pulse 0.9s ease-in-out infinite;
+}

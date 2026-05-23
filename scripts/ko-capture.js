@@ -1,0 +1,272 @@
+// KO Punch capture overlay. Standalone — no deps. Self-contained DOM/style.
+//
+// playKOCapture({
+//   container,              HTMLElement (position: relative/absolute)
+//   capture: {x, y},        px from container top-left, center of capture cell
+//   homeBase: {x, y},       px from container top-left, defender home target
+//   attackerColor,          any CSS color string — POW! fill + trailing stars
+//   defenderColor,          any CSS color string — flying pawn fill
+//   attackFrom,             'left' | 'right' | 'top' | 'bottom'
+//   pawnSize,               px (height of flying pawn) — ~1.4× cell size
+//   duration,               total ms (default 1100)
+//   shakeBoard,             bool — applies brief shake to container
+//   onComplete,             optional callback fired after cleanup
+// }) → Promise<void>  (resolves after overlay DOM is removed)
+
+const STYLE_ID = 'kocap-styles';
+
+function injectCSS() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      .kocap-root {
+        position: absolute; inset: 0;
+        pointer-events: none;
+        z-index: 1000;
+        overflow: visible;
+      }
+      .kocap-layer { position: absolute; left: 0; top: 0; }
+      .kocap-pawn-wrap { position: absolute; transform-origin: center 80%; }
+      .kocap-pawn-squash { transform-origin: center 80%; }
+      .kocap-pawn-svg { display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45)); }
+
+      .kocap-pow { position: absolute; transform-origin: center; }
+      .kocap-pow svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .kocap-pow text {
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+        font-weight: 800; letter-spacing: 1.5px;
+        text-anchor: middle; dominant-baseline: central;
+        fill: #fff;
+        paint-order: stroke;
+        stroke: rgba(0,0,0,0.35);
+        stroke-width: 0.8;
+      }
+
+      .kocap-speed-line {
+        position: absolute;
+        height: 2px;
+        background: rgba(235,227,214,0.9);
+        border-radius: 2px;
+        opacity: 0;
+      }
+
+      .kocap-star {
+        position: absolute;
+        width: 10px; height: 10px;
+        clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        opacity: 0;
+      }
+
+      @keyframes kocap-shake {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-3px, 2px); }
+        20% { transform: translate(3px, -2px); }
+        30% { transform: translate(-2px, 1px); }
+        40% { transform: translate(2px, -1px); }
+        50% { transform: translate(-1px, 1px); }
+        60% { transform: translate(1px, 0); }
+      }
+      .kocap-board-shake { animation: kocap-shake 320ms ease-out; }
+    `;
+    document.head.appendChild(style);
+}
+
+function pawnSVG(color, size) {
+    const w = size * 0.75; // viewBox 60×80 → 0.75 aspect
+    return (
+        '<svg class="kocap-pawn-svg" viewBox="0 0 60 80" ' +
+        'width="' + w + '" height="' + size + '">' +
+        '<ellipse cx="30" cy="74" rx="17" ry="3" fill="rgba(0,0,0,0.55)" />' +
+        '<path fill="' + color + '" d="M 30 6 C 38 6, 42 13, 38 19 ' +
+        'C 40 21, 40 23, 36.5 24 C 39.5 27, 39.5 31, 35.5 32.5 ' +
+        'L 44 36 L 50 70 L 10 70 L 16 36 L 24.5 32.5 ' +
+        'C 20.5 31, 20.5 27, 23.5 24 C 20 23, 20 21, 22 19 ' +
+        'C 18 13, 22 6, 30 6 Z" />' +
+        '<ellipse cx="25" cy="13" rx="2.6" ry="3.6" fill="rgba(255,255,255,0.28)" />' +
+        '</svg>'
+    );
+}
+
+function powSVG(attackerColor) {
+    return (
+        '<svg viewBox="0 0 120 120">' +
+        '<polygon ' +
+        'points="60,4 70,28 95,18 88,44 116,50 92,64 110,86 84,82 88,110 65,94 60,116 55,94 32,110 36,82 10,86 28,64 4,50 32,44 25,18 50,28" ' +
+        'fill="' + attackerColor + '" stroke="#ebe3d6" stroke-width="2.5" stroke-linejoin="round" />' +
+        '<text x="60" y="62" font-size="22" transform="rotate(-8 60 62)">POW!</text>' +
+        '</svg>'
+    );
+}
+
+function arcKeyframes(dx, dy, spins) {
+    const N = 28;
+    const peak = Math.max(120, Math.abs(dx) * 0.5, Math.abs(dy) * 0.4);
+    const frames = [];
+    for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const x = dx * t;
+        const y = dy * t - peak * 4 * t * (1 - t);
+        const rot = spins * 360 * t;
+        let opacity = 1;
+        if (t > 0.85) opacity = 1 - (t - 0.85) / 0.15;
+        frames.push({
+            transform: 'translate(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px) rotate(' + rot.toFixed(0) + 'deg)',
+            opacity: opacity,
+            offset: t,
+        });
+    }
+    return frames;
+}
+
+export function playKOCapture(opts) {
+    if (!opts || !opts.container || !opts.capture) {
+        throw new Error('playKOCapture: container and capture are required');
+    }
+    injectCSS();
+
+    const container = opts.container;
+    const cap = opts.capture;
+    const attackerColor = opts.attackerColor || '#cf4a3a';
+    const defenderColor = opts.defenderColor || '#2f9456';
+    const pawnSize = opts.pawnSize || 48;
+    const duration = opts.duration || 1100;
+    const attackFrom = opts.attackFrom || 'left';
+    const shakeBoard = opts.shakeBoard !== false;
+    const onComplete = opts.onComplete || function () {};
+
+    // Default homeBase = ballistic throw opposite of attack direction.
+    const dirVec = ({
+        left:   { x:  1, y: -1 },
+        right:  { x: -1, y: -1 },
+        top:    { x:  1, y:  1 },
+        bottom: { x:  1, y: -1 },
+    })[attackFrom] || { x: 1, y: -1 };
+    const home = opts.homeBase || {
+        x: cap.x + dirVec.x * 320,
+        y: cap.y + dirVec.y * 240,
+    };
+
+    const root = document.createElement('div');
+    root.className = 'kocap-root';
+    container.appendChild(root);
+
+    const pow = document.createElement('div');
+    pow.className = 'kocap-pow';
+    const powSize = pawnSize * 2.2;
+    pow.style.cssText =
+        'left:' + (cap.x - powSize / 2) + 'px;' +
+        'top:'  + (cap.y - powSize / 2) + 'px;' +
+        'width:'  + powSize + 'px;' +
+        'height:' + powSize + 'px;';
+    pow.innerHTML = powSVG(attackerColor);
+    root.appendChild(pow);
+
+    pow.animate(
+        [
+            { opacity: 0, transform: 'scale(0.2) rotate(-15deg)', offset: 0 },
+            { opacity: 1, transform: 'scale(1.18) rotate(-5deg)', offset: 0.18 },
+            { opacity: 1, transform: 'scale(1.00) rotate(2deg)',  offset: 0.45 },
+            { opacity: 1, transform: 'scale(1.00) rotate(2deg)',  offset: 0.75 },
+            { opacity: 0, transform: 'scale(0.95) rotate(2deg)',  offset: 1 },
+        ],
+        { duration: Math.round(duration * 0.7), easing: 'cubic-bezier(.2,1.5,.3,1)', fill: 'forwards' }
+    );
+
+    const lineAngle = ({ left: 0, right: 180, top: 90, bottom: 270 })[attackFrom] || 0;
+    for (let i = 0; i < 4; i++) {
+        const line = document.createElement('div');
+        line.className = 'kocap-speed-line';
+        const len = 30 + Math.random() * 30;
+        const offset = -30 + i * 18;
+        line.style.cssText =
+            'left:' + (cap.x + 18) + 'px;' +
+            'top:'  + (cap.y + offset) + 'px;' +
+            'width:' + len + 'px;' +
+            'transform-origin: 0 50%;' +
+            'transform: rotate(' + lineAngle + 'deg);';
+        root.appendChild(line);
+        line.animate(
+            [
+                { opacity: 0, transform: 'rotate(' + lineAngle + 'deg) translateX(-30px)' },
+                { opacity: 1, transform: 'rotate(' + lineAngle + 'deg) translateX(0)', offset: 0.4 },
+                { opacity: 0, transform: 'rotate(' + lineAngle + 'deg) translateX(60px)' },
+            ],
+            { duration: Math.round(duration * 0.45), delay: i * 40, fill: 'forwards' }
+        );
+    }
+
+    const traj = document.createElement('div');
+    traj.className = 'kocap-pawn-wrap';
+    const pawnW = pawnSize * 0.75;
+    traj.style.cssText =
+        'left:' + (cap.x - pawnW / 2) + 'px;' +
+        'top:'  + (cap.y - pawnSize * 0.72) + 'px;' +
+        'width:' + pawnW + 'px;' +
+        'height:' + pawnSize + 'px;';
+
+    const squash = document.createElement('div');
+    squash.className = 'kocap-pawn-squash';
+    squash.innerHTML = pawnSVG(defenderColor, pawnSize);
+    traj.appendChild(squash);
+    root.appendChild(traj);
+
+    squash.animate(
+        [
+            { transform: 'scale(1, 1)',      offset: 0 },
+            { transform: 'scale(1.25, 0.7)', offset: 0.08 },
+            { transform: 'scale(0.9, 1.1)',  offset: 0.18 },
+            { transform: 'scale(1, 1)',      offset: 0.3 },
+            { transform: 'scale(1, 1)',      offset: 1 },
+        ],
+        { duration: duration, easing: 'cubic-bezier(.3, 1.6, .4, 1)', fill: 'forwards' }
+    );
+
+    const dx = home.x - cap.x;
+    const dy = home.y - cap.y;
+    traj.animate(arcKeyframes(dx, dy, dy < 0 ? 2 : -2), {
+        duration: duration,
+        easing: 'cubic-bezier(.4, 0, .3, 1)',
+        fill: 'forwards',
+    });
+
+    const starOffsets = [
+        { x:  60, y:  -90, d:  60 },
+        { x:  90, y:  -60, d:  90 },
+        { x:  40, y: -120, d: 120 },
+    ];
+    starOffsets.forEach(function (o) {
+        const star = document.createElement('div');
+        star.className = 'kocap-star';
+        star.style.cssText =
+            'left:' + (cap.x - 5) + 'px;' +
+            'top:'  + (cap.y - 5) + 'px;' +
+            'background:' + attackerColor + ';';
+        root.appendChild(star);
+        const sx = ({ left: 1, right: -1, top: 1, bottom: 1 }[attackFrom] || 1) * o.x;
+        const sy = ({ top: 1, bottom: -1, left: 1, right: 1 }[attackFrom] || 1) * o.y;
+        star.animate(
+            [
+                { opacity: 0, transform: 'translate(0,0) scale(0.4) rotate(0)', offset: 0 },
+                { opacity: 1, transform: 'translate(' + (sx * 0.4) + 'px,' + (sy * 0.4) + 'px) scale(1) rotate(120deg)', offset: 0.4 },
+                { opacity: 0, transform: 'translate(' + sx + 'px,' + sy + 'px) scale(0.6) rotate(360deg)', offset: 1 },
+            ],
+            { duration: Math.round(duration * 0.55), delay: o.d, fill: 'forwards' }
+        );
+    });
+
+    if (shakeBoard) {
+        container.classList.remove('kocap-board-shake');
+        void container.offsetWidth;
+        container.classList.add('kocap-board-shake');
+        setTimeout(function () { container.classList.remove('kocap-board-shake'); }, 360);
+    }
+
+    return new Promise(function (resolve) {
+        setTimeout(function () {
+            if (root.parentNode) root.parentNode.removeChild(root);
+            onComplete();
+            resolve();
+        }, duration + 80);
+    });
+}

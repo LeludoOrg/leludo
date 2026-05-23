@@ -20,6 +20,7 @@ const SAVE_AFTER = new Set([
     EVENTS.TURN_ADVANCED,
     EVENTS.TURN_REPEATS,
     EVENTS.PLAYER_FINISHED,
+    EVENTS.GOD_TELEPORTED,
 ]);
 
 function save() {

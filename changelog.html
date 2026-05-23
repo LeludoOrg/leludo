@@ -13,7 +13,7 @@
 
     <script>
         (function () {
-            var stored = localStorage.getItem('theme') || 'light';
+            var stored = localStorage.getItem('theme') || 'system';
             var resolved = stored === 'system'
                 ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
                 : stored;
@@ -41,6 +41,79 @@
             </div>
 
             <div class="static-page-content">
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.16.0</div>
+                        <div class="cl-entry-date">May 23, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Captures got way more bombastic: a comic-book POW! starburst lands on the capture cell, the defeated pawn squashes on impact and arcs to its home base trailing stars and speed lines, and the board does a quick shake. Colours are dynamic — the POW fills with the attacker&rsquo;s colour, the flying pawn keeps the defender&rsquo;s.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.15.3</div>
+                        <div class="cl-entry-date">May 23, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed a capture-sizing glitch: the capturing pawn used to shrink to two-token stacking size and stay there even after the captured pawn flew home, leaving it permanently small. It now resizes to fill the cell once the victim leaves.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.15.2</div>
+                        <div class="cl-entry-date">May 23, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal: added a debug-only &ldquo;god mode&rdquo; setting (visible and usable on localhost only) that lets a developer click a pawn and then any cell to teleport the pawn there. Honours capture rules. No effect on production builds.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.15.1</div>
+                        <div class="cl-entry-date">May 23, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Capture animation got a punchier treatment: the captured pawn now blasts at the capture spot with a glowing ring, fades out, and re-materialises on its home base with a small bounce.</li>
+                                    <li>Replaces the slower walk-backwards-along-the-track retreat — captures now feel decisive, and the turn moves on about a second faster.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">
