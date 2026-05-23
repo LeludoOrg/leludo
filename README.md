@@ -22,6 +22,12 @@ npm run test:e2e # Playwright smoke suite
 
 Open <http://localhost:8888> for the game.
 
+When running on `localhost` (or `127.0.0.1`) a **Debug → God mode**
+toggle appears in the settings overlay. Enable it to teleport any
+pawn to any cell by clicking a pawn and then a target cell — captures
+still fire normally. The toggle and code path are gated off in
+production builds.
+
 ## Android (Capacitor)
 
 ```bash

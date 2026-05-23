@@ -6,6 +6,9 @@ import {
     isGameLogicPaused,
     isSoundMuted,
     setSoundMuted,
+    isGodModeAvailable,
+    isGodModeEnabled,
+    setGodModeEnabled,
 } from "../scripts/index.js";
 import { goTo, back as navBack, registerScreenHandler } from "../scripts/nav-history.js";
 
@@ -124,6 +127,11 @@ function buildSettingsOverlay() {
                     </div>
                 `)}
 
+                ${isGodModeAvailable() ? settingsGroup('Debug (localhost only)', `
+                    ${toggleHtml('s-god-mode', 'God mode (teleport pawn)', isGodModeEnabled(), false)}
+                    <div class="god-mode-hint">Click a pawn, then click any cell to teleport it. Bypasses dice and turn order.</div>
+                `) : ''}
+
                 ${settingsGroup('About', `
                     <div class="about-list">
                         <div class="about-row">
@@ -229,6 +237,16 @@ function ensureOverlay() {
             setAssistFlag(t.flag, next);
         });
     });
+
+    if (isGodModeAvailable()) {
+        const godEl = overlay.querySelector('#s-god-mode');
+        if (godEl) {
+            godEl.checked = isGodModeEnabled();
+            godEl.addEventListener('change', ($event) => {
+                setGodModeEnabled($event.target.checked);
+            });
+        }
+    }
 
     const activePool = getActivePoolKey();
     const poolRadio = overlay.querySelector(`input[name="s-bot-pool"][value="${activePool}"]`);

@@ -36,6 +36,7 @@ export const EVENTS = Object.freeze({
     GAME_PAUSED: 'GAME_PAUSED',
     GAME_RESUMED_FROM_PAUSE: 'GAME_RESUMED_FROM_PAUSE',
     DICE_ROLL_STARTED: 'DICE_ROLL_STARTED',
+    GOD_TELEPORTED: 'GOD_TELEPORTED',
 });
 
 function resetArraysInPlace(state) {
@@ -205,6 +206,12 @@ export function reducer(state, event) {
 
         case EVENTS.TURN_COUNT_SET: {
             state.turnCount = event.value;
+            return state;
+        }
+
+        case EVENTS.GOD_TELEPORTED: {
+            const row = state.playerTokenPositions[event.playerIndex];
+            if (row) row[event.tokenIndex] = event.toPosition;
             return state;
         }
 

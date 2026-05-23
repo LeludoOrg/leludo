@@ -80,6 +80,7 @@ export const COMMANDS = Object.freeze({
     RESTART_GAME: 'RESTART_GAME',
     EXIT_TO_HOME: 'EXIT_TO_HOME',
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
+    GOD_TELEPORT: 'GOD_TELEPORT',
 });
 
 // --- phase machine guards ---
@@ -435,6 +436,49 @@ function exitToHome(emit) {
     resumeGameLogic();
 }
 
+async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
+    const token = getTokenElement(playerIndex, tokenIndex);
+    if (!token) return;
+    const sourceCell = token.parentElement;
+    const targetCellId = getTokenContainerId(playerIndex, tokenIndex, toPosition);
+    const targetCell = document.getElementById(targetCellId);
+    if (!targetCell) return;
+
+    // Capture detection runs BEFORE we move so findCapturedOpponents still
+    // sees the doomed opponents at their pre-capture positions. Skips safe
+    // squares and same-color pairs already.
+    const capturedByPlayer = findCapturedOpponents(playerIndex, toPosition, state.playerTokenPositions);
+    for (const [pi, tis] of capturedByPlayer.entries()) {
+        for (const ti of tis) {
+            const t = getTokenElement(pi, ti);
+            if (t) pinTokenForCapture(t);
+        }
+    }
+
+    // Drop inline stacking styles so the moved token settles cleanly into
+    // its new cell's flow before updateCellStacking re-applies them.
+    token.style.cssText = '';
+    delete token.dataset.moving;
+    targetCell.appendChild(token);
+
+    emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
+
+    if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
+    updateCellStacking(targetCell);
+
+    for (const [pi, tis] of capturedByPlayer.entries()) {
+        for (const ti of tis) {
+            emit({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: playerIndex,
+                capturedPlayerIndex: pi,
+                capturedTokenIndex: ti,
+            });
+            await animateCaptureToHome(pi, ti);
+        }
+    }
+}
+
 let _pauseCloseHandler = null;
 
 function handleGamePause(emit) {
@@ -539,6 +583,8 @@ export function commandHandler(currentState, command, services, emit) {
             return exitToHome(emit);
         case COMMANDS.SET_ASSIST_FLAG:
             return emit({ type: EVENTS.ASSIST_FLAG_CHANGED, flag: command.flag, value: command.value });
+        case COMMANDS.GOD_TELEPORT:
+            return godTeleport(command.playerIndex, command.tokenIndex, command.toPosition, emit);
         default:
             console.warn('Unknown command:', command.type);
             return;

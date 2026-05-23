@@ -1,7 +1,16 @@
 import {
     htmlToElement
 } from "./index.js"
-import {dispatch, COMMANDS, playClickSound} from "../scripts/index.js";
+import {
+    dispatch,
+    COMMANDS,
+    playClickSound,
+    isGodModeEnabled,
+    getGodSelection,
+    setGodSelection,
+    clearGodSelection,
+    cellIdToPosition,
+} from "../scripts/index.js";
 
 //language=HTML
 const STAR_D = "M12 2.2l2.8 6.3 6.8.5-5.2 4.4 1.6 6.6L12 16.6l-6 3.4 1.6-6.6L2.4 9l6.8-.5z";
@@ -209,6 +218,29 @@ class Board extends HTMLElement {
         boardElement.querySelectorAll('[id^="h-"], [id^="m"], [id^="p"][id*="s"]').forEach((cell) => {
             if (!cellIdPattern.test(cell.id)) return;
             cell.addEventListener("click", () => {
+                if (isGodModeEnabled()) {
+                    const selection = getGodSelection();
+                    if (selection) {
+                        const pos = cellIdToPosition(cell.id, selection.playerIndex);
+                        if (pos === null) return;
+                        playClickSound();
+                        dispatch({
+                            type: COMMANDS.GOD_TELEPORT,
+                            playerIndex: selection.playerIndex,
+                            tokenIndex: selection.tokenIndex,
+                            toPosition: pos,
+                        });
+                        clearGodSelection();
+                        return;
+                    }
+                    const token = cell.querySelector(':scope > wc-token');
+                    if (!token) return;
+                    const parts = token.id.split('-');
+                    playClickSound();
+                    setGodSelection(+parts[1], +parts[2]);
+                    return;
+                }
+
                 const activeInner = cell.querySelector(':scope > wc-token > .animate-bounce');
                 if (!activeInner) return;
                 const token = activeInner.parentElement;

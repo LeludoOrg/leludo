@@ -179,6 +179,14 @@
     background: var(--color-fg);
 }
 
+/* God mode hint (debug section, localhost-only) */
+#settings-overlay .god-mode-hint {
+    font-size: 11px;
+    opacity: 0.55;
+    padding: 0 0 10px;
+    line-height: 1.4;
+}
+
 /* About rows */
 #settings-overlay .about-list {
     display: flex;
