@@ -201,7 +201,7 @@ function ensureOverlay() {
     overlay.querySelector("#settings-back").addEventListener("click", () => navBack());
     registerScreenHandler('settings', closeSettings);
 
-    const defaultTheme = localStorage.getItem("theme") || "light"
+    const defaultTheme = localStorage.getItem("theme") || "system"
     updateTheme(defaultTheme)
     const themeRadio = overlay.querySelector(`input[name="s-theme"][value="${defaultTheme}"]`);
     if (themeRadio) themeRadio.checked = true;
