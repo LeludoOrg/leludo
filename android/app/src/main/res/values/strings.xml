@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Ludo</string>
-    <string name="title_activity_main">Ludo</string>
+    <string name="app_name">Leludo</string>
+    <string name="title_activity_main">Leludo</string>
     <string name="package_name">com.leludo.ludo</string>
     <string name="custom_url_scheme">com.leludo.ludo</string>
 </resources>
