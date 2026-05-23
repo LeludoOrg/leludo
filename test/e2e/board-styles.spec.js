@@ -295,6 +295,48 @@ test.describe('Capture animation', () => {
         expect(animName).toBe('home-arrive');
     });
 
+    test('capturing lander resizes to full cell after victim leaves (not stuck at 2-token stack size)', async ({ page }) => {
+        // Regression: previously animateCaptureToHome ran
+        // updateCellStacking(sourceCell) BEFORE moving the captured token
+        // out of the cell, so it saw two settled tokens and shrunk the
+        // capturing lander to ~64% — and never restacked once the victim
+        // left, leaving the lander permanently small. Fix moves the
+        // appendChild before the source restack.
+        // Setup: P0 token 0 at m20 (pos 20, non-safe), P1 token 0 also
+        // at m20 (pos 7, non-safe). Trigger animateCaptureToHome on P1.
+        await page.goto('/?positions=20,,,,7,,,,,,,,,,,,&player=0');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+        await page.waitForFunction(() => {
+            const p0 = document.getElementById('p-0-0');
+            const p1 = document.getElementById('p-1-0');
+            return p0 && p1 && p0.parentElement?.id === 'm20' && p1.parentElement?.id === 'm20';
+        });
+        const result = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            const lander = document.getElementById('p-0-0');
+            const victim = document.getElementById('p-1-0');
+            // Pin victim as the real flow does, so updateCellStacking
+            // doesn't count it as a settled token while the lander is
+            // settling.
+            mod.pinTokenForCapture(victim);
+            // Lander is settling in the same cell — restack to size it.
+            mod.updateCellStacking(document.getElementById('m20'));
+            await mod.animateCaptureToHome(1, 0);
+            const cellRect = document.getElementById('m20').getBoundingClientRect();
+            const landerRect = lander.getBoundingClientRect();
+            return {
+                landerInline: lander.getAttribute('style') || '',
+                widthRatio: landerRect.width / cellRect.width,
+                heightRatio: landerRect.height / cellRect.height,
+            };
+        });
+        expect(result.landerInline).not.toMatch(/width:\s*64%/);
+        expect(result.widthRatio).toBeGreaterThan(0.95);
+        expect(result.heightRatio).toBeGreaterThan(0.95);
+    });
+
     test('animateCaptureToHome moves token into its home cell', async ({ page }) => {
         // End-to-end: capture animation must always leave the token DOM-
         // attached to its home cell. Regression guard against the previous

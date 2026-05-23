@@ -277,8 +277,11 @@ export function animateCaptureToHome(playerIndex, tokenIndex) {
             element.classList.remove('token-blasting');
             clearStackStyles(element);
             delete element.dataset.moving;
-            if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
+            // Move out of sourceCell first, THEN restack — otherwise the
+            // capturing lander gets sized for a 2-token stack and never
+            // resizes back when the captured token leaves.
             homeCell.appendChild(element);
+            if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
             updateCellStacking(homeCell);
 
             element.classList.add('token-arriving');
