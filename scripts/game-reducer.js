@@ -48,7 +48,14 @@ function resetArraysInPlace(state) {
         state.playerRanks[i] = 0;
         state.playerTimes[i] = 0;
         state.playerCaptures[i] = 0;
+        state.sentHomeCount[i] = 0;
+        state.firstHomeStretchTurn[i] = -1;
+        state.firstFinishTurn[i] = -1;
+        state.distanceTraveled[i] = 0;
+        state.pawnsAtBaseAtTurn20[i] = -1;
+        state.bestDiceStreak[i] = null;
     }
+    state.currentDiceStreak = null;
 }
 
 export function reducer(state, event) {
@@ -69,10 +76,17 @@ export function reducer(state, event) {
                 state.playerRanks[i] = 0;
                 state.playerTimes[i] = 0;
                 state.playerCaptures[i] = 0;
+                state.sentHomeCount[i] = 0;
+                state.firstHomeStretchTurn[i] = -1;
+                state.firstFinishTurn[i] = -1;
+                state.distanceTraveled[i] = 0;
+                state.pawnsAtBaseAtTurn20[i] = -1;
+                state.bestDiceStreak[i] = null;
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
             }
+            state.currentDiceStreak = null;
             state.currentPlayerIndex = event.currentPlayerIndex;
             return state;
         }
@@ -94,10 +108,17 @@ export function reducer(state, event) {
                 state.playerRanks[i] = event.playerRanks[i] ?? 0;
                 state.playerTimes[i] = event.playerTimes[i] ?? 0;
                 state.playerCaptures[i] = event.playerCaptures[i] ?? 0;
+                state.sentHomeCount[i] = 0;
+                state.firstHomeStretchTurn[i] = -1;
+                state.firstFinishTurn[i] = -1;
+                state.distanceTraveled[i] = 0;
+                state.pawnsAtBaseAtTurn20[i] = -1;
+                state.bestDiceStreak[i] = null;
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
             }
+            state.currentDiceStreak = null;
             return state;
         }
 
@@ -122,6 +143,28 @@ export function reducer(state, event) {
             state.currentDiceRoll = event.value;
             if (event.value === 6) state.consecutiveSixesCount++;
             else state.consecutiveSixesCount = 0;
+
+            const pi = state.currentPlayerIndex;
+            const prev = state.currentDiceStreak;
+            if (prev && prev.playerIndex === pi && prev.value === event.value) {
+                prev.length++;
+            } else {
+                state.currentDiceStreak = {
+                    playerIndex: pi,
+                    value: event.value,
+                    length: 1,
+                    atTurn: state.turnCount,
+                };
+            }
+            const cur = state.currentDiceStreak;
+            const best = state.bestDiceStreak[pi];
+            if (!best || cur.length > best.length) {
+                state.bestDiceStreak[pi] = {
+                    value: cur.value,
+                    length: cur.length,
+                    atTurn: cur.atTurn,
+                };
+            }
             return state;
         }
 
@@ -133,12 +176,28 @@ export function reducer(state, event) {
         case EVENTS.TOKEN_MOVED: {
             state.playerTokenPositions[event.playerIndex][event.tokenIndex] = event.toPosition;
             state.phase = PHASES.ANIMATING;
+
+            const pi = event.playerIndex;
+            if (event.fromPosition >= 0 && event.toPosition >= 0) {
+                state.distanceTraveled[pi] += event.toPosition - event.fromPosition;
+            } else if (event.fromPosition === -1 && event.toPosition >= 0) {
+                state.distanceTraveled[pi] += 1;
+            }
+            if (event.fromPosition < 51 && event.toPosition >= 51 && event.toPosition <= 56) {
+                if (state.firstHomeStretchTurn[pi] === -1) {
+                    state.firstHomeStretchTurn[pi] = state.turnCount;
+                }
+            }
+            if (event.toPosition === 56 && state.firstFinishTurn[pi] === -1) {
+                state.firstFinishTurn[pi] = state.turnCount;
+            }
             return state;
         }
 
         case EVENTS.TOKEN_CAPTURED: {
             state.playerTokenPositions[event.capturedPlayerIndex][event.capturedTokenIndex] = -1;
             state.playerCaptures[event.byPlayerIndex]++;
+            state.sentHomeCount[event.capturedPlayerIndex]++;
             return state;
         }
 
@@ -170,6 +229,16 @@ export function reducer(state, event) {
             state.consecutiveSixesCount = 0;
             state.phase = PHASES.AWAITING_ROLL;
             state.movableTokenIndexes = [];
+            state.turnCount++;
+            state.currentDiceStreak = null;
+            if (state.turnCount === 20) {
+                for (let i = 0; i < 4; i++) {
+                    if (state.pawnsAtBaseAtTurn20[i] !== -1) continue;
+                    if (!state.playerTypes[i] || !state.playerTokenPositions[i]) continue;
+                    state.pawnsAtBaseAtTurn20[i] =
+                        state.playerTokenPositions[i].filter(p => p === -1).length;
+                }
+            }
             return state;
         }
 
