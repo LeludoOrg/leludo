@@ -152,6 +152,29 @@ The game board (`wc-board`) uses `.board-frame` (same outer min-height) plus `.b
 
 Overlays (`#pause-menu`, `#settings-overlay`, `wc-game-end`'s root) use `.frame-overlay` — fixed inset, hidden by default, shown by removing the `.hidden` class.
 
+## God Mode (localhost-only debug)
+
+A settings toggle under **Debug (localhost only)** lets a developer
+teleport any pawn to any cell — first click selects a pawn (magenta
+pulse), next click on a valid cell moves it there. Bypasses dice,
+turn order, and movability rules but **does honour capture rules**:
+opponents on the destination square get sent home (safe-square and
+two-token-pair safety apply, same as normal play).
+
+Gated by `isGodModeAvailable()` in [scripts/god-mode.js](scripts/god-mode.js),
+which checks `location.hostname === 'localhost' || '127.0.0.1'`. The
+toggle row in [wc-settings.js](components/wc-settings.js) and the
+god-mode branch in [wc-board.js](components/wc-board.js) both
+short-circuit off that check, so production users never see the
+control and can't trigger the code path even by setting the
+localStorage flag.
+
+Persisted state goes through the normal store: dispatches
+`COMMANDS.GOD_TELEPORT` → command handler does the DOM move + capture
+animations → emits `EVENTS.GOD_TELEPORTED` (and `TOKEN_CAPTURED` per
+victim) → reducer updates `playerTokenPositions` → persistence
+listener saves to `ludo-save` just like a real move.
+
 ## Test Overrides (URL Params)
 
 `handleGameStart` in `scripts/game-events.*.js` reads two query params for scenario testing — bypasses normal home-start:
