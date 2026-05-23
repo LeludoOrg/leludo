@@ -330,7 +330,7 @@ class GameEnd extends HTMLElement {
                         </div>
                         <div class="ge-hero-text">
                             <div class="ge-eyebrow">${escapeHtml(eyebrow)}</div>
-                            <div class="ge-headline">The recap.</div>
+                            <div class="ge-headline">The recap</div>
                         </div>
                     </div>
 
