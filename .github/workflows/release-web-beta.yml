@@ -15,6 +15,14 @@ name: Release (Web Beta)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+
+# Coalesce rapid merges — a newer push supersedes an in-flight beta
+# deploy so beta always reflects the latest main.
+concurrency:
+  group: release-web-beta
+  cancel-in-progress: true
 
 permissions:
   contents: read
