@@ -330,7 +330,7 @@ class GameEnd extends HTMLElement {
                         </div>
                         <div class="ge-hero-text">
                             <div class="ge-eyebrow">${escapeHtml(eyebrow)}</div>
-                            <div class="ge-headline">The recap.</div>
+                            <div class="ge-headline">The recap</div>
                         </div>
                     </div>
 
@@ -375,7 +375,7 @@ class GameEnd extends HTMLElement {
             this._prevThemeColor = themeMeta.getAttribute('content');
             themeMeta.setAttribute(
                 'content',
-                document.body.classList.contains('dark') ? '#1a1410' : '#ede4d3',
+                document.documentElement.classList.contains('dark') ? '#1a1410' : '#ede4d3',
             );
         }
 
