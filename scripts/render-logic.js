@@ -1,6 +1,7 @@
 import {getMarkIndex} from "./index.js";
 import {playStepSound, playDiceSound} from "./audio.js";
 import {replaceTo} from "./nav-history.js";
+import {playKOCapture} from "./ko-capture.js";
 
 /**
  *
@@ -254,51 +255,100 @@ function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
     const fallbackTimer = setTimeout(settle, fallbackMs);
 }
 
-// Capture animation: blast at the capture spot, fade out, teleport into the
-// home base, fade in with a small overshoot. Replaces the older "walk
-// backwards along the track" treatment, which felt sluggish and read more
-// like a retreat than a defeat.
-export function animateCaptureToHome(playerIndex, tokenIndex) {
+function rectCenter(rect, origin) {
+    return {
+        x: rect.left + rect.width / 2 - origin.left,
+        y: rect.top + rect.height / 2 - origin.top,
+    };
+}
+
+function deriveAttackFrom(prevCell, capCell) {
+    if (!prevCell || !capCell) return 'left';
+    const a = prevCell.getBoundingClientRect();
+    const b = capCell.getBoundingClientRect();
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'left' : 'right';
+    return dy >= 0 ? 'top' : 'bottom';
+}
+
+function readTokenColor(playerIndex, tokenIndex, fallback) {
+    const el = getTokenElement(playerIndex, tokenIndex);
+    if (!el) return fallback;
+    // `.player-fg-N` lives on the inner SVG (sets `color: hsl(var(--player-N))`),
+    // not on the wc-token wrapper — the wrapper just inherits page foreground.
+    const styled = el.querySelector(`[class*="player-fg-${playerIndex}"]`) || el;
+    const c = getComputedStyle(styled).color;
+    return c && c !== 'rgba(0, 0, 0, 0)' ? c : fallback;
+}
+
+// Capture: KO Punch overlay on the board (POW! + defender pawn arcing into
+// home base) plays in place of the live victim, then the real token DOM is
+// moved into the home cell and bounces in. The lander is restacked the
+// moment the victim leaves sourceCell so it returns to full size.
+export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
     const element = getTokenElement(playerIndex, tokenIndex);
     if (!element) return Promise.resolve();
     const sourceCell = element.parentElement;
     const homeCell = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, -1));
     if (!homeCell) return Promise.resolve();
 
-    return new Promise((resolve) => {
-        element.dataset.moving = 'true';
-        element.classList.add('token-blasting');
+    const container = sourceCell ? sourceCell.closest('.board-wrap') : null;
+    if (!container) return Promise.resolve();
 
-        let blastDone = false;
-        const onBlastEnd = () => {
-            if (blastDone) return;
-            blastDone = true;
-            element.removeEventListener('animationend', onBlastEnd);
-            element.classList.remove('token-blasting');
-            clearStackStyles(element);
-            delete element.dataset.moving;
-            // Move out of sourceCell first, THEN restack — otherwise the
-            // capturing lander gets sized for a 2-token stack and never
-            // resizes back when the captured token leaves.
-            homeCell.appendChild(element);
-            if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
-            updateCellStacking(homeCell);
+    const attackerPlayerIndex = attack && attack.attackerPlayerIndex;
+    const attackerTokenIndex = attack && attack.attackerTokenIndex;
+    const prevCell = attack && attack.prevCellId ? document.getElementById(attack.prevCellId) : null;
 
-            element.classList.add('token-arriving');
-            let arriveDone = false;
-            const onArriveEnd = () => {
-                if (arriveDone) return;
-                arriveDone = true;
-                element.removeEventListener('animationend', onArriveEnd);
-                element.classList.remove('token-arriving');
-                resolve();
-            };
-            element.addEventListener('animationend', onArriveEnd);
-            setTimeout(onArriveEnd, 360);
+    const containerRect = container.getBoundingClientRect();
+    const capturePx = rectCenter(sourceCell.getBoundingClientRect(), containerRect);
+    const homeBasePx = rectCenter(homeCell.getBoundingClientRect(), containerRect);
+    const cellSize = sourceCell.getBoundingClientRect().width;
+    const attackFrom = deriveAttackFrom(prevCell, sourceCell);
+    const attackerColor = attackerPlayerIndex != null
+        ? readTokenColor(attackerPlayerIndex, attackerTokenIndex || 0, '#cf4a3a')
+        : '#cf4a3a';
+    const defenderColor = readTokenColor(playerIndex, tokenIndex, '#2f9456');
+
+    // Hide the live victim — the overlay plays its own copy. Keep the
+    // pinned absolute styles in place so the source cell stays restacked
+    // (lander already sized as sole occupant once the victim was pinned).
+    const prevVisibility = element.style.visibility;
+    element.style.visibility = 'hidden';
+
+    return playKOCapture({
+        container,
+        capture: capturePx,
+        homeBase: homeBasePx,
+        attackerColor,
+        defenderColor,
+        attackFrom,
+        pawnSize: cellSize * 1.4,
+        duration: 900,
+        shakeBoard: true,
+    }).then(() => new Promise((resolve) => {
+        clearStackStyles(element);
+        delete element.dataset.moving;
+        element.style.visibility = prevVisibility;
+        // Move out of sourceCell first, THEN restack — otherwise the
+        // capturing lander gets sized for a 2-token stack and never
+        // resizes back when the captured token leaves.
+        homeCell.appendChild(element);
+        if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
+        updateCellStacking(homeCell);
+
+        element.classList.add('token-arriving');
+        let arriveDone = false;
+        const onArriveEnd = () => {
+            if (arriveDone) return;
+            arriveDone = true;
+            element.removeEventListener('animationend', onArriveEnd);
+            element.classList.remove('token-arriving');
+            resolve();
         };
-        element.addEventListener('animationend', onBlastEnd);
-        setTimeout(onBlastEnd, 560);
-    });
+        element.addEventListener('animationend', onArriveEnd);
+        setTimeout(onArriveEnd, 360);
+    }));
 }
 
 export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition) {

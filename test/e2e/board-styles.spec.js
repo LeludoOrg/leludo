@@ -261,22 +261,40 @@ test.describe('Finish-cell token stacking', () => {
 });
 
 test.describe('Capture animation', () => {
-    test('.token-blasting uses capture-blast keyframe on wc-token wrapper', async ({ page }) => {
-        // Capture animation now blasts the token at the capture spot
-        // (scale + glow + fade-out) instead of walking it backwards along
-        // every track square. The class lives on the wc-token wrapper so
-        // its ::before pseudo-element can render the expanding ring.
-        await page.goto('/');
-        const animName = await page.evaluate(() => {
-            const probe = document.createElement('wc-token');
-            probe.className = 'token-blasting';
-            probe.style.cssText = 'position:fixed;top:-1000px;width:10px;height:10px;';
-            document.body.appendChild(probe);
-            const name = getComputedStyle(probe).animationName;
-            probe.remove();
-            return name;
+    test('animateCaptureToHome mounts the KO Punch overlay inside .board-wrap', async ({ page }) => {
+        // KO Punch overlay replaces the old capture-blast/ring scale+fade.
+        // The overlay (.kocap-root) must mount inside the board-wrap so the
+        // POW! + flying defender pawn position correctly relative to the
+        // capture cell, and must clean itself up when the promise resolves.
+        await page.goto('/?positions=20,,,,7,,,,,,,,,,,,&player=0');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+        await page.waitForFunction(() => {
+            const v = document.getElementById('p-1-0');
+            return v && v.parentElement?.id === 'm20';
         });
-        expect(animName).toBe('capture-blast');
+        const result = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            mod.pinTokenForCapture(document.getElementById('p-1-0'));
+            const anim = mod.animateCaptureToHome(1, 0, {
+                attackerPlayerIndex: 0,
+                attackerTokenIndex: 0,
+                prevCellId: 'm19',
+            });
+            await new Promise((r) => setTimeout(r, 80));
+            const wrap = document.querySelector('wc-board .board-wrap');
+            const overlayMounted = !!wrap?.querySelector('.kocap-root');
+            const hasPow = !!wrap?.querySelector('.kocap-pow svg');
+            const hasFlyer = !!wrap?.querySelector('.kocap-pawn-wrap .kocap-pawn-svg');
+            await anim;
+            const overlayGone = !document.querySelector('.kocap-root');
+            return { overlayMounted, hasPow, hasFlyer, overlayGone };
+        });
+        expect(result.overlayMounted).toBe(true);
+        expect(result.hasPow).toBe(true);
+        expect(result.hasFlyer).toBe(true);
+        expect(result.overlayGone).toBe(true);
     });
 
     test('.token-arriving uses home-arrive keyframe', async ({ page }) => {

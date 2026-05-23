@@ -314,6 +314,13 @@ async function selectToken(playerIndex, tokenIndex, emit) {
 
     await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition);
 
+    const prevPos = tokenNewPosition > 0 ? tokenNewPosition - 1 : tokenNewPosition;
+    const attack = {
+        attackerPlayerIndex: state.currentPlayerIndex,
+        attackerTokenIndex: tokenIndex,
+        prevCellId: getTokenContainerId(state.currentPlayerIndex, tokenIndex, prevPos),
+    };
+
     let captureCount = 0;
     for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
         for (const ti of pt) {
@@ -323,7 +330,7 @@ async function selectToken(playerIndex, tokenIndex, emit) {
                 capturedPlayerIndex: pi,
                 capturedTokenIndex: ti,
             });
-            await animateCaptureToHome(pi, ti);
+            await animateCaptureToHome(pi, ti, attack);
             captureCount++;
         }
     }
