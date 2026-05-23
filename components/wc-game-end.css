@@ -1,23 +1,78 @@
 /* ============================================================
-   wc-game-end — final standings overlay
+   wc-game-end — V2 Highlights Reel
+   Scoped end-screen tokens (independent of app's --color-bg so
+   the end screen can keep its own warm dark/light palette).
    ============================================================ */
 
-wc-game-end .game-end {
-    display: flex;
-    flex-direction: column;
-    color: #fff;
+wc-game-end .ge-screen {
+    --ge-bg: #ede4d3;
+    --ge-fg: #1f1a14;
+    --ge-fg-mute: rgba(31, 26, 20, 0.62);
+    --ge-fg-faint: rgba(31, 26, 20, 0.42);
+    --ge-ring: rgba(31, 26, 20, 0.20);
+    --ge-surface: rgba(255, 250, 240, 0.55);
+    --ge-surface-border: rgba(31, 26, 20, 0.08);
+    --ge-cta-bg: #1a1410;
+    --ge-cta-fg: #ede4d3;
+    --ge-glow-tint: rgba(217, 148, 84, 0.24);
+
     position: fixed;
     inset: 0;
     z-index: 50;
-    background: #1F1B14;
-    overflow-y: auto;
+    background: var(--ge-bg);
+    color: var(--ge-fg);
+    font-family: var(--font-sans);
+    overflow: hidden;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    display: flex;
+    flex-direction: column;
 }
 
-wc-game-end .game-end-inner {
+body.dark wc-game-end .ge-screen {
+    --ge-bg: #1a1410;
+    --ge-fg: #ebe3d6;
+    --ge-fg-mute: rgba(235, 227, 214, 0.62);
+    --ge-fg-faint: rgba(235, 227, 214, 0.40);
+    --ge-ring: rgba(235, 227, 214, 0.18);
+    --ge-surface: rgba(235, 227, 214, 0.05);
+    --ge-surface-border: rgba(235, 227, 214, 0.10);
+    --ge-cta-bg: #ecdfd0;
+    --ge-cta-fg: #1a1410;
+    --ge-glow-tint: rgba(217, 118, 68, 0.22);
+}
+
+wc-game-end .ge-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(70% 50% at 50% 30%, var(--ge-glow-tint), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: geGlowPulse 3s ease-in-out infinite;
+}
+
+wc-game-end .ge-confetti {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+}
+
+wc-game-end .ge-confetti-piece {
+    position: absolute;
+    top: 0;
+    will-change: transform, opacity;
+    animation-name: geConfettiFall;
+    animation-timing-function: cubic-bezier(0.3, 0.05, 0.7, 1);
+    animation-iteration-count: infinite;
+}
+
+wc-game-end .ge-inner {
+    position: relative;
+    z-index: 2;
     flex: 1;
     width: 100%;
     max-width: var(--frame-max-w);
@@ -27,124 +82,262 @@ wc-game-end .game-end-inner {
     min-height: 100%;
 }
 
-wc-game-end .game-end-hero {
-    flex: 1;
+/* ---------- Header (Home pill + Share icon) ---------- */
+
+wc-game-end .ge-header {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 16px 0;
+}
+
+wc-game-end .ge-home-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 8px 10px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid var(--ge-ring);
+    color: var(--ge-fg);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    height: 36px;
+    transition: transform 120ms ease, background-color 120ms ease;
+}
+
+wc-game-end .ge-home-pill:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--ge-fg) 4%, transparent);
+}
+
+wc-game-end .ge-home-pill:active {
+    transform: translateY(0);
+}
+
+wc-game-end .ge-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--ge-ring);
+    color: var(--ge-fg-mute);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 32px 24px;
-    position: relative;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 120ms ease, background-color 120ms ease;
 }
 
-wc-game-end .game-end-confetti {
+wc-game-end .ge-icon-btn:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--ge-fg) 4%, transparent);
+}
+
+wc-game-end .ge-icon-btn:active {
+    transform: translateY(0);
+}
+
+wc-game-end .ge-icon-btn.ge-busy {
+    opacity: 0.5;
+    cursor: progress;
+}
+
+/* ---------- Hero (compact pawn + eyebrow + headline) ---------- */
+
+wc-game-end .ge-hero {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 24px 22px 6px;
+}
+
+wc-game-end .ge-hero-pawn {
+    position: relative;
+    width: 78px;
+    height: 92px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+wc-game-end .ge-pawn-shadow {
     position: absolute;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 56px;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    filter: blur(5px);
+    transform-origin: center;
+    animation: gePawnShadowPulse 2.6s ease-in-out infinite;
 }
 
-wc-game-end .game-end-pawn {
-    margin-bottom: 24px;
+wc-game-end .ge-pawn-bob {
     position: relative;
-    z-index: 10;
+    transform-origin: center bottom;
+    animation: gePawnBob 2.6s ease-in-out infinite;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
 }
 
-wc-game-end .game-end-title {
+wc-game-end .ge-hero-text {
+    min-width: 0;
+}
+
+wc-game-end .ge-eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ge-fg-faint);
+    font-weight: 600;
+}
+
+wc-game-end .ge-headline {
+    margin-top: 4px;
     font-family: var(--font-display);
-    font-size: 56px;
+    font-size: 36px;
     line-height: 1;
-    letter-spacing: -0.025em;
-    text-align: center;
-    position: relative;
-    z-index: 10;
-    color: #F2EDE3;
-    margin: 0;
+    letter-spacing: -0.01em;
+    color: var(--ge-fg);
+    font-weight: 400;
 }
 
-wc-game-end .game-end-sub {
-    font-size: 15px;
-    margin-top: 12px;
-    text-align: center;
-    max-width: 280px;
-    line-height: 1.5;
-    color: rgba(242, 237, 227, 0.55);
-    position: relative;
-    z-index: 10;
+/* ---------- Highlight cards ---------- */
+
+wc-game-end .ge-cards {
+    padding: 14px 14px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-wc-game-end .game-end-standings {
-    margin-top: 32px;
-    width: 100%;
-    border-radius: var(--radius-2xl);
-    padding: 14px;
-    background: rgba(242, 237, 227, 0.06);
-    border: 1px solid rgba(242, 237, 227, 0.1);
-    position: relative;
-    z-index: 10;
-}
-
-wc-game-end .standing-row {
+wc-game-end .ge-card {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 4px;
+    padding: 12px 14px;
+    background: var(--ge-surface);
+    border: 1px solid var(--ge-surface-border);
+    border-left-width: 3px;
+    border-radius: 14px;
 }
 
-wc-game-end .standing-row + .standing-row {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
+/* Border-left color picks up the player seat color. Specificity beats
+   the generic `wc-game-end .ge-card` border-left shorthand above. */
+wc-game-end .ge-card.player-border-0 { border-left-color: hsl(var(--player-0)); }
+wc-game-end .ge-card.player-border-1 { border-left-color: hsl(var(--player-1)); }
+wc-game-end .ge-card.player-border-2 { border-left-color: hsl(var(--player-2)); }
+wc-game-end .ge-card.player-border-3 { border-left-color: hsl(var(--player-3)); }
 
-wc-game-end .standing-rank {
-    width: 18px;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
-}
-
-wc-game-end .standing-dot {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-}
-
-wc-game-end .standing-name {
-    flex: 1;
-    font-size: 15px;
-}
-
-wc-game-end .standing-time {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
-}
-
-wc-game-end .game-end-actions {
+wc-game-end .ge-card-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
     display: flex;
-    gap: 10px;
-    padding: 12px 16px 16px;
-    position: relative;
-    z-index: 10;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
-wc-game-end .game-end-btn {
-    height: 56px;
-    border-radius: var(--radius-2xl);
-    font-size: 15px;
-    cursor: pointer;
-    border: 0;
-}
-
-wc-game-end .game-end-btn--share {
+wc-game-end .ge-card-text {
     flex: 1;
-    background: transparent;
-    color: #F2EDE3;
-    border: 1px solid rgba(242, 237, 227, 0.2);
+    min-width: 0;
 }
 
-wc-game-end .game-end-btn--again {
-    flex: 2;
-    background: #F2EDE3;
-    color: #1F1B14;
-    font-weight: 500;
+wc-game-end .ge-card-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ge-fg);
+    line-height: 1.2;
+}
+
+wc-game-end .ge-card-body {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--ge-fg-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+wc-game-end .ge-card-stat {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: var(--ge-fg);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+/* ---------- Footer + CTA ---------- */
+
+wc-game-end .ge-spacer {
+    flex: 1;
+}
+
+wc-game-end .ge-footer {
+    padding: 14px 14px 18px;
+}
+
+wc-game-end .ge-cta {
+    width: 100%;
+    height: 54px;
+    border-radius: 27px;
+    border: 0;
+    background: var(--ge-cta-bg);
+    color: var(--ge-cta-fg);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 120ms ease, opacity 120ms ease;
+}
+
+wc-game-end .ge-cta:hover {
+    transform: translateY(-1px);
+    opacity: 0.95;
+}
+
+wc-game-end .ge-cta:active {
+    transform: translateY(0);
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes geConfettiFall {
+    0%   { transform: translate3d(0, -10vh, 0) rotate(var(--ge-rot0, 0deg)); opacity: 0; }
+    8%   { opacity: 1; }
+    100% { transform: translate3d(var(--ge-drift, 20px), 110vh, 0) rotate(var(--ge-rot1, 540deg)); opacity: 1; }
+}
+
+@keyframes gePawnBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+
+@keyframes gePawnShadowPulse {
+    0%, 100% { transform: translateX(-50%) scaleX(1);   opacity: 0.5; }
+    50%      { transform: translateX(-50%) scaleX(0.78); opacity: 0.32; }
+}
+
+@keyframes geGlowPulse {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-game-end .ge-confetti-piece,
+    wc-game-end .ge-pawn-bob,
+    wc-game-end .ge-pawn-shadow,
+    wc-game-end .ge-glow {
+        animation: none !important;
+    }
 }
