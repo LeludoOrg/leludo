@@ -1,6 +1,6 @@
 {
   "appId": "com.leludo.ludo",
-  "appName": "Ludo",
+  "appName": "Leludo",
   "webDir": "www",
   "android": {
     "allowMixedContent": false,
