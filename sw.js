@@ -37,6 +37,7 @@ const PRECACHE = [
   'scripts/bot-ai.js',
   'scripts/bot-names.js',
   'scripts/command-handler.js',
+  'scripts/end-highlights.js',
   'scripts/game-driver.js',
   'scripts/game-logic.js',
   'scripts/game-reducer.js',
