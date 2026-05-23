@@ -84,4 +84,30 @@ test.describe('Game start (URL overrides)', () => {
         expect(parentId).not.toBe('h-0-0');
         expect(parentId).toMatch(/^(m\d+|p\ds\d)$/);
     });
+
+    // Regression: selectToken used to wrap its body in try/finally calling
+    // releaseInputLock(), but that helper was removed during the
+    // event-sourced refactor. Bot autoplay reliably triggered
+    // "ReferenceError: releaseInputLock is not defined" every time a bot
+    // selected a token. Phase machine gates input now — no helper needed.
+    test('bot autoplay runs without ReferenceError in selectToken', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', e => errors.push(String(e)));
+        page.on('console', msg => {
+            if (msg.type() === 'error') errors.push(msg.text());
+        });
+
+        // Bot 1 starts with a token already on track so the first roll has
+        // movable tokens → bot autoplay flows through selectToken.
+        const positions = '-1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
+        await page.goto(`/?positions=${positions}&player=1`);
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await expect(page.locator('wc-board')).not.toHaveClass(/hidden/);
+
+        await page.waitForTimeout(3500);
+
+        const lockErrors = errors.filter(e => e.includes('releaseInputLock'));
+        expect(lockErrors, `releaseInputLock errors: ${lockErrors.join('\n')}`).toHaveLength(0);
+    });
 });

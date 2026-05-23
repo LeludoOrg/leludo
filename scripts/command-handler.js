@@ -288,50 +288,46 @@ function handleAfterDiceRoll(emit) {
 async function selectToken(playerIndex, tokenIndex, emit) {
     if (isGameLogicPaused()) return;
     if (!canSelectToken(tokenIndex)) return;
-    try {
-        inactiveTokens();
+    inactiveTokens();
 
-        const tokenOldPosition = state.playerTokenPositions[state.currentPlayerIndex][tokenIndex];
-        const tokenNewPosition = getTokenNewPosition(tokenOldPosition, state.currentDiceRoll);
+    const tokenOldPosition = state.playerTokenPositions[state.currentPlayerIndex][tokenIndex];
+    const tokenNewPosition = getTokenNewPosition(tokenOldPosition, state.currentDiceRoll);
 
-        emit({
-            type: EVENTS.TOKEN_MOVED,
-            playerIndex: state.currentPlayerIndex,
-            tokenIndex,
-            fromPosition: tokenOldPosition,
-            toPosition: tokenNewPosition,
-        });
+    emit({
+        type: EVENTS.TOKEN_MOVED,
+        playerIndex: state.currentPlayerIndex,
+        tokenIndex,
+        fromPosition: tokenOldPosition,
+        toPosition: tokenNewPosition,
+    });
 
-        const tripComplete = isTripComplete(tokenNewPosition);
+    const tripComplete = isTripComplete(tokenNewPosition);
 
-        const otherPlayerTokensOnThatMarkIndex = findCapturedOpponents(playerIndex, tokenNewPosition, state.playerTokenPositions);
-        for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
-            for (const ti of pt) {
-                const t = getTokenElement(pi, ti);
-                if (t) pinTokenForCapture(t);
-            }
+    const otherPlayerTokensOnThatMarkIndex = findCapturedOpponents(playerIndex, tokenNewPosition, state.playerTokenPositions);
+    for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
+        for (const ti of pt) {
+            const t = getTokenElement(pi, ti);
+            if (t) pinTokenForCapture(t);
         }
-
-        await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition);
-
-        let captureCount = 0;
-        for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
-            for (const ti of pt) {
-                emit({
-                    type: EVENTS.TOKEN_CAPTURED,
-                    byPlayerIndex: state.currentPlayerIndex,
-                    capturedPlayerIndex: pi,
-                    capturedTokenIndex: ti,
-                });
-                await animateCaptureToHome(pi, ti);
-                captureCount++;
-            }
-        }
-
-        handleAfterTokenMove(tripComplete, captureCount, emit);
-    } finally {
-        releaseInputLock();
     }
+
+    await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition);
+
+    let captureCount = 0;
+    for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
+        for (const ti of pt) {
+            emit({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: state.currentPlayerIndex,
+                capturedPlayerIndex: pi,
+                capturedTokenIndex: ti,
+            });
+            await animateCaptureToHome(pi, ti);
+            captureCount++;
+        }
+    }
+
+    handleAfterTokenMove(tripComplete, captureCount, emit);
 }
 
 function handleAfterTokenMove(tripComplete, captureCount, emit) {

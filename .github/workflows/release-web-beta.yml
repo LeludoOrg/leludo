@@ -1,0 +1,106 @@
+name: Release (Web Beta)
+
+# Beta channel — publishes the current ref to LeludoOrg/leludo-beta
+# (served at beta.leludo.org from main / root). Manual trigger only.
+#
+# Differs from release-web.yml in three ways:
+#   - Retargets www/ for the beta channel (CNAME + SW cache name)
+#     before publishing, so beta runs an isolated service-worker
+#     scope and never fights the prod cache.
+#   - Pushes to a different repo (external_repository), so it needs
+#     BETA_DEPLOY_TOKEN — a fine-grained PAT with contents:write on
+#     LeludoOrg/leludo-beta.
+#   - Does NOT tag or create a GitHub release. Beta is a rolling
+#     channel; bumping VERSION is optional.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Coalesce rapid merges — a newer push supersedes an in-flight beta
+# deploy so beta always reflects the latest main.
+concurrency:
+  group: release-web-beta
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:run
+
+  publish-beta:
+    name: Publish to leludo-beta
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy-beta
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build www/
+        run: node tools/build-www.mjs
+
+      - name: Retarget www/ for beta channel
+        run: |
+          set -euo pipefail
+          # CNAME for the beta domain.
+          echo "beta.leludo.org" > www/CNAME
+
+          # Service worker cache name must be distinct from prod, so
+          # beta clients never collide with the leludo-${VERSION}
+          # cache served from leludo.org.
+          BEFORE='`leludo-${VERSION}`'
+          AFTER='`leludo-beta-${VERSION}`'
+          if ! grep -qF "$BEFORE" www/sw.js; then
+            echo "sw.js cache-name marker missing — refusing to publish beta with prod cache name." >&2
+            exit 1
+          fi
+          # Use a sentinel to avoid sed escaping headaches with backticks.
+          node -e "
+            const fs = require('node:fs');
+            const p = 'www/sw.js';
+            const s = fs.readFileSync(p, 'utf8').replace('\`leludo-\${VERSION}\`', '\`leludo-beta-\${VERSION}\`');
+            fs.writeFileSync(p, s);
+          "
+          grep -F "$AFTER" www/sw.js >/dev/null
+
+      - name: Publish to leludo-beta main
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.BETA_DEPLOY_TOKEN }}
+          external_repository: LeludoOrg/leludo-beta
+          publish_dir: ./www
+          publish_branch: main
+          commit_message: "deploy beta: ${{ github.sha }}"
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
