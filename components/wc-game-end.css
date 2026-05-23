@@ -31,7 +31,7 @@ wc-game-end .ge-screen {
     flex-direction: column;
 }
 
-body.dark wc-game-end .ge-screen {
+.dark wc-game-end .ge-screen {
     --ge-bg: #1a1410;
     --ge-fg: #ebe3d6;
     --ge-fg-mute: rgba(235, 227, 214, 0.62);

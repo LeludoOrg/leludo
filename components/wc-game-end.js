@@ -375,7 +375,7 @@ class GameEnd extends HTMLElement {
             this._prevThemeColor = themeMeta.getAttribute('content');
             themeMeta.setAttribute(
                 'content',
-                document.body.classList.contains('dark') ? '#1a1410' : '#ede4d3',
+                document.documentElement.classList.contains('dark') ? '#1a1410' : '#ede4d3',
             );
         }
 
