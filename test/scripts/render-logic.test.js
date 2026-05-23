@@ -25,34 +25,14 @@ describe('getContainerPath — forward movement', () => {
     });
 });
 
-describe('getContainerPath — capture trace-back', () => {
-    it('walks captured P0 token backwards through every track cell, then home', () => {
-        // Captured at position 5 → trace m4, m3, m2, m1, then h-0-0.
-        // Regression: pre-fix returned ['h-0-0'] only, so the captured
-        // token teleported off the board.
-        expect(getContainerPath(0, 0, 5, -1)).toEqual([
-            'm4', 'm3', 'm2', 'm1', 'h-0-0',
-        ]);
-    });
-
-    it('uses player-relative mark index when walking back', () => {
-        // P1: getMarkIndex(1, pos) = (pos + 13) % 52.
-        // Captured at pos 3 → m(2+13)=m15, m(1+13)=m14, then home.
-        expect(getContainerPath(1, 2, 3, -1)).toEqual(['m15', 'm14', 'h-1-2']);
-    });
-
-    it('captured at position 1 (the start cell) walks straight home', () => {
-        // Edge case: only the home id, no track steps to retrace.
-        expect(getContainerPath(0, 0, 1, -1)).toEqual(['h-0-0']);
-    });
-
-    it('full-lap capture produces 49 retrace steps + home', () => {
-        // Captured at position 50 (one before re-entering home stretch).
-        const path = getContainerPath(0, 0, 50, -1);
-        expect(path.length).toBe(50);
-        expect(path[0]).toBe('m49');
-        expect(path[48]).toBe('m1');
-        expect(path[49]).toBe('h-0-0');
+describe('getContainerPath — capture destination', () => {
+    // Captures no longer animate via getContainerPath — animateCaptureToHome
+    // handles the blast + teleport directly. getContainerPath still collapses
+    // any destination of -1 to a single home-cell id (the [-1, 0] short-circuit).
+    it('returns just the home cell id regardless of capture origin', () => {
+        expect(getContainerPath(0, 0, 5, -1)).toEqual(['h-0-0']);
+        expect(getContainerPath(1, 2, 3, -1)).toEqual(['h-1-2']);
+        expect(getContainerPath(0, 0, 50, -1)).toEqual(['h-0-0']);
     });
 });
 

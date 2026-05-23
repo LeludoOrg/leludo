@@ -106,17 +106,6 @@ export function animateDiceRoll(currentDiceRoll) {
 }
 
 export function getContainerPath(playerIndex, tokenIndex, currentPosition, newPosition) {
-    // Capture trace-back: walk the captured token back along every track
-    // square it crossed before dropping it into its home base. Makes the
-    // loss painfully fun to watch instead of a teleport.
-    if (newPosition === -1 && currentPosition > 0 && currentPosition <= 50) {
-        const path = [];
-        for (let pos = currentPosition - 1; pos >= 1; pos--) {
-            path.push(getTokenContainerId(playerIndex, tokenIndex, pos));
-        }
-        path.push(getTokenContainerId(playerIndex, tokenIndex, -1));
-        return path;
-    }
     if ([-1, 0].includes(newPosition)) {
         return [getTokenContainerId(playerIndex, tokenIndex, newPosition)];
     }
@@ -265,9 +254,52 @@ function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
     const fallbackTimer = setTimeout(settle, fallbackMs);
 }
 
+// Capture animation: blast at the capture spot, fade out, teleport into the
+// home base, fade in with a small overshoot. Replaces the older "walk
+// backwards along the track" treatment, which felt sluggish and read more
+// like a retreat than a defeat.
+export function animateCaptureToHome(playerIndex, tokenIndex) {
+    const element = getTokenElement(playerIndex, tokenIndex);
+    if (!element) return Promise.resolve();
+    const sourceCell = element.parentElement;
+    const homeCell = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, -1));
+    if (!homeCell) return Promise.resolve();
+
+    return new Promise((resolve) => {
+        element.dataset.moving = 'true';
+        element.classList.add('token-blasting');
+
+        let blastDone = false;
+        const onBlastEnd = () => {
+            if (blastDone) return;
+            blastDone = true;
+            element.removeEventListener('animationend', onBlastEnd);
+            element.classList.remove('token-blasting');
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
+            homeCell.appendChild(element);
+            updateCellStacking(homeCell);
+
+            element.classList.add('token-arriving');
+            let arriveDone = false;
+            const onArriveEnd = () => {
+                if (arriveDone) return;
+                arriveDone = true;
+                element.removeEventListener('animationend', onArriveEnd);
+                element.classList.remove('token-arriving');
+                resolve();
+            };
+            element.addEventListener('animationend', onArriveEnd);
+            setTimeout(onArriveEnd, 360);
+        };
+        element.addEventListener('animationend', onBlastEnd);
+        setTimeout(onBlastEnd, 560);
+    });
+}
+
 export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition) {
 
-    const isCaptureReturn = newTokenPosition === -1 && currentTokenPosition > 0 && currentTokenPosition <= 50;
     const path = getContainerPath(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition);
     const element = getTokenElement(playerIndex, tokenIndex);
 
@@ -300,13 +332,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             element.style.transition = '';
         }
 
-        const stepMs = isCaptureReturn
-            ? Math.max(45, Math.min(110, Math.floor(1500 / path.length)))
-            : null;
-        if (stepMs !== null) {
-            element.style.transition = `transform ${stepMs}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-        }
-        const fallbackMs = stepMs !== null ? stepMs + 120 : 400;
+        const fallbackMs = 400;
 
         let stepIndex = 0;
 
@@ -324,7 +350,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
                 return;
             }
 
-            if (!isCaptureReturn) playStepSound();
+            playStepSound();
             const isFinalStep = stepIndex === path.length - 1;
             const targetId = path[stepIndex];
             const isFinishCell = /^p\ds6$/.test(targetId);
