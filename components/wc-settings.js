@@ -7,6 +7,7 @@ import {
     isSoundMuted,
     setSoundMuted,
 } from "../scripts/index.js";
+import { goTo, back as navBack, registerScreenHandler } from "../scripts/nav-history.js";
 
 function setAssistFlag(flag, value) {
     dispatch({ type: COMMANDS.SET_ASSIST_FLAG, flag, value });
@@ -170,6 +171,7 @@ let _pausedBySettings = false;
 function openSettings() {
     ensureOverlay();
     const overlay = document.getElementById('settings-overlay');
+    if (!overlay.classList.contains('hidden')) return;
     const gameEl = document.getElementById('game');
     const gameVisible = gameEl && !gameEl.classList.contains('hidden');
     if (gameVisible && !isGameLogicPaused()) {
@@ -177,6 +179,7 @@ function openSettings() {
         _pausedBySettings = true;
     }
     overlay.classList.remove('hidden');
+    goTo('settings');
 }
 
 function closeSettings() {
@@ -195,7 +198,8 @@ function ensureOverlay() {
     document.body.insertAdjacentHTML('beforeend', buildSettingsOverlay());
     const overlay = document.getElementById('settings-overlay');
 
-    overlay.querySelector("#settings-back").addEventListener("click", closeSettings);
+    overlay.querySelector("#settings-back").addEventListener("click", () => navBack());
+    registerScreenHandler('settings', closeSettings);
 
     const defaultTheme = localStorage.getItem("theme") || "light"
     updateTheme(defaultTheme)

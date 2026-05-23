@@ -11,8 +11,10 @@ import { commandHandler } from "./command-handler.js";
 import { installPersistenceListener } from "./listeners/persistence-listener.js";
 import { installAudioListener } from "./listeners/audio-listener.js";
 import { installBotListener } from "./listeners/bot-listener.js";
+import { initNavHistory } from "./nav-history.js";
 
 setCommandHandler(commandHandler);
 installPersistenceListener();
 installAudioListener();
 installBotListener();
+initNavHistory();

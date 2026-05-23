@@ -59,6 +59,8 @@ import {
     resumeGameLogic,
     isGameLogicPaused,
 } from "./scheduler.js";
+import { goTo, replaceTo, back as navBack, registerScreenHandler } from "./nav-history.js";
+import { dispatch } from "./game-store.js";
 
 export {
     pauseGameLogic,
@@ -75,6 +77,7 @@ export const COMMANDS = Object.freeze({
     PAUSE: 'PAUSE',
     RESUME: 'RESUME',
     RESTART_GAME: 'RESTART_GAME',
+    EXIT_TO_HOME: 'EXIT_TO_HOME',
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
 });
 
@@ -228,6 +231,7 @@ function resumeSavedGame(emit) {
         document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
         document.getElementById("game").classList.add("hidden");
         releaseWakeLock();
+        goTo('game-end');
         return;
     }
 
@@ -364,6 +368,7 @@ function handleAfterTokenMove(tripComplete, captureCount, emit) {
             document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
             document.getElementById("game").classList.add("hidden");
             releaseWakeLock();
+            goTo('game-end');
             isGameDone = true;
         }
     }
@@ -404,46 +409,98 @@ function restartGame(emit) {
     if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
     document.body.style.background = '';
 
+    replaceTo('game');
     startGame(quickStartId, namesByPlayerIndex, emit);
 }
+
+function exitToHome(emit) {
+    pauseGameLogic();
+
+    const gameEnd = document.querySelector('wc-game-end');
+    if (gameEnd) gameEnd.remove();
+
+    document.querySelectorAll('wc-token').forEach(t => t.remove());
+    clearTokenElementCache();
+
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
+    document.body.style.background = '';
+
+    document.getElementById('game').classList.add('hidden');
+    const pauseMenu = document.getElementById('pause-menu');
+    if (pauseMenu) pauseMenu.classList.add('hidden');
+    const settingsOverlay = document.getElementById('settings-overlay');
+    if (settingsOverlay) settingsOverlay.classList.add('hidden');
+
+    releaseWakeLock();
+
+    emit({ type: EVENTS.GAME_RESTARTED });
+
+    document.getElementById('main-menu').classList.remove('hidden');
+    const quickStart = document.querySelector('wc-quick-start');
+    if (quickStart && typeof quickStart.showHomeScreen === 'function') {
+        quickStart.showHomeScreen();
+    }
+
+    replaceTo('home');
+    resumeGameLogic();
+}
+
+let _pauseCloseHandler = null;
 
 function handleGamePause(emit) {
     if (isGameLogicPaused()) return;
     pauseGameLogic();
     emit({ type: EVENTS.GAME_PAUSED });
     showPauseMenu();
+    goTo('pause');
 
     const overlay = document.getElementById("pause-menu");
     const resumeBtn = document.getElementById("pm-resume");
     const exitBtns = Array.from(document.querySelectorAll(".restart-game"));
 
     const cleanup = () => {
-        resumeBtn.removeEventListener("click", onResume);
+        resumeBtn.removeEventListener("click", onResumeClick);
         document.removeEventListener("keydown", onKey);
         overlay.removeEventListener("click", onBackdrop);
-        exitBtns.forEach(el => el.removeEventListener("click", onExit));
+        exitBtns.forEach(el => el.removeEventListener("click", onExitClick));
     };
-    const onResume = () => {
-        playClickSound();
+    const closeAndResume = () => {
         cleanup();
+        _pauseCloseHandler = null;
         resumeGame();
         resumeGameLogic();
         emit({ type: EVENTS.GAME_RESUMED_FROM_PAUSE });
     };
-    const onKey = (e) => { if (e.key === "Escape") onResume(); };
-    const onBackdrop = (e) => { if (e.target === overlay) onResume(); };
-    const onExit = () => {
+    const onResumeClick = () => { playClickSound(); navBack(); };
+    const onKey = (e) => { if (e.key === "Escape") { playClickSound(); navBack(); } };
+    const onBackdrop = (e) => { if (e.target === overlay) { playClickSound(); navBack(); } };
+    const onExitClick = () => {
         playClickSound();
         cleanup();
-        releaseWakeLock();
-        window.location.href = window.location.origin;
+        _pauseCloseHandler = null;
+        exitToHome(emit);
     };
 
-    resumeBtn.addEventListener("click", onResume);
+    _pauseCloseHandler = closeAndResume;
+
+    resumeBtn.addEventListener("click", onResumeClick);
     document.addEventListener("keydown", onKey);
     overlay.addEventListener("click", onBackdrop);
-    exitBtns.forEach(el => el.addEventListener("click", onExit));
+    exitBtns.forEach(el => el.addEventListener("click", onExitClick));
 }
+
+registerScreenHandler('pause', () => {
+    if (_pauseCloseHandler) _pauseCloseHandler();
+});
+
+registerScreenHandler('game-end', () => {
+    dispatch({ type: COMMANDS.EXIT_TO_HOME });
+});
+
+registerScreenHandler('__game_back__', () => {
+    dispatch({ type: COMMANDS.PAUSE });
+});
 
 // --- public selectors ---
 
@@ -489,6 +546,8 @@ export function commandHandler(currentState, command, services, emit) {
             return;
         case COMMANDS.RESTART_GAME:
             return restartGame(emit);
+        case COMMANDS.EXIT_TO_HOME:
+            return exitToHome(emit);
         case COMMANDS.SET_ASSIST_FLAG:
             return emit({ type: EVENTS.ASSIST_FLAG_CHANGED, flag: command.flag, value: command.value });
         default:
