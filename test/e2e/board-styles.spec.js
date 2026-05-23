@@ -261,38 +261,61 @@ test.describe('Finish-cell token stacking', () => {
 });
 
 test.describe('Capture animation', () => {
-    test('.token-captured uses capture-hit (no scale-to-zero pulse)', async ({ page }) => {
-        // Regression: pre-fix .token-captured played capture-pulse which
-        // scaled to 0 + opacity 0, then was removed — making the captured
-        // token visibly disappear and reappear before the home-bound
-        // animation. The replacement keyframe (capture-hit) flashes the
-        // token at scale 1.35 and returns to 1, so it never vanishes.
+    test('.token-blasting uses capture-blast keyframe on wc-token wrapper', async ({ page }) => {
+        // Capture animation now blasts the token at the capture spot
+        // (scale + glow + fade-out) instead of walking it backwards along
+        // every track square. The class lives on the wc-token wrapper so
+        // its ::before pseudo-element can render the expanding ring.
         await page.goto('/');
         const animName = await page.evaluate(() => {
-            const probe = document.createElement('div');
-            probe.className = 'token-captured';
+            const probe = document.createElement('wc-token');
+            probe.className = 'token-blasting';
             probe.style.cssText = 'position:fixed;top:-1000px;width:10px;height:10px;';
             document.body.appendChild(probe);
             const name = getComputedStyle(probe).animationName;
             probe.remove();
             return name;
         });
-        expect(animName).toBe('capture-hit');
+        expect(animName).toBe('capture-blast');
     });
 
-    test('captured token traces back through every track cell, then home', async ({ page }) => {
-        // Regression: pre-fix updateTokenContainer(pi, ti, currentPos, -1)
-        // returned a 1-element path [home], so the captured token
-        // teleported off the board. The trace-back path walks every track
-        // square the token crossed (currentPos-1 .. 1) before landing
-        // home — turns the capture into a painful-fun cinematic.
-        // Verifies via getContainerPath (no full game flow required).
+    test('.token-arriving uses home-arrive keyframe', async ({ page }) => {
+        // Second beat of the new capture animation: after the blast the
+        // token reappears in its home cell with a fade-in + small overshoot.
         await page.goto('/');
-        const path = await page.evaluate(async () => {
-            const mod = await import('/scripts/render-logic.js');
-            return mod.getContainerPath(0, 0, 6, -1);
+        const animName = await page.evaluate(() => {
+            const probe = document.createElement('wc-token');
+            probe.className = 'token-arriving';
+            probe.style.cssText = 'position:fixed;top:-1000px;width:10px;height:10px;';
+            document.body.appendChild(probe);
+            const name = getComputedStyle(probe).animationName;
+            probe.remove();
+            return name;
         });
-        expect(path).toEqual(['m5', 'm4', 'm3', 'm2', 'm1', 'h-0-0']);
+        expect(animName).toBe('home-arrive');
+    });
+
+    test('animateCaptureToHome moves token into its home cell', async ({ page }) => {
+        // End-to-end: capture animation must always leave the token DOM-
+        // attached to its home cell. Regression guard against the previous
+        // backwards-walk path; the new blast-then-teleport must land the
+        // token in h-{pi}-{ti} just as reliably.
+        await page.goto('/?positions=1&player=0');
+        await page.locator('.new-game-btn').click();
+        await page.locator('.start-btn').click();
+        await page.locator('wc-board:not(.hidden)').waitFor();
+        await page.waitForFunction(() => !!document.querySelector('#h-0-0 wc-token, #m1 wc-token'));
+        const result = await page.evaluate(async () => {
+            const mod = await import('/scripts/render-logic.js');
+            // Reuse P0's token 0 (positions=1 puts it at m1). Animate it
+            // home as if captured.
+            const token = document.getElementById('p-0-0');
+            if (!token) return { ok: false, reason: 'no-token' };
+            await mod.animateCaptureToHome(0, 0);
+            return { ok: true, parentId: token.parentElement?.id };
+        });
+        expect(result.ok).toBe(true);
+        expect(result.parentId).toBe('h-0-0');
     });
 });
 

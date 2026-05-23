@@ -34,6 +34,7 @@ import {
     showPauseMenu,
     updateCellStacking,
     pinTokenForCapture,
+    animateCaptureToHome,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -316,21 +317,13 @@ async function selectToken(playerIndex, tokenIndex, emit) {
         let captureCount = 0;
         for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
             for (const ti of pt) {
-                const capturedToken = getTokenElement(pi, ti);
-                const capturedSvg = capturedToken?.children[0];
-                if (capturedSvg) {
-                    capturedSvg.classList.add("token-captured");
-                    await new Promise(r => setTimeout(r, 320));
-                    capturedSvg.classList.remove("token-captured");
-                }
-                const capturedFromPos = state.playerTokenPositions[pi][ti];
                 emit({
                     type: EVENTS.TOKEN_CAPTURED,
                     byPlayerIndex: state.currentPlayerIndex,
                     capturedPlayerIndex: pi,
                     capturedTokenIndex: ti,
                 });
-                await updateTokenContainer(pi, ti, capturedFromPos, -1);
+                await animateCaptureToHome(pi, ti);
                 captureCount++;
             }
         }
