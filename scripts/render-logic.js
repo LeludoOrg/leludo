@@ -1,5 +1,6 @@
 import {getMarkIndex} from "./index.js";
 import {playStepSound, playDiceSound} from "./audio.js";
+import {replaceTo} from "./nav-history.js";
 
 /**
  *
@@ -450,6 +451,7 @@ export function releaseWakeLock() {
 export function showGame() {
     document.getElementById("main-menu").classList.add("hidden")
     document.getElementById("game").classList.remove("hidden")
+    replaceTo('game')
     requestWakeLock()
 }
 
