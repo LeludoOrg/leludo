@@ -35,6 +35,7 @@ import {
     updateCellStacking,
     pinTokenForCapture,
     animateCaptureToHome,
+    playFinishArrival,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -462,6 +463,10 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
         }
     }
 
+    // Snapshot the pre-teleport rect so the home-arrival overlay can slide
+    // from where the pawn actually was, not from its new finish-slot home.
+    const preTeleportRect = toPosition === 56 ? token.getBoundingClientRect() : null;
+
     // Drop inline stacking styles so the moved token settles cleanly into
     // its new cell's flow before updateCellStacking re-applies them.
     token.style.cssText = '';
@@ -472,6 +477,10 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
 
     if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
     updateCellStacking(targetCell);
+
+    if (preTeleportRect) {
+        await playFinishArrival(playerIndex, tokenIndex, preTeleportRect);
+    }
 
     for (const [pi, tis] of capturedByPlayer.entries()) {
         for (const ti of tis) {

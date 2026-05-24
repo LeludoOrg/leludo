@@ -45,6 +45,7 @@ const PRECACHE = [
   'scripts/game-store.js',
   'scripts/god-mode.js',
   'scripts/ko-capture.js',
+  'scripts/home-arrival.js',
   'scripts/render-logic.js',
   'scripts/scheduler.js',
   'scripts/turn-rules.js',
