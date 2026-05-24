@@ -2,6 +2,7 @@ import {getMarkIndex} from "./index.js";
 import {playStepSound, playDiceSound} from "./audio.js";
 import {replaceTo} from "./nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
+import {playHomeArrival} from "./home-arrival.js";
 
 /**
  *
@@ -351,6 +352,48 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
     }));
 }
 
+// Home-arrival overlay: source = pawn's pre-move viewport rect, home = final
+// stacked-slot center after the token has been parented into the finish cell.
+// Live token is hidden during the overlay's ~1.4s flourish, then revealed.
+export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
+    const element = getTokenElement(playerIndex, tokenIndex);
+    if (!element) return Promise.resolve();
+    const boardWrap = element.closest('.board-wrap');
+    if (!boardWrap) return Promise.resolve();
+
+    const finalRect = element.getBoundingClientRect();
+    const containerRect = boardWrap.getBoundingClientRect();
+    const cellSize = containerRect.width / 15;
+    const src = sourceRect || finalRect;
+    const sourceCenter = {
+        x: src.left + src.width / 2 - containerRect.left,
+        y: src.top + src.height / 2 - containerRect.top,
+    };
+    const homeCenter = {
+        x: finalRect.left + finalRect.width / 2 - containerRect.left,
+        y: finalRect.top + finalRect.height / 2 - containerRect.top,
+    };
+    const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
+    const finishCell = element.parentElement;
+    const settledCount = finishCell
+        ? finishCell.querySelectorAll(':scope > wc-token').length
+        : 1;
+    const isLastPawn = settledCount >= 4;
+
+    element.style.visibility = 'hidden';
+    return playHomeArrival({
+        container: boardWrap,
+        home: homeCenter,
+        source: sourceCenter,
+        color,
+        pawnSize: cellSize * 1.5,
+        duration: 1400,
+        flashBoard: isLastPawn,
+    }).then(() => {
+        element.style.visibility = '';
+    });
+}
+
 export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition) {
 
     const path = getContainerPath(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition);
@@ -411,6 +454,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             if (isFinalStep && isFinishCell) {
                 const targetContainer = document.getElementById(targetId);
                 const preRect = element.getBoundingClientRect();
+
                 element.style.transition = 'none';
                 element.style.transform = '';
                 element.style.position = '';
@@ -419,29 +463,8 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
                 targetContainer.appendChild(element);
                 delete element.dataset.moving;
                 updateCellStacking(targetContainer);
-                element.style.transition = 'none';
-                const finalRect = element.getBoundingClientRect();
-                const dx = preRect.left - finalRect.left;
-                const dy = preRect.top - finalRect.top;
-                const sx = finalRect.width ? preRect.width / finalRect.width : 1;
-                const sy = finalRect.height ? preRect.height / finalRect.height : 1;
-                element.style.transformOrigin = '0 0';
-                element.style.zIndex = '50';
-                element.style.willChange = 'transform';
-                element.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-                void element.offsetWidth;
-                element.style.transition = '';
 
-                waitForTransitionEnd(element, () => {
-                    element.style.willChange = '';
-                    element.style.zIndex = '';
-                    element.style.transformOrigin = '';
-                    element.style.removeProperty('transform');
-                    resolve();
-                });
-                requestAnimationFrame(() => {
-                    element.style.transform = '';
-                });
+                playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
                 return;
             }
 
