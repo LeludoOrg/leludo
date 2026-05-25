@@ -139,9 +139,9 @@ class QuickStart extends HTMLElement {
 
         const html = /*html*/ `
             <div class="frame home-frame${saved ? ' home-frame--in-progress' : ''}">
-                <div class="top-bar home-top-bar">
-                    <div class="home-brand-chip" aria-label="leludo">${QUAD_CHIP_SVG(26)}</div>
-                    <div class="top-bar-title home-top-spacer"></div>
+                <div class="top-bar">
+                    <div class="icon-btn home-brand-chip" aria-label="leludo">${QUAD_CHIP_SVG(20)}</div>
+                    <div class="top-bar-title"></div>
                     <wc-settings></wc-settings>
                 </div>
 
@@ -153,7 +153,7 @@ class QuickStart extends HTMLElement {
 
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
-                <div class="home-footer">
+                <div class="frame-footer">
                     ${saved
                         ? `<button class="new-game-btn cta-primary">Start a new game</button>`
                         : `<button class="new-game-btn cta-primary">New game</button>`}
