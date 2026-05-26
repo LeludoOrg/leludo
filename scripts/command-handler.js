@@ -36,6 +36,7 @@ import {
     pinTokenForCapture,
     animateCaptureToHome,
     playFinishArrival,
+    playYardLaunch,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -451,6 +452,17 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
     const targetCellId = getTokenContainerId(playerIndex, tokenIndex, toPosition);
     const targetCell = document.getElementById(targetCellId);
     if (!targetCell) return;
+
+    // Yard → entry transition fires the launch overlay, same as a normal
+    // 6-roll release. playYardLaunch handles hide/reparent/restack itself,
+    // so short-circuit before the generic teleport path runs. Entry cell is
+    // a safe square so no captures are possible here.
+    const yardCellId = getTokenContainerId(playerIndex, tokenIndex, -1);
+    if (toPosition === 0 && sourceCell && sourceCell.id === yardCellId) {
+        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
+        await playYardLaunch(playerIndex, tokenIndex, targetCellId);
+        return;
+    }
 
     // Capture detection runs BEFORE we move so findCapturedOpponents still
     // sees the doomed opponents at their pre-capture positions. Skips safe

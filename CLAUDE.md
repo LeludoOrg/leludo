@@ -161,6 +161,18 @@ turn order, and movability rules but **does honour capture rules**:
 opponents on the destination square get sent home (safe-square and
 two-token-pair safety apply, same as normal play).
 
+**Parity rule — god-mode mirrors normal play for any visible
+behaviour.** If a feature (animation, sound, side effect, state
+update) fires when a transition happens via the normal turn flow, it
+must also fire when god-mode produces the same transition. Examples
+already wired in `godTeleport` ([scripts/command-handler.js](scripts/command-handler.js)):
+yard → entry plays `playYardLaunch`, finish-cell arrival plays
+`playFinishArrival`, captures animate via `animateCaptureToHome`. When
+you add a new transition-bound effect, hook it into both
+`updateTokenContainer` / the normal turn path AND `godTeleport` —
+otherwise god-mode silently skips it and the debug surface drifts
+from real gameplay.
+
 Gated by `isGodModeAvailable()` in [scripts/god-mode.js](scripts/god-mode.js),
 which checks `location.hostname === 'localhost' || '127.0.0.1'`. The
 toggle row in [wc-settings.js](components/wc-settings.js) and the
