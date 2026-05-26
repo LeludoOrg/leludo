@@ -98,7 +98,12 @@ function injectCSS() {
         display: inline-block;
         padding: 6px 14px;
         border-radius: 999px;
-        background: currentColor;
+        /* var() chain: --plnch-chip-bg flows down from the inline style on
+         * .plnch-label (set in playLandingFX). Using currentColor here was
+         * wrong — it resolves against the chip's OWN color (#1a1410), not
+         * the parent's color, so the pill rendered as a dark "rounded
+         * square" instead of the player color. */
+        background: var(--plnch-chip-bg, currentColor);
         color: #1a1410;
         box-shadow: 0 6px 18px rgba(0,0,0,0.35);
       }
@@ -408,7 +413,10 @@ function playLandingFX(root, entry, color, pawnSize, label) {
             'left: 0; right: 0;' +
             'top:' + (entry.y - pawnSize * 1.45) + 'px;' +
             'font-size:' + Math.round(pawnSize * 0.30) + 'px;' +
-            'color:' + color + ';'
+            'color:' + color + ';' +
+            // Push the player color down to the chip background via a
+            // custom property — see comment in .plnch-label-chip CSS rule.
+            '--plnch-chip-bg:' + color + ';'
         );
         labelEl.innerHTML = '<span class="plnch-label-chip">' + label + '</span>';
         root.appendChild(labelEl);
