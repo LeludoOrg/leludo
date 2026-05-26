@@ -20,6 +20,14 @@
 
 const STYLE_ID = 'plnch-styles';
 
+// 'GO!' chip readability: chip plays at the start of the landing phase.
+// On short overlays the default `duration + 80` cleanup chopped the chip
+// off after ~300ms — the user couldn't read it. We hold the chip for
+// CHIP_VISIBLE_MS and stretch the overlay's resolve timer so cleanup
+// waits for the chip to finish.
+const CHIP_DELAY_MS = 60;
+const CHIP_VISIBLE_MS = 1100;
+
 function injectCSS() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
@@ -355,12 +363,18 @@ export function playPawnLaunch(opts) {
         playLandingFX(root, entry, color, pawnSize, label);
     }, t_land);
 
+    // If a chip is going to mount, cleanup has to wait for it. Without
+    // this extension the root was removed at duration+80 while the chip
+    // was still doing its opacity-1 hold — the user saw it for ~300ms.
+    const chipEndMs = label ? t_land + CHIP_DELAY_MS + CHIP_VISIBLE_MS : 0;
+    const cleanupMs = Math.max(duration + 80, chipEndMs + 80);
+
     return new Promise(function (resolve) {
         setTimeout(function () {
             if (root.parentNode) root.parentNode.removeChild(root);
             onComplete();
             resolve();
-        }, duration + 80);
+        }, cleanupMs);
     });
 }
 
@@ -420,15 +434,18 @@ function playLandingFX(root, entry, color, pawnSize, label) {
         );
         labelEl.innerHTML = '<span class="plnch-label-chip">' + label + '</span>';
         root.appendChild(labelEl);
+        // Longer plateau so the player can actually read 'GO!' — old
+        // 520ms was so brief the chip flashed and vanished. The wider
+        // opacity-1 band (0.18 → 0.88) is what really matters.
         labelEl.animate(
             [
                 { opacity: 0, transform: 'translateY(6px) scale(0.7) rotate(-3deg)' },
-                { opacity: 1, transform: 'translateY(0)   scale(1.1) rotate(-1deg)', offset: 0.25 },
-                { opacity: 1, transform: 'translateY(0)   scale(1)   rotate(0)',     offset: 0.45 },
-                { opacity: 1, transform: 'translateY(-2px) scale(1)  rotate(0)',     offset: 0.85 },
+                { opacity: 1, transform: 'translateY(0)   scale(1.1) rotate(-1deg)', offset: 0.12 },
+                { opacity: 1, transform: 'translateY(0)   scale(1)   rotate(0)',     offset: 0.22 },
+                { opacity: 1, transform: 'translateY(-2px) scale(1)  rotate(0)',     offset: 0.88 },
                 { opacity: 0, transform: 'translateY(-9px) scale(0.95) rotate(0)' },
             ],
-            { duration: 520, delay: 60, easing: 'cubic-bezier(.2,1.6,.3,1)', fill: 'forwards' }
+            { duration: CHIP_VISIBLE_MS, delay: CHIP_DELAY_MS, easing: 'cubic-bezier(.2,1.6,.3,1)', fill: 'forwards' }
         );
     }
 }
