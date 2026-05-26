@@ -424,6 +424,12 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
 
     element.dataset.moving = 'true';
     element.style.visibility = 'hidden';
+    // Hide the yard parking dot itself for the duration of the overlay —
+    // .home-slot-dot has a dark fill + colored ring that's normally masked
+    // by the live token. Without this, hiding the token reveals a dark
+    // "rounded square" in the yard slot until the promise resolves.
+    const prevSourceVisibility = sourceCell ? sourceCell.style.visibility : '';
+    if (sourceCell) sourceCell.style.visibility = 'hidden';
 
     return playPawnLaunch({
         container: boardWrap,
@@ -436,7 +442,10 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         clearStackStyles(element);
         delete element.dataset.moving;
         finalContainer.appendChild(element);
-        if (sourceCell && sourceCell !== finalContainer) updateCellStacking(sourceCell);
+        if (sourceCell && sourceCell !== finalContainer) {
+            sourceCell.style.visibility = prevSourceVisibility;
+            updateCellStacking(sourceCell);
+        }
         updateCellStacking(finalContainer);
         element.style.visibility = '';
     });
