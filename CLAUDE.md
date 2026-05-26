@@ -27,7 +27,7 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 ## Dev Commands
 
 - `npm install` (one-time).
-- `npm run dev` — five-server on port 8888. No build step; CSS and JS load directly.
+- `npm run dev` — five-server on port 8888. No build step; CSS and JS load directly. **If a dev server is already running on port 8888, reuse it — do not spawn another one** (the existing `.claude/launch.json` `ludo-dev` config is the same five-server invocation; `preview_start` returns the existing serverId when one is already up).
 - `npm test` — vitest watch mode. Unit + integration suite in `test/**/*.test.js`, mirrors source tree (e.g. [test/scripts/game-logic.test.js](test/scripts/game-logic.test.js) tests [scripts/game-logic.js](scripts/game-logic.js)). Runs in `happy-dom`. Integration tests under [test/integration/](test/integration/) drive full games via the pure [scripts/game-driver.js](scripts/game-driver.js).
 - `npm run test:run` — single-shot vitest run (CI mode, exits when done).
 - `npm run test:coverage` — coverage report (v8 provider) into `coverage/`.
