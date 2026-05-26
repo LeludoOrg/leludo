@@ -438,6 +438,10 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         color,
         pawnSize: cellSize * 1.4,
         duration: 1200,
+        // No 'GO!' chip — the leap + shockwave + dust already read as
+        // "this pawn just launched" and the chip stole focus from the
+        // pawn settling on its entry cell.
+        label: '',
     }).then(() => {
         clearStackStyles(element);
         delete element.dataset.moving;
