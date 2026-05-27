@@ -13,6 +13,8 @@
  * `__game_back__` action.
  */
 
+import { trackScreen } from './analytics.js';
+
 const _handlers = new Map();
 let _currentScreen = 'home';
 let _initialized = false;
@@ -34,6 +36,7 @@ export function initNavHistory() {
     _currentScreen = 'home';
     window.addEventListener('popstate', handlePopState);
     installAndroidBackHandler();
+    trackScreen(_currentScreen);
 }
 
 export function goTo(screen) {
@@ -42,13 +45,16 @@ export function goTo(screen) {
         history.pushState({ screen }, '');
     } catch {}
     _currentScreen = screen;
+    trackScreen(screen);
 }
 
 export function replaceTo(screen) {
+    const changed = _currentScreen !== screen;
     try {
         history.replaceState({ screen }, '');
     } catch {}
     _currentScreen = screen;
+    if (changed) trackScreen(screen);
 }
 
 export function back() {
@@ -65,11 +71,13 @@ function handlePopState(event) {
             history.pushState({ screen: 'game' }, '');
         } catch {}
         _currentScreen = 'game';
+        trackScreen('pause');
         const onGameBack = _handlers.get('__game_back__');
         if (onGameBack) onGameBack();
         return;
     }
 
+    trackScreen(target);
     const closer = _handlers.get(previous);
     if (closer) closer(target);
 }
