@@ -250,8 +250,8 @@ If you add a new top-level file that must be cached offline, also add it to the 
 
 Single source of truth: `VERSION` constant in [version.js](version.js). Consumed by `wc-quick-start` (landing footer), `wc-settings` (about dialog), and `sw.js` (cache name). The components barrel re-exports it.
 
-**Bump after any user-visible change.** Semver-ish:
-- Patch (`0.X.Y+1`) — bug fix, polish, copy tweak
+**Bump on every change that lands on `main`** — user-visible polish, gameplay tweaks, AND internal refactors / cleanups / dependency bumps. The service worker uses `VERSION` as its cache key, so any shipped JS/CSS/HTML diff needs a bump or returning users keep stale cached assets. Semver-ish:
+- Patch (`0.X.Y+1`) — bug fix, polish, copy tweak, internal cleanup, refactor, dead-code removal
 - Minor (`0.X+1.0`) — new feature, AI/UX change, gameplay logic
 - Major (`X+1.0.0`) — breaking save format, full rewrite
 
@@ -264,7 +264,7 @@ Public release notes live at [changelog.html](changelog.html). Newest entry on t
 **Every VERSION bump must add a changelog entry.** Copy the most recent `<article>` block, change the version + date, fill in the new content. Keep the layout shell (icon row, `.frame`, `.surface-card` sections) consistent with `privacy.html`.
 
 Minimum sections per entry:
-- **Highlights** — short bullet list of user-visible changes.
+- **Highlights** — short bullet list of changes. For user-visible diffs, describe what the player will see. For pure internal work (refactors, dead-code removal, dep bumps), say so plainly — e.g. "Internal code cleanup: …. No gameplay or UI changes." Don't invent user-facing narrative.
 - For Play Store releases only (versions actually shipped to a listing): also include **Play Store description — short** (≤80 chars) and **Play Store description — full** sections so the published copy stays in sync with the app.
 
 ## Android (Capacitor)
