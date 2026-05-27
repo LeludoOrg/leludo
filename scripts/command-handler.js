@@ -446,6 +446,13 @@ function exitToHome(emit) {
     document.querySelectorAll('wc-token').forEach(t => t.remove());
     clearTokenElementCache();
 
+    // Reset --player-N CSS vars so the setup screen renders with the
+    // default palette (seat 0 = red, etc.). applyColorMap during play
+    // rotates these vars; without this reset the next setup screen
+    // would show the previous game's rotated colors and the player
+    // would pick "red" only to see green on the next launch.
+    applyColorMap([0, 1, 2, 3]);
+
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
     document.body.style.background = '';
