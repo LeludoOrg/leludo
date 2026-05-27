@@ -132,7 +132,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
     // Allowed from any phase — starting a new game resets the machine.
     resetGameDom();
     resetTurnCount();
-    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount, getIsLocalMultiplayer);
+    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(quickStartId);
 
@@ -212,7 +212,7 @@ function resumeSavedGame(emit) {
     const playerNames = (saved.playerNamesArr || []).map(n => n || '');
     while (playerNames.length < 4) playerNames.push('');
 
-    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount, getIsLocalMultiplayer);
+    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(saved.quickStartId);
     applyColorMap(playerTypesResult.colorMap);
@@ -598,14 +598,6 @@ registerScreenHandler('__game_back__', () => {
 // --- public selectors ---
 
 export function getCurrentPlayerIndex() { return state.currentPlayerIndex; }
-export function getIsLocalMultiplayer() {
-    let humans = 0, defined = 0;
-    for (let i = 0; i < 4; i++) {
-        if (state.playerTypes[i]) defined++;
-        if (state.playerTypes[i] === 'PLAYER') humans++;
-    }
-    return defined >= 2 && humans === defined;
-}
 export function getFinishedCount(playerIndex) {
     return getFinishedCountPure(state.playerTokenPositions[playerIndex]);
 }

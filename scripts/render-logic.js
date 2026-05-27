@@ -636,7 +636,7 @@ const humanGlyph = (size) => `<svg width="${size}" height="${size}" viewBox="0 0
 const playerTypeGlyph = (type, size) => type === 'BOT' ? botGlyph(size) : humanGlyph(size);
 const playerTypeLabel = (type) => type === 'BOT' ? 'Bot' : 'Human';
 
-function escapeHtml(s) {
+export function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
 }
 
@@ -711,13 +711,11 @@ let _playerTypes = null;
 let _playerNames = ['', '', '', ''];
 let _getCurrentPlayerIndex = null;
 let _getFinishedCount = null;
-let _getIsLocalMultiplayer = null;
 
-export function initRailDeps(pt, getCpi, getFC, getIsLMP) {
+export function initRailDeps(pt, getCpi, getFC) {
     _playerTypes = pt;
     _getCurrentPlayerIndex = getCpi;
     _getFinishedCount = getFC;
-    _getIsLocalMultiplayer = getIsLMP;
 }
 
 export function setPlayerNames(names) {
