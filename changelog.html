@@ -20,6 +20,12 @@
             document.documentElement.classList.add(resolved);
         })();
     </script>
+
+    <script type="module">
+        import { initAnalytics, trackScreen } from './scripts/analytics.js';
+        initAnalytics();
+        trackScreen('changelog');
+    </script>
 </head>
 
 <body>
