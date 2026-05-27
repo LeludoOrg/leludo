@@ -18,20 +18,10 @@ import { state, initialGameState } from './game-state.js';
 import { reducer, EVENTS, applyEvents } from './game-reducer.js';
 
 const listeners = new Set();
-const eventLog = [];
 let commandHandler = null;
-let services = {};
 
 export function setCommandHandler(handler) {
     commandHandler = handler;
-}
-
-export function setServices(svc) {
-    services = { ...services, ...svc };
-}
-
-export function getServices() {
-    return services;
 }
 
 /**
@@ -40,7 +30,6 @@ export function getServices() {
  */
 export function emit(event) {
     reducer(state, event);
-    eventLog.push(event);
     for (const l of listeners) {
         try { l(event, state); } catch (e) { console.error('listener threw', e); }
     }
@@ -57,7 +46,7 @@ export function dispatch(command) {
     if (!commandHandler) {
         throw new Error('No command handler registered');
     }
-    const result = commandHandler(state, command, services, emit);
+    const result = commandHandler(state, command, {}, emit);
     if (result && typeof result.then === 'function') {
         return result;
     }
@@ -66,32 +55,6 @@ export function dispatch(command) {
 export function subscribe(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
-}
-
-export function getState() {
-    return state;
-}
-
-export function getEventLog() {
-    return eventLog;
-}
-
-export function clearEventLog() {
-    eventLog.length = 0;
-}
-
-/**
- * Replay an event list onto the live state — used for save/load and
- * (eventually) network resync.
- */
-export function replay(events) {
-    for (const e of events) {
-        reducer(state, e);
-        eventLog.push(e);
-        for (const l of listeners) {
-            try { l(e, state); } catch (err) { console.error('listener threw', err); }
-        }
-    }
 }
 
 export { EVENTS, applyEvents, initialGameState };

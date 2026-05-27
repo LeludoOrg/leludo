@@ -1,5 +1,5 @@
 import {htmlToElement} from "./index.js";
-import {dispatch, COMMANDS, playClickSound} from "../scripts/index.js";
+import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
@@ -66,8 +66,6 @@ const ICON_PLUS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" s
 const ICON_USER = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0"/></svg>`;
 const ICON_BOT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M8 7h8a3 3 0 013 3v7a3 3 0 01-3 3H8a3 3 0 01-3-3v-7a3 3 0 013-3zM9 13h.01M15 13h.01M9 17h6"/></svg>`;
 const ICON_PENCIL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
-
-const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 class QuickStart extends HTMLElement {
     constructor() {

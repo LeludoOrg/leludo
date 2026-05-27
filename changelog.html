@@ -20,6 +20,12 @@
             document.documentElement.classList.add(resolved);
         })();
     </script>
+
+    <script type="module">
+        import { initAnalytics, trackScreen } from './scripts/analytics.js';
+        initAnalytics();
+        trackScreen('changelog');
+    </script>
 </head>
 
 <body>
@@ -41,6 +47,78 @@
             </div>
 
             <div class="static-page-content">
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.4</div>
+                        <div class="cl-entry-date">May 27, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed the Android app showing the localhost-only god-mode debug toggle inside Settings. Capacitor&rsquo;s WebView reports its hostname as <code>localhost</code>, which bypassed the dev-only gate; the toggle now correctly hides on every shipped APK build.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.3</div>
+                        <div class="cl-entry-date">May 27, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: removed unused exports left over from the event-sourcing refactor and consolidated three identical copies of the HTML-escape helper into one. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.2</div>
+                        <div class="cl-entry-date">May 27, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed the setup screen showing the previous game&rsquo;s rotated palette after exiting mid-game. Seat 1 now reliably shows red again instead of inheriting whichever colour the last game had rotated into position 0.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.1</div>
+                        <div class="cl-entry-date">May 27, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed a rare bug where tapping &ldquo;Start a new game&rdquo; could open a board with a stray pawn already on the track, a missing die in the active corner, and a stale turn counter. The new-game flow now resets the board, returns the die to its home, and clears the turn counter before laying down a fresh set of pawns.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">

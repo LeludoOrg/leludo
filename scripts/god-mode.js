@@ -13,6 +13,13 @@ let _enabled = false;
 let _selection = null;
 
 export function isGodModeAvailable() {
+    // Capacitor's Android WebView serves the app from https://localhost by
+    // default, so a pure hostname check would let god-mode leak into the
+    // shipped APK. window.Capacitor.isNativePlatform() is injected by the
+    // Capacitor runtime only inside the native shell — never in a browser.
+    if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+        return false;
+    }
     return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 }
 

@@ -102,12 +102,37 @@ function isPlayerFinished(playerIndex) {
     return isPlayerFinishedPure(state.playerTokenPositions[playerIndex]);
 }
 
+// Defensive DOM reset for a fresh game. startGame can be reached from
+// many paths (cold start, Android warm-resume, restart, exit-to-home →
+// new-game) and at least one of them was leaving stale wc-token elements
+// and a misplaced wc-dice behind — see issue where a "brand new game"
+// rendered an extra yellow pawn on the track and an empty active-corner
+// dice slot. Cleaning here makes startGame idempotent regardless of the
+// caller's prior state.
+function resetGameDom() {
+    const gameEnd = document.querySelector('wc-game-end');
+    if (gameEnd) gameEnd.remove();
+
+    document.querySelectorAll('wc-token').forEach(t => t.remove());
+    clearTokenElementCache();
+
+    const turnEl = document.getElementById('turn-counter');
+    if (turnEl) turnEl.textContent = 'Turn 0';
+
+    const dice = document.getElementById('wc-dice');
+    const diceHome = document.getElementById('dice-home');
+    if (dice && diceHome && dice.parentElement !== diceHome) {
+        diceHome.appendChild(dice);
+    }
+}
+
 // --- command implementations ---
 
 function startGame(quickStartId, namesByPlayerIndex, emit) {
     // Allowed from any phase — starting a new game resets the machine.
+    resetGameDom();
     resetTurnCount();
-    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount, getIsLocalMultiplayer);
+    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(quickStartId);
 
@@ -187,7 +212,7 @@ function resumeSavedGame(emit) {
     const playerNames = (saved.playerNamesArr || []).map(n => n || '');
     while (playerNames.length < 4) playerNames.push('');
 
-    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount, getIsLocalMultiplayer);
+    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(saved.quickStartId);
     applyColorMap(playerTypesResult.colorMap);
@@ -421,6 +446,13 @@ function exitToHome(emit) {
     document.querySelectorAll('wc-token').forEach(t => t.remove());
     clearTokenElementCache();
 
+    // Reset --player-N CSS vars so the setup screen renders with the
+    // default palette (seat 0 = red, etc.). applyColorMap during play
+    // rotates these vars; without this reset the next setup screen
+    // would show the previous game's rotated colors and the player
+    // would pick "red" only to see green on the next launch.
+    applyColorMap([0, 1, 2, 3]);
+
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
     document.body.style.background = '';
@@ -566,14 +598,6 @@ registerScreenHandler('__game_back__', () => {
 // --- public selectors ---
 
 export function getCurrentPlayerIndex() { return state.currentPlayerIndex; }
-export function getIsLocalMultiplayer() {
-    let humans = 0, defined = 0;
-    for (let i = 0; i < 4; i++) {
-        if (state.playerTypes[i]) defined++;
-        if (state.playerTypes[i] === 'PLAYER') humans++;
-    }
-    return defined >= 2 && humans === defined;
-}
 export function getFinishedCount(playerIndex) {
     return getFinishedCountPure(state.playerTokenPositions[playerIndex]);
 }
