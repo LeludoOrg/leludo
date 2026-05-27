@@ -15,6 +15,7 @@ import {
     playClickSound,
     dispatch,
     COMMANDS,
+    escapeHtml,
 } from "../scripts/index.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
@@ -74,10 +75,6 @@ const CARD_ICONS = {
     home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`,
     crown:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 7l4 5 5-7 5 7 4-5v11H3z"/></svg>`,
 };
-
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
 
 function nameFor(pi) {
     const raw = playerNames[pi] && String(playerNames[pi]).trim();

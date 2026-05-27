@@ -31,8 +31,6 @@ export const EVENTS = Object.freeze({
     TURN_ADVANCED: 'TURN_ADVANCED',
     TURN_REPEATS: 'TURN_REPEATS',
     ASSIST_FLAG_CHANGED: 'ASSIST_FLAG_CHANGED',
-    TURN_COUNT_SET: 'TURN_COUNT_SET',
-    NAMES_SET: 'NAMES_SET',
     GAME_PAUSED: 'GAME_PAUSED',
     GAME_RESUMED_FROM_PAUSE: 'GAME_RESUMED_FROM_PAUSE',
     DICE_ROLL_STARTED: 'DICE_ROLL_STARTED',
@@ -273,21 +271,9 @@ export function reducer(state, event) {
             return state;
         }
 
-        case EVENTS.TURN_COUNT_SET: {
-            state.turnCount = event.value;
-            return state;
-        }
-
         case EVENTS.GOD_TELEPORTED: {
             const row = state.playerTokenPositions[event.playerIndex];
             if (row) row[event.tokenIndex] = event.toPosition;
-            return state;
-        }
-
-        case EVENTS.NAMES_SET: {
-            for (let i = 0; i < 4; i++) {
-                state.playerNames[i] = event.playerNames[i] || '';
-            }
             return state;
         }
 
