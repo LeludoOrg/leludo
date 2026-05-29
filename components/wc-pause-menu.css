@@ -182,3 +182,23 @@
 .corner-dice--active {
     padding: 6px;
 }
+
+/* Idle corner showing the player's last roll. The inner .die carries the
+   exact live-dice visual (light + dark themes); this wrapper fades it and
+   adds a player-colored ring (muted by the wrapper opacity) so a quick
+   forfeit / no-move turn still leaves the last roll readable and you can
+   tell whose it is. padding + border match the active die's footprint so
+   the faded die isn't visually larger (active uses 6px padding;
+   here 4px padding + 2px border = same 44px inner die). */
+.corner-dice--rolled {
+    opacity: 0.5;
+    padding: 4px;
+    /* width/style only — color comes from player-border-N. Using the `border`
+       shorthand here would reset border-color to currentColor and clobber it. */
+    border-width: 2px;
+    border-style: solid;
+}
+
+.corner-dice--rolled .die {
+    cursor: default;
+}

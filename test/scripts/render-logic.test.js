@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { getContainerPath, pinTokenForCapture, updateCellStacking } from '../../scripts/render-logic.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+    getContainerPath,
+    pinTokenForCapture,
+    updateCellStacking,
+    updateCornerWidgets,
+    initRailDeps,
+    setPlayerNames,
+    setLastRoll,
+    resetLastRolls,
+} from '../../scripts/render-logic.js';
 
 describe('getContainerPath — forward movement', () => {
     it('builds per-step mark IDs from current+1 to new (inclusive)', () => {
@@ -97,5 +106,57 @@ describe('updateCellStacking — pinned (moving) tokens', () => {
         expect(captured.style.top).toBe('20px');
         // Sole settled token cleared back to flow (n<=1 → no stack styles).
         expect(lander.style.position).toBe('');
+    });
+});
+
+describe('updateCornerWidgets — idle corner shows last roll', () => {
+    // Regression: a forfeited turn (third six) or a roll with no movable pawn
+    // advances so fast the player never sees what they rolled. Each player's
+    // idle corner now shows their last roll as a faded static die so the value
+    // stays visible after the turn moves on.
+    beforeEach(() => {
+        document.body.innerHTML = '';
+        ['b0', 'b1', 'b2', 'b3'].forEach(id => {
+            const el = document.createElement('div');
+            el.id = id;
+            document.body.appendChild(el);
+        });
+        // Two human seats; player 0 active, player 1 idle.
+        const playerTypes = ['HUMAN', 'HUMAN', undefined, undefined];
+        initRailDeps(playerTypes, () => 0, () => 0);
+        setPlayerNames(['P1', 'P2', '', '']);
+        resetLastRolls();
+    });
+
+    it('renders a faded die face with pip count matching the idle player roll', () => {
+        setLastRoll(1, 5); // idle player rolled a 5 last turn
+        updateCornerWidgets();
+
+        const idleCorner = document.querySelector('#b1 .corner-dice');
+        expect(idleCorner).not.toBeNull();
+        expect(idleCorner.classList.contains('corner-dice--rolled')).toBe(true);
+        // Muted player-colored ring so you can tell whose roll it is.
+        expect(idleCorner.classList.contains('player-border-1')).toBe(true);
+        // Reuses the exact live-dice markup (.die / .dice-face / .dice-dot)
+        // so the faded copy inherits identical light/dark styling.
+        const face = idleCorner.querySelector('.die .dice-face');
+        expect(face).not.toBeNull();
+        expect(face.querySelectorAll('.dice-dot').length).toBe(5);
+    });
+
+    it('falls back to the blank colored chip before the idle player has rolled', () => {
+        updateCornerWidgets();
+        const idleCorner = document.querySelector('#b1 .corner-dice');
+        expect(idleCorner.classList.contains('corner-dice--idle')).toBe(true);
+        expect(idleCorner.classList.contains('corner-dice--rolled')).toBe(false);
+        expect(idleCorner.querySelector('.die')).toBeNull();
+    });
+
+    it('resetLastRolls clears stored rolls so a new game starts blank', () => {
+        setLastRoll(1, 6);
+        resetLastRolls();
+        updateCornerWidgets();
+        const idleCorner = document.querySelector('#b1 .corner-dice');
+        expect(idleCorner.classList.contains('corner-dice--idle')).toBe(true);
     });
 });

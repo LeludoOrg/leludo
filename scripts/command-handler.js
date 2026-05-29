@@ -44,6 +44,8 @@ import {
     setTurnCount,
     initRailDeps,
     setPlayerNames,
+    setLastRoll,
+    resetLastRolls,
 } from "./index.js";
 import { randomPersonality } from "./bot-ai.js";
 import {
@@ -115,6 +117,8 @@ function resetGameDom() {
 
     document.querySelectorAll('wc-token').forEach(t => t.remove());
     clearTokenElementCache();
+
+    resetLastRolls();
 
     const turnEl = document.getElementById('turn-counter');
     if (turnEl) turnEl.textContent = 'Turn 0';
@@ -281,6 +285,7 @@ function rollDice(emit) {
             const newRoll = generateDiceRoll();
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
+            setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
             handleAfterDiceRoll(emit);
         });
 }

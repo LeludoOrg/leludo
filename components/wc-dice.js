@@ -8,7 +8,7 @@ import {
 
 //language=HTML
 const DICE_HTML = /*html*/ `
-<div id="dice">
+<div id="dice" class="die">
     <div id="d1" class="dice-face">
         <div class="dice-dot" style="grid-row:2;grid-column:2;"></div>
     </div>
