@@ -398,3 +398,18 @@ test.describe('Player color utilities', () => {
         for (const c of colors) expect(c).toMatch(HSL_RE);
     });
 });
+
+test.describe('Tap highlight', () => {
+    // Tapping a button (e.g. the settings gear) on touch devices used to
+    // flash the browser's default blue/grey highlight block. We disable
+    // -webkit-tap-highlight-color globally so buttons only show their own
+    // hover/press styling. Assert it resolves to transparent.
+    test('default tap-highlight is disabled (transparent)', async ({ page }) => {
+        await page.goto('/');
+        const highlight = await page.evaluate(() =>
+            getComputedStyle(document.documentElement).webkitTapHighlightColor
+        );
+        // transparent serializes as rgba(0, 0, 0, 0)
+        expect(highlight).toBe('rgba(0, 0, 0, 0)');
+    });
+});
