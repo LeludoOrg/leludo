@@ -400,10 +400,15 @@ function handleAfterTokenMove(tripComplete, captureCount, emit) {
     if (isGameDone) return;
 
     activateDice();
-    if (!tripComplete && captureCount === 0 && state.currentDiceRoll !== 6) {
-        advanceToNextPlayer(emit);
-    } else {
+    // A finished trip, capture, or 6 normally grants another turn — but a
+    // player who just finished their LAST token has no tokens left to move,
+    // so advance instead of granting an empty repeat roll.
+    const grantsRepeat = (tripComplete || captureCount > 0 || state.currentDiceRoll === 6)
+        && !isPlayerFinished(state.currentPlayerIndex);
+    if (grantsRepeat) {
         emit({ type: EVENTS.TURN_REPEATS, playerIndex: state.currentPlayerIndex });
+    } else {
+        advanceToNextPlayer(emit);
     }
 }
 

@@ -232,7 +232,11 @@ export function runGame(opts) {
             break;
         }
 
-        const playsAgain = dice === 6 || result.captureCount > 0 || result.tripComplete;
+        // A 6, capture, or finished trip grants another turn — unless the
+        // player just finished their last token, in which case they have
+        // nothing left to move and the turn must advance.
+        const playsAgain = (dice === 6 || result.captureCount > 0 || result.tripComplete)
+            && !isPlayerFinished(positions[currentPlayerIndex]);
         if (!playsAgain) {
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }
