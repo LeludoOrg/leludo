@@ -126,6 +126,10 @@ html, body {
 html {
     background: var(--color-bg);
     color: var(--color-fg);
+    /* Kill the default blue/grey tap-highlight overlay shown on touch
+       devices (and the equivalent flash on click) — buttons style their
+       own hover/active states. Guards the gear-icon "blue block" bug. */
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
