@@ -319,13 +319,14 @@ class QuickStart extends HTMLElement {
 
         this.seats.forEach((seat, i) => {
             const filled = seat.active
-            const usedColors = this.seats.filter((s, j) => s.active && j !== i).map(s => s.colorIndex)
 
             if (filled) {
                 const isPlayer = seat.type === 'PLAYER'
                 const NAME_MAX = 9
                 if (!seat.name) seat.name = this._defaultName(seat, i)
-                const colorVar = `hsl(var(--player-${seat.colorIndex}))`
+                // Seat colour is locked to its row position (seat 0 = red, 1 =
+                // green, 2 = gold, 3 = blue). No per-seat colour picker.
+                const colorVar = `hsl(var(--player-${i}))`
                 const playerActiveStyle = isPlayer ? `style="background:${colorVar};color:#fff;"` : ''
                 const botActiveStyle = !isPlayer ? `style="background:${colorVar};color:#fff;"` : ''
                 const dimmed = this._focusedSeatIndex !== null && this._focusedSeatIndex !== i
@@ -333,9 +334,9 @@ class QuickStart extends HTMLElement {
                 const charLen = (seat.name || '').length
                 const seatHtml = /*html*/ `
                     <div class="seat-row" data-seat-idx="${i}" style="${rowDimStyle}">
-                        <button class="color-cycle seat-color-cycle" style="background:${colorVar};" title="Change color">
-                            <div class="seat-pawn">${PAWN_SVG(seat.colorIndex)}</div>
-                        </button>
+                        <div class="seat-color-cycle" style="background:${colorVar};">
+                            <div class="seat-pawn">${PAWN_SVG(i)}</div>
+                        </div>
                         <div class="seat-body">
                             <label class="seat-name-wrap">
                                 <input class="seat-name" type="text" name="ludo-seat-${i}" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${(seat.name || '').replace(/"/g, '&quot;')}" maxlength="${NAME_MAX}" spellcheck="false" />
@@ -409,14 +410,6 @@ class QuickStart extends HTMLElement {
                     })
                 }
 
-                seatEl.querySelector(".color-cycle").addEventListener("click", () => {
-                    playClickSound()
-                    let next = (seat.colorIndex + 1) % 4
-                    while (usedColors.includes(next)) next = (next + 1) % 4
-                    seat.colorIndex = next
-                    this._renderSeats()
-                })
-
                 seatEl.querySelector(".remove-seat").addEventListener("click", () => {
                     playClickSound()
                     seat.active = false
@@ -426,9 +419,14 @@ class QuickStart extends HTMLElement {
 
                 container.appendChild(seatEl)
             } else {
+                // Empty seat still previews its locked colour so the player
+                // knows seat 0 = red, 1 = green, 2 = gold, 3 = blue up front.
+                const ghostVar = `hsl(var(--player-${i}))`
                 const emptyHtml = /*html*/ `
                     <div class="seat-row-empty">
-                        <div class="seat-empty-color"></div>
+                        <div class="seat-empty-color" style="border-color:color-mix(in srgb, ${ghostVar} 55%, transparent);background:color-mix(in srgb, ${ghostVar} 14%, transparent);">
+                            <div class="seat-pawn seat-pawn-ghost">${PAWN_SVG(i)}</div>
+                        </div>
                         <div class="seat-body">
                             <div class="seat-empty-title">Empty seat</div>
                             <div class="seat-empty-sub">Tap a side to fill</div>
@@ -439,20 +437,23 @@ class QuickStart extends HTMLElement {
                         </div>
                     </div>`
                 const emptyEl = htmlToElement(emptyHtml)
-                emptyEl.querySelectorAll(".seat-add").forEach(btn => {
-                    btn.addEventListener("click", () => {
-                        playClickSound()
-                        const usedAll = this.seats.filter(s => s.active).map(s => s.colorIndex)
-                        const freeColor = [0,1,2,3].find(c => !usedAll.includes(c))
-                        if (freeColor === undefined) return
-                        const target = btn.dataset.add
-                        seat.active = true
-                        seat.type = target
-                        seat.colorIndex = freeColor
-                        seat.name = this._defaultName({ ...seat, type: target, colorIndex: freeColor }, i)
-                        this._renderSeats()
+                const rowEl = emptyEl.firstElementChild
+                const fillSeat = (target) => {
+                    playClickSound()
+                    seat.active = true
+                    seat.type = target
+                    seat.colorIndex = i
+                    seat.name = this._defaultName({ ...seat, type: target, colorIndex: i }, i)
+                    this._renderSeats()
+                }
+                rowEl.querySelectorAll(".seat-add").forEach(btn => {
+                    btn.addEventListener("click", (e) => {
+                        e.stopPropagation()
+                        fillSeat(btn.dataset.add)
                     })
                 })
+                // Tapping anywhere else on the row fills it as a Human seat.
+                rowEl.addEventListener("click", () => fillSeat("PLAYER"))
                 container.appendChild(emptyEl)
             }
         })

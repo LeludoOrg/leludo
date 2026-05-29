@@ -37,7 +37,6 @@ wc-board .board-spacer {
 
 wc-board .board-corner-row {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
     padding: 0 var(--space-3);
     padding-top: var(--space-2);
@@ -51,8 +50,24 @@ wc-board .board-corner-row--bottom {
     padding-bottom: var(--space-2);
 }
 
-wc-board .board-corner-row > div:empty {
-    display: none;
+/* Each anchor owns half the row and hugs its own side. Without this a
+   row with a single occupied corner (2-/3-player games) would collapse
+   the lone widget to flex-start — the bottom-right human pill rendered
+   at bottom-left instead of staying under its quadrant. */
+wc-board .board-corner-row > div {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+}
+
+wc-board #b0,
+wc-board #b3 {
+    justify-content: flex-start;
+}
+
+wc-board #b1,
+wc-board #b2 {
+    justify-content: flex-end;
 }
 
 wc-board .board-area {
