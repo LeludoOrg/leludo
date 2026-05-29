@@ -1,5 +1,5 @@
 import {getMarkIndex} from "./index.js";
-import {playStepSound, playDiceSound} from "./audio.js";
+import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "./nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
@@ -303,20 +303,32 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
     const prevCell = attack && attack.prevCellId ? document.getElementById(attack.prevCellId) : null;
 
     const containerRect = container.getBoundingClientRect();
-    const capturePx = rectCenter(sourceCell.getBoundingClientRect(), containerRect);
-    const homeBasePx = rectCenter(homeCell.getBoundingClientRect(), containerRect);
-    const cellSize = sourceCell.getBoundingClientRect().width;
+    // Start from the victim's actual on-board box (handles pin/stack sizing).
+    const startRect = element.getBoundingClientRect();
+    const startSize = startRect.width;
+    const capturePx = rectCenter(startRect, containerRect);
     const attackFrom = deriveAttackFrom(prevCell, sourceCell);
     const attackerColor = attackerPlayerIndex != null
         ? readTokenColor(attackerPlayerIndex, attackerTokenIndex || 0, '#cf4a3a')
         : '#cf4a3a';
     const defenderColor = readTokenColor(playerIndex, tokenIndex, '#2f9456');
 
-    // Hide the live victim — the overlay plays its own copy. Keep the
-    // pinned absolute styles in place so the source cell stays restacked
-    // (lander already sized as sole occupant once the victim was pinned).
+    // Settle the real token into its home seat NOW (hidden), then measure its
+    // exact resting box. The overlay lands the flying pawn on that box and the
+    // live token is simply revealed in place afterwards — no post-animation
+    // readjust. Moving the victim out of sourceCell before restacking also
+    // sizes the capturing lander back to a sole occupant.
     const prevVisibility = element.style.visibility;
     element.style.visibility = 'hidden';
+    clearStackStyles(element);
+    delete element.dataset.moving;
+    homeCell.appendChild(element);
+    if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
+    updateCellStacking(homeCell);
+
+    const homeRect = element.getBoundingClientRect();
+    const homeBasePx = rectCenter(homeRect, containerRect);
+    const endScale = startSize ? homeRect.width / startSize : 1;
 
     return playKOCapture({
         container,
@@ -325,32 +337,16 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
         attackerColor,
         defenderColor,
         attackFrom,
-        pawnSize: cellSize * 1.4,
+        // Fly at the victim's on-board size, then scale to the real token's
+        // exact home-seat footprint so the overlay's final frame matches the
+        // settled token — the flight IS the arrival, so no extra scale-in.
+        pawnSize: startSize,
+        endScale,
         duration: 900,
         shakeBoard: true,
-    }).then(() => new Promise((resolve) => {
-        clearStackStyles(element);
-        delete element.dataset.moving;
+    }).then(() => {
         element.style.visibility = prevVisibility;
-        // Move out of sourceCell first, THEN restack — otherwise the
-        // capturing lander gets sized for a 2-token stack and never
-        // resizes back when the captured token leaves.
-        homeCell.appendChild(element);
-        if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
-        updateCellStacking(homeCell);
-
-        element.classList.add('token-arriving');
-        let arriveDone = false;
-        const onArriveEnd = () => {
-            if (arriveDone) return;
-            arriveDone = true;
-            element.removeEventListener('animationend', onArriveEnd);
-            element.classList.remove('token-arriving');
-            resolve();
-        };
-        element.addEventListener('animationend', onArriveEnd);
-        setTimeout(onArriveEnd, 360);
-    }));
+    });
 }
 
 // Home-arrival overlay: source = pawn's pre-move viewport rect, home = final
@@ -382,12 +378,21 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
     const isLastPawn = settledCount >= 4;
 
     element.style.visibility = 'hidden';
+    playFinishSound();
     return playHomeArrival({
         container: boardWrap,
         home: homeCenter,
         source: sourceCenter,
         color,
-        pawnSize: cellSize * 1.5,
+        // Match the real token at both ends: start at the pre-move size
+        // (~one cell), then shrink to the finish slot's settled size. The
+        // finish cell stacks tokens far smaller than a cell, so endScale
+        // carries the pawn down to the live token's final footprint.
+        pawnSize: src.width,
+        endScale: finalRect.width / src.width,
+        // Confetti/ring/label spread is independent of the (tiny) finish-slot
+        // pawn so the burst flies out across the board, not a small cluster.
+        burstSize: cellSize * 2.5,
         duration: 1400,
         flashBoard: isLastPawn,
     }).then(() => {
@@ -424,19 +429,22 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
 
     element.dataset.moving = 'true';
     element.style.visibility = 'hidden';
-    // Hide the yard parking dot itself for the duration of the overlay —
-    // .home-slot-dot has a dark fill + colored ring that's normally masked
-    // by the live token. Without this, hiding the token reveals a dark
-    // "rounded square" in the yard slot until the promise resolves.
-    const prevSourceVisibility = sourceCell ? sourceCell.style.visibility : '';
-    if (sourceCell) sourceCell.style.visibility = 'hidden';
+    // Keep the yard parking slot (.home-slot-dot) visible during the
+    // overlay. Hiding only the live token reveals the empty seat ring,
+    // which is exactly how the seat should look once the pawn has
+    // launched — so it reads as "vacated" throughout the leap instead of
+    // blinking out and reappearing when the promise resolves.
 
+    playLaunchSound();
     return playPawnLaunch({
         container: boardWrap,
         yard: yardCenter,
         entry: entryCenter,
         color,
-        pawnSize: cellSize * 1.4,
+        // Match the real on-board token: a wc-token fills one cell (square),
+        // so the launch pawn is cellSize too — same shape, size and centered
+        // position as the live token at both the yard and entry endpoints.
+        pawnSize: cellSize,
         duration: 1200,
         // No 'GO!' chip — the leap + shockwave + dust already read as
         // "this pawn just launched" and the chip stole focus from the
@@ -447,7 +455,6 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         delete element.dataset.moving;
         finalContainer.appendChild(element);
         if (sourceCell && sourceCell !== finalContainer) {
-            sourceCell.style.visibility = prevSourceVisibility;
             updateCellStacking(sourceCell);
         }
         updateCellStacking(finalContainer);

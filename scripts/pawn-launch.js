@@ -41,7 +41,7 @@ function injectCSS() {
       }
       .plnch-pawn-wrap {
         position: absolute;
-        transform-origin: center 80%;
+        transform-origin: center 86%;
         will-change: transform;
       }
       .plnch-pawn-svg  {
@@ -50,7 +50,7 @@ function injectCSS() {
       }
       .plnch-trail-wrap {
         position: absolute;
-        transform-origin: center 80%;
+        transform-origin: center 86%;
         opacity: 0;
         will-change: transform, opacity;
       }
@@ -119,37 +119,48 @@ function injectCSS() {
     document.head.appendChild(style);
 }
 
-function pawnSVG(color, size, opts) {
-    opts = opts || {};
-    const stroke = opts.outline ? 'rgba(255,255,255,0.7)' : 'none';
-    const sw = opts.outline ? '1.5' : '0';
-    const w = size * 0.75;
+// Body + head path is copied verbatim from components/wc-token.js so the
+// launching pawn is the SAME shape as the real game token. viewBox is the
+// token's 0 0 100 100 (square) — the wrap is sized square too, so the
+// overlay pawn matches the on-board token's size and proportions exactly.
+const PAWN_BODY = 'M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z';
+let _gradUid = 0;
+
+function pawnSVG(color, size) {
+    const uid = 'plnch-grad-' + (++_gradUid);
     return (
-        '<svg class="plnch-pawn-svg" viewBox="0 0 60 80" ' +
-        'width="' + w + '" height="' + size + '">' +
-            '<ellipse cx="30" cy="74" rx="17" ry="3" fill="rgba(0,0,0,0.55)" />' +
-            '<path fill="' + color + '" stroke="' + stroke + '" stroke-width="' + sw + '" ' +
-                'd="M 30 6 C 38 6, 42 13, 38 19 ' +
-                'C 40 21, 40 23, 36.5 24 C 39.5 27, 39.5 31, 35.5 32.5 ' +
-                'L 44 36 L 50 70 L 10 70 L 16 36 L 24.5 32.5 ' +
-                'C 20.5 31, 20.5 27, 23.5 24 C 20 23, 20 21, 22 19 ' +
-                'C 18 13, 22 6, 30 6 Z" />' +
-            '<ellipse cx="25" cy="13" rx="2.6" ry="3.6" fill="rgba(255,255,255,0.28)" />' +
+        '<svg class="plnch-pawn-svg" viewBox="0 0 100 100" ' +
+        'width="' + size + '" height="' + size + '">' +
+            '<defs>' +
+                '<linearGradient id="' + uid + 'b" x1="0.2" y1="0" x2="0.8" y2="1">' +
+                    '<stop offset="0%" stop-color="white" stop-opacity="0.35"/>' +
+                    '<stop offset="100%" stop-color="black" stop-opacity="0.12"/>' +
+                '</linearGradient>' +
+                '<radialGradient id="' + uid + 'h" cx="0.4" cy="0.35" r="0.5">' +
+                    '<stop offset="0%" stop-color="white" stop-opacity="0.45"/>' +
+                    '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
+                '</radialGradient>' +
+            '</defs>' +
+            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
+            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="black" opacity="0.1"/>' +
+            '<path d="' + PAWN_BODY + '" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+            '<path d="' + PAWN_BODY + '" fill="url(#' + uid + 'b)"/>' +
+            '<ellipse cx="50" cy="38" rx="13" ry="4" fill="' + color + '"/>' +
+            '<ellipse cx="50" cy="38" rx="13" ry="4" fill="white" opacity="0.15"/>' +
+            '<circle cx="50" cy="24" r="16" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+            '<circle cx="50" cy="24" r="16" fill="url(#' + uid + 'h)"/>' +
+            '<ellipse cx="44" cy="18" rx="5" ry="3.5" fill="white" opacity="0.4" transform="rotate(-20 44 18)"/>' +
         '</svg>'
     );
 }
 
 function ghostSVG(color, size) {
-    const w = size * 0.75;
     return (
-        '<svg class="plnch-trail-svg" viewBox="0 0 60 80" ' +
-        'width="' + w + '" height="' + size + '">' +
-            '<path fill="' + color + '" ' +
-                'd="M 30 6 C 38 6, 42 13, 38 19 ' +
-                'C 40 21, 40 23, 36.5 24 C 39.5 27, 39.5 31, 35.5 32.5 ' +
-                'L 44 36 L 50 70 L 10 70 L 16 36 L 24.5 32.5 ' +
-                'C 20.5 31, 20.5 27, 23.5 24 C 20 23, 20 21, 22 19 ' +
-                'C 18 13, 22 6, 30 6 Z" />' +
+        '<svg class="plnch-trail-svg" viewBox="0 0 100 100" ' +
+        'width="' + size + '" height="' + size + '">' +
+            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
+            '<path d="' + PAWN_BODY + '" fill="' + color + '"/>' +
+            '<circle cx="50" cy="24" r="16" fill="' + color + '"/>' +
         '</svg>'
     );
 }
@@ -209,11 +220,16 @@ export function playPawnLaunch(opts) {
     const t_leap     = t_charge + T_crouch;
     const t_land     = t_leap + T_leap;
 
+    // Pawn base (feet) offset below the wrap center. The square token SVG
+    // draws its base ellipse at y=88/100, i.e. 0.38 below the centered
+    // wrap — FX (halo/sparks/dust) anchor there so they sit at the feet.
+    const baseY = pawnSize * 0.36;
+
     const haloSize = pawnSize * 1.8;
     const halo = el(
         'plnch-halo',
         'left:' + (yard.x - haloSize / 2) + 'px;' +
-        'top:'  + (yard.y - haloSize / 2 + pawnSize * 0.18) + 'px;' +
+        'top:'  + (yard.y - haloSize / 2 + baseY) + 'px;' +
         'width:' + haloSize + 'px; height:' + haloSize + 'px;' +
         'color:' + color + ';'
     );
@@ -234,9 +250,9 @@ export function playPawnLaunch(opts) {
         const r0 = pawnSize * 0.45;
         const r1 = pawnSize * (0.9 + Math.random() * 0.6);
         const x0 = yard.x + Math.cos(angle) * r0;
-        const y0 = yard.y + Math.sin(angle) * r0 + pawnSize * 0.18;
+        const y0 = yard.y + Math.sin(angle) * r0 + baseY;
         const x1 = yard.x + Math.cos(angle) * r1;
-        const y1 = yard.y + Math.sin(angle) * r1 + pawnSize * 0.18 - pawnSize * 0.3;
+        const y1 = yard.y + Math.sin(angle) * r1 + baseY - pawnSize * 0.3;
         const sz = 3 + Math.random() * 3;
         const sp = el(
             'plnch-spark',
@@ -262,12 +278,11 @@ export function playPawnLaunch(opts) {
         for (let i = 0; i < N_TRAIL; i++) {
             const p = (i + 1) / (N_TRAIL + 1);
             const pt = arcAt(yard, entry, p, arcH);
-            const pw = pawnSize * 0.75;
             const tw = el(
                 'plnch-trail-wrap',
-                'left:' + (pt.x - pw / 2) + 'px;' +
-                'top:'  + (pt.y - pawnSize * 0.72) + 'px;' +
-                'width:' + pw + 'px; height:' + pawnSize + 'px;'
+                'left:' + (pt.x - pawnSize / 2) + 'px;' +
+                'top:'  + (pt.y - pawnSize / 2) + 'px;' +
+                'width:' + pawnSize + 'px; height:' + pawnSize + 'px;'
             );
             tw.innerHTML = ghostSVG(color, pawnSize);
             root.appendChild(tw);
@@ -289,14 +304,13 @@ export function playPawnLaunch(opts) {
         }
     }
 
-    const pawnW = pawnSize * 0.75;
     const pawn = el(
         'plnch-pawn-wrap',
-        'left:' + (yard.x - pawnW / 2) + 'px;' +
-        'top:'  + (yard.y - pawnSize * 0.72) + 'px;' +
-        'width:' + pawnW + 'px; height:' + pawnSize + 'px;'
+        'left:' + (yard.x - pawnSize / 2) + 'px;' +
+        'top:'  + (yard.y - pawnSize / 2) + 'px;' +
+        'width:' + pawnSize + 'px; height:' + pawnSize + 'px;'
     );
-    pawn.innerHTML = pawnSVG(color, pawnSize, { outline: true });
+    pawn.innerHTML = pawnSVG(color, pawnSize);
     root.appendChild(pawn);
 
     pawn.animate(
@@ -406,7 +420,7 @@ function playLandingFX(root, entry, color, pawnSize, label) {
         const d = el(
             'plnch-dust',
             'left:' + (entry.x - sz / 2) + 'px;' +
-            'top:'  + (entry.y - sz / 2 + pawnSize * 0.18) + 'px;' +
+            'top:'  + (entry.y - sz / 2 + pawnSize * 0.36) + 'px;' +
             'width:' + sz + 'px; height:' + sz + 'px;' +
             'background: rgba(235,227,214,0.55);'
         );
