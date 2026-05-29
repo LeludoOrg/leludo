@@ -719,6 +719,39 @@ let _playerNames = ['', '', '', ''];
 let _getCurrentPlayerIndex = null;
 let _getFinishedCount = null;
 
+// Last dice value each player rolled, shown faded in their idle corner so a
+// player can still see what their roll was after the turn moves on quickly —
+// e.g. a third-six forfeit or a roll with no movable pawn. null = not rolled
+// yet this game.
+let _lastRollByPlayer = [null, null, null, null];
+
+export function setLastRoll(playerIndex, value) {
+    if (playerIndex >= 0 && playerIndex < 4) _lastRollByPlayer[playerIndex] = value;
+}
+
+export function resetLastRolls() {
+    _lastRollByPlayer = [null, null, null, null];
+}
+
+// Pip layout per face value (grid row/column, 3x3 grid) — mirrors wc-dice.
+const DIE_PIPS = {
+    1: [[2, 2]],
+    2: [[1, 1], [3, 3]],
+    3: [[1, 1], [2, 2], [3, 3]],
+    4: [[1, 1], [1, 3], [3, 1], [3, 3]],
+    5: [[1, 1], [1, 3], [2, 2], [3, 1], [3, 3]],
+    6: [[1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3]],
+};
+
+// Reuses the exact live-dice classes (.die / .dice-face / .dice-dot) so the
+// faded copy inherits identical light/dark styling — only one face, no id.
+function staticDieMarkup(value) {
+    const pips = (DIE_PIPS[value] || [])
+        .map(([r, c]) => `<div class="dice-dot" style="grid-row:${r};grid-column:${c};"></div>`)
+        .join('');
+    return `<div class="die"><div class="dice-face">${pips}</div></div>`;
+}
+
 export function initRailDeps(pt, getCpi, getFC) {
     _playerTypes = pt;
     _getCurrentPlayerIndex = getCpi;
@@ -784,7 +817,13 @@ export function updateCornerWidgets() {
                 diceBtn.appendChild(dice);
             }
         } else {
-            diceBtn.className = `corner-dice corner-dice--idle player-bg-${idx}`;
+            const lastRoll = _lastRollByPlayer[idx];
+            if (lastRoll) {
+                diceBtn.className = `corner-dice corner-dice--rolled player-border-${idx}`;
+                diceBtn.innerHTML = staticDieMarkup(lastRoll);
+            } else {
+                diceBtn.className = `corner-dice corner-dice--idle player-bg-${idx}`;
+            }
         }
 
         if (layout === 'TD') {
