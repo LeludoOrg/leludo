@@ -27,8 +27,13 @@ function injectCSS() {
         overflow: visible;
       }
       .kocap-layer { position: absolute; left: 0; top: 0; }
-      .kocap-pawn-wrap { position: absolute; transform-origin: center 80%; }
-      .kocap-pawn-squash { transform-origin: center 80%; }
+      /* Outer wrap owns translate + spin + the start→end size scale; origin
+         center keeps the pawn centered on its target as it scales, so its
+         final frame lands exactly on the real token's box. */
+      .kocap-pawn-wrap { position: absolute; transform-origin: center center; }
+      /* Inner element owns the punch squash; origin at the feet (token base
+         sits at y=88/100 in the square viewBox). */
+      .kocap-pawn-squash { transform-origin: center 86%; }
       .kocap-pawn-svg { display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45)); }
 
       .kocap-pow { position: absolute; transform-origin: center; }
@@ -72,18 +77,36 @@ function injectCSS() {
     document.head.appendChild(style);
 }
 
+// Body + head path copied verbatim from components/wc-token.js so the
+// knocked-out pawn is the SAME shape as the real game token. Square
+// 0 0 100 100 viewBox (token aspect); the wrap is sized square too.
+const PAWN_BODY = 'M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z';
+let _gradUid = 0;
+
 function pawnSVG(color, size) {
-    const w = size * 0.75; // viewBox 60×80 → 0.75 aspect
+    const uid = 'kocap-grad-' + (++_gradUid);
     return (
-        '<svg class="kocap-pawn-svg" viewBox="0 0 60 80" ' +
-        'width="' + w + '" height="' + size + '">' +
-        '<ellipse cx="30" cy="74" rx="17" ry="3" fill="rgba(0,0,0,0.55)" />' +
-        '<path fill="' + color + '" d="M 30 6 C 38 6, 42 13, 38 19 ' +
-        'C 40 21, 40 23, 36.5 24 C 39.5 27, 39.5 31, 35.5 32.5 ' +
-        'L 44 36 L 50 70 L 10 70 L 16 36 L 24.5 32.5 ' +
-        'C 20.5 31, 20.5 27, 23.5 24 C 20 23, 20 21, 22 19 ' +
-        'C 18 13, 22 6, 30 6 Z" />' +
-        '<ellipse cx="25" cy="13" rx="2.6" ry="3.6" fill="rgba(255,255,255,0.28)" />' +
+        '<svg class="kocap-pawn-svg" viewBox="0 0 100 100" ' +
+        'width="' + size + '" height="' + size + '">' +
+        '<defs>' +
+            '<linearGradient id="' + uid + 'b" x1="0.2" y1="0" x2="0.8" y2="1">' +
+                '<stop offset="0%" stop-color="white" stop-opacity="0.35"/>' +
+                '<stop offset="100%" stop-color="black" stop-opacity="0.12"/>' +
+            '</linearGradient>' +
+            '<radialGradient id="' + uid + 'h" cx="0.4" cy="0.35" r="0.5">' +
+                '<stop offset="0%" stop-color="white" stop-opacity="0.45"/>' +
+                '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
+            '</radialGradient>' +
+        '</defs>' +
+        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
+        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="black" opacity="0.1"/>' +
+        '<path d="' + PAWN_BODY + '" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+        '<path d="' + PAWN_BODY + '" fill="url(#' + uid + 'b)"/>' +
+        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="' + color + '"/>' +
+        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="white" opacity="0.15"/>' +
+        '<circle cx="50" cy="24" r="16" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+        '<circle cx="50" cy="24" r="16" fill="url(#' + uid + 'h)"/>' +
+        '<ellipse cx="44" cy="18" rx="5" ry="3.5" fill="white" opacity="0.4" transform="rotate(-20 44 18)"/>' +
         '</svg>'
     );
 }
@@ -99,7 +122,7 @@ function powSVG(attackerColor) {
     );
 }
 
-function arcKeyframes(dx, dy, spins) {
+function arcKeyframes(dx, dy, spins, endScale) {
     const N = 28;
     const peak = Math.max(120, Math.abs(dx) * 0.5, Math.abs(dy) * 0.4);
     const frames = [];
@@ -108,11 +131,15 @@ function arcKeyframes(dx, dy, spins) {
         const x = dx * t;
         const y = dy * t - peak * 4 * t * (1 - t);
         const rot = spins * 360 * t;
-        let opacity = 1;
-        if (t > 0.85) opacity = 1 - (t - 0.85) / 0.15;
+        // Scale from the on-board size to the home-seat size so the final
+        // frame matches the real token exactly.
+        const s = 1 + (endScale - 1) * t;
+        // No opacity fade: the pawn must fly all the way onto its home seat
+        // and stay solid until the overlay hands off to the real token.
+        // Fading it out mid-air made the pawn vanish, then pop back in at
+        // home — a visible gap. Landing solid reads as one continuous throw.
         frames.push({
-            transform: 'translate(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px) rotate(' + rot.toFixed(0) + 'deg)',
-            opacity: opacity,
+            transform: 'translate(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px) rotate(' + rot.toFixed(0) + 'deg) scale(' + s.toFixed(3) + ')',
             offset: t,
         });
     }
@@ -130,6 +157,10 @@ export function playKOCapture(opts) {
     const attackerColor = opts.attackerColor || '#cf4a3a';
     const defenderColor = opts.defenderColor || '#2f9456';
     const pawnSize = opts.pawnSize || 48;
+    // Final size relative to the start size. Home seats are ~one cell but not
+    // pixel-identical to a path cell, so the pawn scales to the real token's
+    // exact resting footprint as it lands. 1 = no size change.
+    const endScale = opts.endScale != null ? opts.endScale : 1;
     const duration = opts.duration || 1100;
     const attackFrom = opts.attackFrom || 'left';
     const shakeBoard = opts.shakeBoard !== false;
@@ -198,11 +229,10 @@ export function playKOCapture(opts) {
 
     const traj = document.createElement('div');
     traj.className = 'kocap-pawn-wrap';
-    const pawnW = pawnSize * 0.75;
     traj.style.cssText =
-        'left:' + (cap.x - pawnW / 2) + 'px;' +
-        'top:'  + (cap.y - pawnSize * 0.72) + 'px;' +
-        'width:' + pawnW + 'px;' +
+        'left:' + (cap.x - pawnSize / 2) + 'px;' +
+        'top:'  + (cap.y - pawnSize / 2) + 'px;' +
+        'width:' + pawnSize + 'px;' +
         'height:' + pawnSize + 'px;';
 
     const squash = document.createElement('div');
@@ -224,7 +254,7 @@ export function playKOCapture(opts) {
 
     const dx = home.x - cap.x;
     const dy = home.y - cap.y;
-    traj.animate(arcKeyframes(dx, dy, dy < 0 ? 2 : -2), {
+    traj.animate(arcKeyframes(dx, dy, dy < 0 ? 2 : -2, endScale), {
         duration: duration,
         easing: 'cubic-bezier(.4, 0, .3, 1)',
         fill: 'forwards',

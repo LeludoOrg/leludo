@@ -34,8 +34,50 @@ function playBeep({ startFreq, endFreq, startGain, duration }) {
     osc.stop(t + duration);
 }
 
+// Like playBeep but supports a scheduled delay, waveform, and a short
+// attack — used to build the multi-note launch/finish jingles.
+function playTone({ startFreq, endFreq, startGain, duration, delay = 0, type = "sine" }) {
+    if (_soundMuted) return;
+    const ctx = getAudioCtx();
+    const t = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(startFreq, t);
+    if (endFreq !== undefined) {
+        osc.frequency.exponentialRampToValueAtTime(endFreq, t + duration * 0.9);
+    }
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(startGain, t + Math.min(0.02, duration * 0.3));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    osc.start(t);
+    osc.stop(t + duration + 0.02);
+}
+
 export function playClickSound() {
     playBeep({ startFreq: 1200, endFreq: 800, startGain: 0.06, duration: 0.05 });
+}
+
+// Pawn leaving the yard — a playful rising "blast off" whoosh capped with
+// a bright little pop.
+export function playLaunchSound() {
+    if (_soundMuted) return;
+    playTone({ startFreq: 260, endFreq: 920, startGain: 0.10, duration: 0.28, type: "triangle" });
+    playTone({ startFreq: 520, endFreq: 1500, startGain: 0.05, duration: 0.30, type: "sine" });
+    playTone({ startFreq: 1500, endFreq: 2300, startGain: 0.06, duration: 0.09, delay: 0.22, type: "square" });
+}
+
+// Pawn reaching the finish — an ascending major arpeggio "ta-da!" with a
+// shimmer on top.
+export function playFinishSound() {
+    if (_soundMuted) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    notes.forEach((f, i) => {
+        playTone({ startFreq: f, startGain: 0.09, duration: 0.2, delay: i * 0.09, type: "triangle" });
+    });
+    playTone({ startFreq: 1568, endFreq: 2093, startGain: 0.05, duration: 0.38, delay: 0.33, type: "sine" });
 }
 
 export function playStepSound() {
