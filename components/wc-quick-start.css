@@ -219,6 +219,7 @@ wc-quick-start .seat-row-empty {
     align-items: center;
     gap: var(--space-3);
     border: 1px dashed color-mix(in srgb, var(--color-fg) 15%, transparent);
+    cursor: pointer;
 }
 
 wc-quick-start .seat-color-cycle {
@@ -229,7 +230,6 @@ wc-quick-start .seat-color-cycle {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    cursor: pointer;
     padding: 0;
     border: 0;
 }
@@ -239,12 +239,19 @@ wc-quick-start .seat-pawn {
     height: 78%;
 }
 
+wc-quick-start .seat-pawn-ghost {
+    opacity: 0.4;
+}
+
 wc-quick-start .seat-empty-color {
     width: 44px;
     height: 44px;
     border-radius: var(--radius-md);
     border: 2px dashed color-mix(in srgb, var(--color-fg) 20%, transparent);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 wc-quick-start .seat-body {
