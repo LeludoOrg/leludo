@@ -75,6 +75,49 @@ describe('playHomeArrival', () => {
         expect(called).toBe(true);
     });
 
+    it('flying pawn uses the real wc-token shape, square', () => {
+        // Regression: the overlay used to draw a chess-pawn shape in a
+        // 60x80 viewBox at 0.75 aspect — a different pawn than the game
+        // token. It must reuse wc-token's body path in a square 100x100
+        // viewBox so the arriving pawn matches the on-board token.
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        playHomeArrival({
+            container,
+            home: { x: 100, y: 100 },
+            source: { x: 60, y: 80 },
+            pawnSize: 40,
+            duration: 60,
+        });
+
+        const svg = container.querySelector('.hmarr-pawn-svg');
+        expect(svg.getAttribute('viewBox')).toBe('0 0 100 100');
+        expect(svg.getAttribute('width')).toBe(svg.getAttribute('height'));
+        expect(
+            svg.querySelector('path[d="M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z"]')
+        ).toBeTruthy();
+    });
+
+    it('shrinks the pawn to the finish-slot size via endScale', () => {
+        // Finish cells stack tokens far smaller than a cell. With no source
+        // (no travel) the pawn must settle pre-scaled to endScale so it
+        // matches the live token's tiny settled footprint.
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        playHomeArrival({
+            container,
+            home: { x: 100, y: 100 },
+            pawnSize: 40,
+            endScale: 0.25,
+            duration: 60,
+        });
+
+        const traj = container.querySelector('.hmarr-pawn-wrap');
+        expect(traj.style.transform).toContain('scale(0.250)');
+    });
+
     it('renders confetti + label + ring atoms inside overlay', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);

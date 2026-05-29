@@ -27,7 +27,12 @@ function injectCSS() {
         z-index: 1000;
         overflow: visible;
       }
-      .hmarr-pawn-wrap { position: absolute; transform-origin: center 80%; }
+      /* Outer wrap owns translate + the start→end size scale; origin
+         center keeps the pawn centered on its slot as it shrinks. */
+      .hmarr-pawn-wrap { position: absolute; transform-origin: center center; }
+      /* Inner element owns the settle squash; origin at the feet (the token
+         base sits at y=88/100 in the square viewBox). */
+      .hmarr-pawn-squash { transform-origin: center 86%; }
       .hmarr-pawn-svg  { display: block; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45)); }
 
       .hmarr-ring {
@@ -77,18 +82,36 @@ function injectCSS() {
     document.head.appendChild(style);
 }
 
+// Body + head path copied verbatim from components/wc-token.js so the
+// arriving pawn is the SAME shape as the real game token. Square
+// 0 0 100 100 viewBox (token aspect); the wrap is sized square too.
+const PAWN_BODY = 'M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z';
+let _gradUid = 0;
+
 function pawnSVG(color, size) {
-    const w = size * 0.75;
+    const uid = 'hmarr-grad-' + (++_gradUid);
     return (
-        '<svg class="hmarr-pawn-svg" viewBox="0 0 60 80" ' +
-        'width="' + w + '" height="' + size + '">' +
-        '<ellipse cx="30" cy="74" rx="17" ry="3" fill="rgba(0,0,0,0.55)" />' +
-        '<path fill="' + color + '" d="M 30 6 C 38 6, 42 13, 38 19 ' +
-        'C 40 21, 40 23, 36.5 24 C 39.5 27, 39.5 31, 35.5 32.5 ' +
-        'L 44 36 L 50 70 L 10 70 L 16 36 L 24.5 32.5 ' +
-        'C 20.5 31, 20.5 27, 23.5 24 C 20 23, 20 21, 22 19 ' +
-        'C 18 13, 22 6, 30 6 Z" />' +
-        '<ellipse cx="25" cy="13" rx="2.6" ry="3.6" fill="rgba(255,255,255,0.28)" />' +
+        '<svg class="hmarr-pawn-svg" viewBox="0 0 100 100" ' +
+        'width="' + size + '" height="' + size + '">' +
+        '<defs>' +
+            '<linearGradient id="' + uid + 'b" x1="0.2" y1="0" x2="0.8" y2="1">' +
+                '<stop offset="0%" stop-color="white" stop-opacity="0.35"/>' +
+                '<stop offset="100%" stop-color="black" stop-opacity="0.12"/>' +
+            '</linearGradient>' +
+            '<radialGradient id="' + uid + 'h" cx="0.4" cy="0.35" r="0.5">' +
+                '<stop offset="0%" stop-color="white" stop-opacity="0.45"/>' +
+                '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
+            '</radialGradient>' +
+        '</defs>' +
+        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
+        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="black" opacity="0.1"/>' +
+        '<path d="' + PAWN_BODY + '" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+        '<path d="' + PAWN_BODY + '" fill="url(#' + uid + 'b)"/>' +
+        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="' + color + '"/>' +
+        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="white" opacity="0.15"/>' +
+        '<circle cx="50" cy="24" r="16" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
+        '<circle cx="50" cy="24" r="16" fill="url(#' + uid + 'h)"/>' +
+        '<ellipse cx="44" cy="18" rx="5" ry="3.5" fill="white" opacity="0.4" transform="rotate(-20 44 18)"/>' +
         '</svg>'
     );
 }
@@ -115,45 +138,57 @@ export function playHomeArrival(opts) {
     const flashBoard = opts.flashBoard === true;
     const label      = opts.label || 'HOME!';
     const onComplete = opts.onComplete || function () {};
+    // Final size relative to the start size. Finish slots stack tokens far
+    // smaller than a cell, so the pawn must shrink as it lands to match the
+    // real settled token's size. 1 = no size change.
+    const endScale   = opts.endScale != null ? opts.endScale : 1;
 
     const root = el('hmarr-root');
     container.appendChild(root);
 
-    const pawnW = pawnSize * 0.75;
     const startX = source ? source.x : home.x;
     const startY = source ? source.y : home.y;
+    // Outer wrap: square, sized to the START token, centered on its center.
     const traj = el(
         'hmarr-pawn-wrap',
-        'left:' + (startX - pawnW / 2) + 'px;' +
-        'top:'  + (startY - pawnSize * 0.72) + 'px;' +
-        'width:' + pawnW + 'px;' +
+        'left:' + (startX - pawnSize / 2) + 'px;' +
+        'top:'  + (startY - pawnSize / 2) + 'px;' +
+        'width:' + pawnSize + 'px;' +
         'height:' + pawnSize + 'px;'
     );
-    traj.innerHTML = pawnSVG(color, pawnSize);
+    // Inner element carries the SVG + the settle squash, layered on top of
+    // the outer translate/scale.
+    const squash = el('hmarr-pawn-squash');
+    squash.innerHTML = pawnSVG(color, pawnSize);
+    traj.appendChild(squash);
     root.appendChild(traj);
 
     const travelMs = source ? Math.round(duration * 0.4) : 0;
     const dx = home.x - startX;
     const dy = home.y - startY;
+    const midScale = 1 + (endScale - 1) * 0.5;
 
     if (source) {
         traj.animate(
             [
-                { transform: 'translate(0,0)' },
-                { transform: 'translate(' + (dx * 0.5).toFixed(1) + 'px,' + (dy * 0.5 - 18).toFixed(1) + 'px)', offset: 0.5 },
-                { transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)' },
+                { transform: 'translate(0,0) scale(1)' },
+                { transform: 'translate(' + (dx * 0.5).toFixed(1) + 'px,' + (dy * 0.5 - 18).toFixed(1) + 'px) scale(' + midScale.toFixed(3) + ')', offset: 0.5 },
+                { transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(' + endScale.toFixed(3) + ')' },
             ],
             { duration: travelMs, easing: 'cubic-bezier(.4, 0, .25, 1)', fill: 'forwards' }
         );
+    } else {
+        // No travel: settle straight into the (already-scaled) finish slot.
+        traj.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(' + endScale.toFixed(3) + ')';
     }
 
     setTimeout(function () {
-        traj.animate(
+        squash.animate(
             [
-                { transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(1, 1)' },
-                { transform: 'translate(' + dx.toFixed(1) + 'px,' + (dy + 4).toFixed(1) + 'px) scale(1.08, 0.86)', offset: 0.25 },
-                { transform: 'translate(' + dx.toFixed(1) + 'px,' + (dy - 6).toFixed(1) + 'px) scale(0.94, 1.08)', offset: 0.55 },
-                { transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(1, 1)' },
+                { transform: 'scale(1, 1)' },
+                { transform: 'scale(1.08, 0.86)', offset: 0.25 },
+                { transform: 'scale(0.94, 1.08)', offset: 0.55 },
+                { transform: 'scale(1, 1)' },
             ],
             { duration: 480, easing: 'cubic-bezier(.3, 1.6, .4, 1)', fill: 'forwards' }
         );
