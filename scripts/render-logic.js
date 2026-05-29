@@ -389,6 +389,9 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
         // carries the pawn down to the live token's final footprint.
         pawnSize: src.width,
         endScale: finalRect.width / src.width,
+        // Confetti/ring/label spread is independent of the (tiny) finish-slot
+        // pawn so the burst flies out across the board, not a small cluster.
+        burstSize: cellSize * 2.5,
         duration: 1400,
         flashBoard: isLastPawn,
     }).then(() => {

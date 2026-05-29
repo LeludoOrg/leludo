@@ -134,6 +134,11 @@ export function playHomeArrival(opts) {
     const source     = opts.source || null;
     const color      = opts.color || '#d97644';
     const pawnSize   = opts.pawnSize || 48;
+    // Celebration radius for the confetti/ring/label. Decoupled from pawnSize
+    // because the arriving pawn shrinks to the tiny finish slot — scaling the
+    // burst off that size collapsed the confetti into a small cluster. Pass a
+    // generous value so the confetti actually flies out across the board.
+    const burstSize  = opts.burstSize || pawnSize;
     const duration   = opts.duration || 1400;
     const flashBoard = opts.flashBoard === true;
     const label      = opts.label || 'HOME!';
@@ -195,7 +200,7 @@ export function playHomeArrival(opts) {
     }, travelMs);
 
     setTimeout(function () {
-        playBurst(root, home, color, label, duration - travelMs, pawnSize);
+        playBurst(root, home, color, label, duration - travelMs, burstSize);
         if (flashBoard) playBoardFlash(root, color);
     }, travelMs);
 
@@ -208,7 +213,7 @@ export function playHomeArrival(opts) {
     });
 }
 
-function playBurst(root, home, color, label, ms, pawnSize) {
+function playBurst(root, home, color, label, ms, burstSize) {
     const r = el(
         'hmarr-ring',
         'left:' + (home.x - 6) + 'px;' +
@@ -227,14 +232,16 @@ function playBurst(root, home, color, label, ms, pawnSize) {
     );
 
     const palette = [color, color, color, '#ebe3d6', '#1a1410', '#f3c969'];
-    const N = 24;
+    const N = 32;
     for (let i = 0; i < N; i++) {
-        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.1;
-        const speed = pawnSize * (1.4 + Math.random() * 1.4);
+        // Full upward fan so confetti flies out across the board instead of
+        // bunching into a tight cluster near the finish slot.
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4;
+        const speed = burstSize * (1.4 + Math.random() * 1.4);
         const tx = Math.cos(a) * speed;
-        const ty = Math.sin(a) * speed * 0.9 + pawnSize * 0.4;
-        const w = 5 + Math.random() * 6;
-        const h = 8 + Math.random() * 8;
+        const ty = Math.sin(a) * speed * 0.9 + burstSize * 0.4;
+        const w = burstSize * 0.1 + Math.random() * burstSize * 0.1;
+        const h = burstSize * 0.16 + Math.random() * burstSize * 0.14;
         const rot = (Math.random() - 0.5) * 720;
         const c = palette[i % palette.length];
         const conf = el(
@@ -259,8 +266,8 @@ function playBurst(root, home, color, label, ms, pawnSize) {
     const labelEl = el(
         'hmarr-label',
         'left: 0; right: 0;' +
-        'top:' + (home.y - pawnSize * 1.5) + 'px;' +
-        'font-size:' + Math.round(pawnSize * 0.32) + 'px;' +
+        'top:' + (home.y - burstSize * 0.9) + 'px;' +
+        'font-size:' + Math.round(burstSize * 0.22) + 'px;' +
         'color:' + color + ';'
     );
     labelEl.innerHTML = '<span class="hmarr-label-chip">' + label + '</span>';
