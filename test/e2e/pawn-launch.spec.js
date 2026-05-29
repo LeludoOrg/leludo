@@ -3,20 +3,19 @@ import { test, expect } from '@playwright/test';
 /**
  * Regression for pawn-launch overlay.
  *
- * Bug: when a pawn left the yard via the launch animation, the
- * `home-slot-dot` element (dark fill + colored ring) was revealed
- * underneath the hidden live token, painting a visible dark "rounded
- * square" inside the player's yard while the overlay was mid-flight.
+ * Bug: when a pawn left the yard via the launch animation,
+ * playYardLaunch hid the whole source seat (`h-<player>-<token>`, the
+ * `.home-slot-dot`) for the duration of the overlay. The seat — the
+ * spot the pawn launched from — blinked out for ~1.2s and only
+ * reappeared (as an empty ring) when the promise resolved.
  *
- * Fix: playYardLaunch hides the source `h-<player>-<token>` slot for
- * the duration of the overlay, then restores its inline visibility
- * once the promise resolves. After resolve the slot is empty (token
- * has moved to the entry cell) so it shows the dot again, which is
- * the correct steady-state behaviour.
+ * Fix: hide ONLY the live token during the overlay and leave the seat
+ * dot visible. The empty ring is exactly how the seat should look once
+ * the pawn has launched, so it reads as "vacated" throughout the leap
+ * instead of disappearing and snapping back.
  *
  * The assertion below would have failed against the pre-fix code:
- * during the animation `h-0-0`'s computed visibility would have been
- * `visible` even though the live token was hidden.
+ * during the animation `h-0-0`'s inline visibility was `hidden`.
  *
  * Second bug, second assertion: the landing "GO!" chip had
  * `background: currentColor` AND `color: #1a1410` on the same rule,
@@ -28,7 +27,7 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Pawn launch overlay', () => {
-    test('hides yard slot dot while the launch overlay plays', async ({ page }) => {
+    test('keeps yard seat ring visible while the launch overlay plays', async ({ page }) => {
         // Start a normal game; positions default to all-in-yard.
         await page.goto('/?player=0');
         await page.locator('.new-game-btn').click();
@@ -50,25 +49,35 @@ test.describe('Pawn launch overlay', () => {
             });
         });
 
-        // During the overlay the slot must be hidden — otherwise the
-        // dot-ring shows underneath the hidden token (the bug).
+        // Mid-flight: the live token is hidden (overlay is playing) but
+        // the seat ring must STAY visible. Pre-fix the seat was force-
+        // hidden here, blinking the launch spot out of the yard.
         await expect.poll(async () =>
-            page.evaluate(() => document.getElementById('h-0-0').style.visibility)
-        ).toBe('hidden');
+            page.evaluate(() => {
+                const token = document.getElementById('p-0-0');
+                const seat = document.getElementById('h-0-0');
+                return {
+                    tokenHidden: token.style.visibility === 'hidden',
+                    seatHidden: seat.style.visibility === 'hidden',
+                };
+            })
+        ).toEqual({ tokenHidden: true, seatHidden: false });
 
-        // After the overlay resolves the inline visibility is restored
-        // (token has moved to its entry cell; the now-empty slot can
-        // legitimately show its dot again).
+        // Once the overlay resolves the token is reparented out of its
+        // yard seat onto the track (a `m<idx>` cell). We don't pin the
+        // exact cell — play continues after the launch, so the pawn may
+        // step further — only that it left the yard.
         await expect.poll(async () =>
-            page.evaluate(() => document.getElementById('h-0-0').style.visibility),
+            page.evaluate(() => document.getElementById('p-0-0').parentElement.id),
             { timeout: 5000 }
-        ).toBe('');
+        ).toMatch(/^m\d+$/);
 
-        // And the token actually landed where it was supposed to.
-        const parentId = await page.evaluate(
-            () => document.getElementById('p-0-0').parentElement.id
+        // The vacated seat is still present (never force-hidden) — this
+        // is the actual regression: the launch spot must not blink out.
+        const seatVisibility = await page.evaluate(
+            () => document.getElementById('h-0-0').style.visibility
         );
-        expect(parentId).toBe('m0');
+        expect(seatVisibility).not.toBe('hidden');
     });
 
     test('landing GO! chip uses player color for the pill, not the dark text color', async ({ page }) => {
