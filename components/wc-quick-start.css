@@ -219,6 +219,7 @@ wc-quick-start .seat-row-empty {
     align-items: center;
     gap: var(--space-3);
     border: 1px dashed color-mix(in srgb, var(--color-fg) 15%, transparent);
+    cursor: pointer;
 }
 
 wc-quick-start .seat-color-cycle {

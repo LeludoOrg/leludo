@@ -439,20 +439,26 @@ class QuickStart extends HTMLElement {
                         </div>
                     </div>`
                 const emptyEl = htmlToElement(emptyHtml)
-                emptyEl.querySelectorAll(".seat-add").forEach(btn => {
-                    btn.addEventListener("click", () => {
-                        playClickSound()
-                        const usedAll = this.seats.filter(s => s.active).map(s => s.colorIndex)
-                        const freeColor = [0,1,2,3].find(c => !usedAll.includes(c))
-                        if (freeColor === undefined) return
-                        const target = btn.dataset.add
-                        seat.active = true
-                        seat.type = target
-                        seat.colorIndex = freeColor
-                        seat.name = this._defaultName({ ...seat, type: target, colorIndex: freeColor }, i)
-                        this._renderSeats()
+                const rowEl = emptyEl.firstElementChild
+                const fillSeat = (target) => {
+                    playClickSound()
+                    const usedAll = this.seats.filter(s => s.active).map(s => s.colorIndex)
+                    const freeColor = [0,1,2,3].find(c => !usedAll.includes(c))
+                    if (freeColor === undefined) return
+                    seat.active = true
+                    seat.type = target
+                    seat.colorIndex = freeColor
+                    seat.name = this._defaultName({ ...seat, type: target, colorIndex: freeColor }, i)
+                    this._renderSeats()
+                }
+                rowEl.querySelectorAll(".seat-add").forEach(btn => {
+                    btn.addEventListener("click", (e) => {
+                        e.stopPropagation()
+                        fillSeat(btn.dataset.add)
                     })
                 })
+                // Tapping anywhere else on the row fills it as a Human seat.
+                rowEl.addEventListener("click", () => fillSeat("PLAYER"))
                 container.appendChild(emptyEl)
             }
         })
