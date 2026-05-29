@@ -56,28 +56,168 @@ function playTone({ startFreq, endFreq, startGain, duration, delay = 0, type = "
     osc.stop(t + duration + 0.02);
 }
 
+// Rich, warm voice: a pair of slightly detuned oscillators feeding a
+// lowpass that opens with the note, with an optional pitch glide and
+// vibrato. Detune + filter give it body instead of a thin beep.
+function playVoice({
+    startFreq,
+    endFreq,
+    startGain,
+    duration,
+    delay = 0,
+    type = "triangle",
+    detune = 8,
+    attack = 0.012,
+    lpStart,
+    lpEnd,
+    vibratoRate = 0,
+    vibratoDepth = 0,
+}) {
+    if (_soundMuted) return;
+    const ctx = getAudioCtx();
+    const t = ctx.currentTime + delay;
+    const end = t + duration;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(startGain, t + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(lpStart || Math.max(startFreq * 3, 1200), t);
+    if (lpEnd !== undefined) {
+        lp.frequency.exponentialRampToValueAtTime(lpEnd, end);
+    }
+
+    lp.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Optional vibrato shared by both detuned oscillators.
+    let lfo, lfoGain;
+    if (vibratoRate > 0 && vibratoDepth > 0) {
+        lfo = ctx.createOscillator();
+        lfoGain = ctx.createGain();
+        lfo.frequency.value = vibratoRate;
+        lfoGain.gain.value = vibratoDepth;
+        lfo.connect(lfoGain);
+    }
+
+    for (const cents of [-detune, detune]) {
+        const osc = ctx.createOscillator();
+        osc.type = type;
+        osc.detune.value = cents;
+        osc.frequency.setValueAtTime(startFreq, t);
+        if (endFreq !== undefined) {
+            osc.frequency.exponentialRampToValueAtTime(endFreq, end - 0.01);
+        }
+        if (lfoGain) lfoGain.connect(osc.frequency);
+        osc.connect(lp);
+        osc.start(t);
+        osc.stop(end + 0.02);
+    }
+
+    if (lfo) {
+        lfo.start(t);
+        lfo.stop(end + 0.02);
+    }
+}
+
+// Filtered-noise gust: a band-passed swept noise burst. Used for the
+// launch whoosh and the finish shimmer/cymbal swell.
+function playNoise({ duration, startGain, delay = 0, lpStart, lpEnd, hpFreq = 300, Q = 0.6 }) {
+    if (_soundMuted) return;
+    const ctx = getAudioCtx();
+    const t = ctx.currentTime + delay;
+    const end = t + duration;
+
+    const len = Math.ceil(ctx.sampleRate * duration);
+    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = hpFreq;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = Q;
+    lp.frequency.setValueAtTime(lpStart, t);
+    if (lpEnd !== undefined) lp.frequency.exponentialRampToValueAtTime(lpEnd, end);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(startGain, t + duration * 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(t);
+    src.stop(end + 0.02);
+}
+
 export function playClickSound() {
     playBeep({ startFreq: 1200, endFreq: 800, startGain: 0.06, duration: 0.05 });
 }
 
-// Pawn leaving the yard — a playful rising "blast off" whoosh capped with
-// a bright little pop.
+// Pawn leaving the yard — a clean, joyful "pop & zip": a soft rounded pop
+// for launch energy, a smooth pitch zip up as the pawn springs onto the
+// board, and a single bright bell ping at the top. Same warm triangle +
+// sine-bell palette as the finish fanfare so they feel like a set.
 export function playLaunchSound() {
     if (_soundMuted) return;
-    playTone({ startFreq: 260, endFreq: 920, startGain: 0.10, duration: 0.28, type: "triangle" });
-    playTone({ startFreq: 520, endFreq: 1500, startGain: 0.05, duration: 0.30, type: "sine" });
-    playTone({ startFreq: 1500, endFreq: 2300, startGain: 0.06, duration: 0.09, delay: 0.22, type: "square" });
+    // Rounded pop — a low triangle blip that gives the launch a soft body
+    // without the buzzy grit of a saw/square.
+    playVoice({
+        startFreq: 230, endFreq: 150, startGain: 0.10, duration: 0.09,
+        type: "triangle", detune: 5, attack: 0.004, lpStart: 900, lpEnd: 500,
+    });
+    // Smooth zip up — pure triangle glide, the satisfying "spring onto the
+    // board" rise. No vibrato, so it reads clean instead of wobbly.
+    playVoice({
+        startFreq: 360, endFreq: 1180, startGain: 0.09, duration: 0.2, delay: 0.03,
+        type: "triangle", detune: 8, attack: 0.01, lpStart: 1400, lpEnd: 4200,
+    });
+    // Bright bell ping at the apex — one clear sparkle, no harshness.
+    playTone({ startFreq: 1760, startGain: 0.06, duration: 0.22, delay: 0.18, type: "sine" });
 }
 
-// Pawn reaching the finish — an ascending major arpeggio "ta-da!" with a
-// shimmer on top.
+// Pawn reaching the finish — a triumphant little fanfare: a bass thump
+// anchors a warm major chord that blooms open, an octave hop tops it off,
+// and a cascade of bell sparkles + a soft cymbal swell crown the arrival.
 export function playFinishSound() {
     if (_soundMuted) return;
-    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
-    notes.forEach((f, i) => {
-        playTone({ startFreq: f, startGain: 0.09, duration: 0.2, delay: i * 0.09, type: "triangle" });
+    // Bass root thump anchors the chord.
+    playVoice({
+        startFreq: 130.81, startGain: 0.10, duration: 0.5, type: "sawtooth",
+        detune: 6, lpStart: 400, lpEnd: 900,
     });
-    playTone({ startFreq: 1568, endFreq: 2093, startGain: 0.05, duration: 0.38, delay: 0.33, type: "sine" });
+    // Warm major triad blooming open, then the octave hop for the "ta-daa!".
+    const chord = [
+        { f: 523.25, d: 0.0 },  // C5
+        { f: 659.25, d: 0.08 }, // E5
+        { f: 783.99, d: 0.16 }, // G5
+        { f: 1046.5, d: 0.30 }, // C6 — the lift
+    ];
+    chord.forEach(({ f, d }) => {
+        playVoice({
+            startFreq: f, startGain: 0.085, duration: 0.55 - d, delay: d,
+            type: "triangle", detune: 9, lpStart: f * 2, lpEnd: f * 5,
+        });
+    });
+    // Soft cymbal swell on the hit.
+    playNoise({ duration: 0.5, startGain: 0.035, delay: 0.28, lpStart: 6000, lpEnd: 9000, hpFreq: 4000, Q: 0.4 });
+    // Descending bell sparkle cascade crowning the chord.
+    [2093, 1568, 1318.5].forEach((f, i) => {
+        playTone({ startFreq: f, startGain: 0.05, duration: 0.3, delay: 0.34 + i * 0.07, type: "sine" });
+    });
 }
 
 export function playStepSound() {
