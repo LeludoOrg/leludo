@@ -1,5 +1,5 @@
 import {getMarkIndex} from "./index.js";
-import {playStepSound, playDiceSound} from "./audio.js";
+import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "./nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
@@ -378,6 +378,7 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
     const isLastPawn = settledCount >= 4;
 
     element.style.visibility = 'hidden';
+    playFinishSound();
     return playHomeArrival({
         container: boardWrap,
         home: homeCenter,
@@ -434,6 +435,7 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     // launched — so it reads as "vacated" throughout the leap instead of
     // blinking out and reappearing when the promise resolves.
 
+    playLaunchSound();
     return playPawnLaunch({
         container: boardWrap,
         yard: yardCenter,
