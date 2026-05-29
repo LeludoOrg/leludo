@@ -96,6 +96,42 @@ describe('runGame', () => {
         expect(result.lastRank).toBe(2);
     });
 
+    // Regression: a bot that finished its 4th/last token used to be granted
+    // an extra turn (the finished-trip "play again" rule) even though it had
+    // no tokens left to move — so it rolled the dice one more pointless time
+    // before the turn advanced. A fully-finished player must never roll again.
+    it('finished player never rolls again while the game continues', () => {
+        const types = ['BOT', 'BOT', 'BOT', undefined];
+        // Bot 0 one roll from finishing its last token; others still home, so
+        // the game keeps going after bot 0 finishes (2 bots remain).
+        const initial = [
+            [56, 56, 56, 51],
+            [-1, -1, -1, -1],
+            [-1, -1, -1, -1],
+            null,
+        ];
+        const result = runGame({
+            playerTypes: types,
+            initialPositions: initial,
+            startingPlayerIndex: 0,
+            rng: makeRng(4),
+            maxTurns: 20000,
+        });
+
+        // Replay the event log, tracking whose turn it is and who has finished.
+        let current = result.events[0].currentPlayerIndex;
+        const finished = new Set();
+        for (const ev of result.events) {
+            if (ev.type === 'DICE_ROLLED') {
+                expect(finished.has(current)).toBe(false);
+            } else if (ev.type === 'PLAYER_FINISHED') {
+                finished.add(ev.playerIndex);
+            } else if (ev.type === 'TURN_ADVANCED') {
+                current = ev.nextPlayerIndex;
+            }
+        }
+    });
+
     describe('invariants across many seeds', () => {
         const seeds = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
