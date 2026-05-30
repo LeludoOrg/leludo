@@ -2,7 +2,6 @@ import {
     dispatch,
     COMMANDS,
     pauseGameLogic,
-    resumeGameLogic,
     isGameLogicPaused,
     isSoundMuted,
     setSoundMuted,
@@ -194,7 +193,11 @@ function closeSettings() {
     const overlay = document.getElementById('settings-overlay');
     if (overlay) overlay.classList.add('hidden');
     if (_pausedBySettings) {
-        resumeGameLogic();
+        // Route through the RESUME command (not resumeGameLogic directly) so
+        // GAME_RESUMED_FROM_PAUSE fires and the bot listener re-derives any
+        // bot/assist action that was dropped while paused — otherwise closing
+        // settings mid bot-turn can leave the game frozen.
+        dispatch({ type: COMMANDS.RESUME });
         _pausedBySettings = false;
     }
 }
