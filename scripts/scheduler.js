@@ -38,3 +38,12 @@ export function resumeGameLogic() {
 }
 
 export function _scheduleTurnForTest(fn, delay) { return scheduleTurn(fn, delay); }
+
+// Test-only: clear all scheduler state (in-flight timers, stashed resume
+// continuation, paused flag) so suites don't leak timers across cases.
+export function _resetSchedulerForTest() {
+    for (const id of _pendingTimers.keys()) clearTimeout(id);
+    _pendingTimers.clear();
+    _pendingResume = null;
+    _paused = false;
+}

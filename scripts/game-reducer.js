@@ -252,19 +252,22 @@ export function reducer(state, event) {
             return state;
         }
 
-        case EVENTS.GAME_PAUSED: {
-            state.phaseBeforePause = state.phase;
-            state.phase = 'PAUSED';
+        // Pause/resume MUST NOT touch state.phase. Pausing is enforced
+        // entirely by the scheduler's _paused flag + the isGameLogicPaused()
+        // guards in rollDice/selectToken. phase always reflects the TRUE game
+        // state so that resumeAutoplay (in bot-listener) can re-derive the
+        // pending action from it on resume.
+        //
+        // The old code stashed phase and swapped it to 'PAUSED', then restored
+        // it on resume. That clobbered legitimate phase advances made by
+        // in-flight animations that complete DURING the pause (their .then
+        // chains emit MOVABLE_TOKENS_DETERMINED / TURN_ADVANCED, which advance
+        // phase past the stale snapshot). Restoring the snapshot rewound phase
+        // to ROLLING/ANIMATING, which resumeAutoplay can't act on — the bot
+        // froze and the game got stuck. These events are now reducer no-ops.
+        case EVENTS.GAME_PAUSED:
+        case EVENTS.GAME_RESUMED_FROM_PAUSE:
             return state;
-        }
-
-        case EVENTS.GAME_RESUMED_FROM_PAUSE: {
-            if (state.phaseBeforePause) {
-                state.phase = state.phaseBeforePause;
-                state.phaseBeforePause = null;
-            }
-            return state;
-        }
 
         case EVENTS.ASSIST_FLAG_CHANGED: {
             state.assistFlags[event.flag] = event.value;

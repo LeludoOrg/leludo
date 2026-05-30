@@ -5,6 +5,9 @@ import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
 
+// Finish-cell DOM id, e.g. "p0s6" — the home-stretch goal square per player.
+const FINISH_CELL_ID_RE = /^p\ds6$/;
+
 /**
  *
  * @param {number} playerIndex
@@ -203,7 +206,7 @@ export function updateCellStacking(cell) {
     const badge = cell.querySelector('.stack-badge');
     if (badge) badge.remove();
 
-    if (/^p\ds6$/.test(cell.id)) {
+    if (FINISH_CELL_ID_RE.test(cell.id)) {
         applyFinishStacking(cell, tokens);
         return;
     }
@@ -521,7 +524,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             playStepSound();
             const isFinalStep = stepIndex === path.length - 1;
             const targetId = path[stepIndex];
-            const isFinishCell = /^p\ds6$/.test(targetId);
+            const isFinishCell = FINISH_CELL_ID_RE.test(targetId);
 
             if (isFinalStep && isFinishCell) {
                 const targetContainer = document.getElementById(targetId);
@@ -656,7 +659,7 @@ function renderPauseScoreboard() {
     _playerTypes.forEach((type, idx) => {
         if (!type) return
         const finished = _getFinishedCount ? _getFinishedCount(idx) : 0
-        const name = (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`
+        const name = playerDisplayName(idx)
         const isActive = idx === currentIdx
         const dotCls = isActive ? `player-bg-${idx}` : 'pm-finish-dot--idle'
         const tag = isActive ? `<span class="pm-upnext">Up next</span>` : ''
@@ -716,8 +719,49 @@ let turnCount = 0;
 
 let _playerTypes = null;
 let _playerNames = ['', '', '', ''];
+
+// Trimmed display name for a seat, falling back to "P1".."P4" when the
+// stored name is blank/missing. Shared by the pause scoreboard and the
+// corner pills so the fallback stays identical.
+function playerDisplayName(idx) {
+    return (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`;
+}
+
 let _getCurrentPlayerIndex = null;
 let _getFinishedCount = null;
+
+// Last dice value each player rolled, shown faded in their idle corner so a
+// player can still see what their roll was after the turn moves on quickly —
+// e.g. a third-six forfeit or a roll with no movable pawn. null = not rolled
+// yet this game.
+let _lastRollByPlayer = [null, null, null, null];
+
+export function setLastRoll(playerIndex, value) {
+    if (playerIndex >= 0 && playerIndex < 4) _lastRollByPlayer[playerIndex] = value;
+}
+
+export function resetLastRolls() {
+    _lastRollByPlayer = [null, null, null, null];
+}
+
+// Pip layout per face value (grid row/column, 3x3 grid) — mirrors wc-dice.
+const DIE_PIPS = {
+    1: [[2, 2]],
+    2: [[1, 1], [3, 3]],
+    3: [[1, 1], [2, 2], [3, 3]],
+    4: [[1, 1], [1, 3], [3, 1], [3, 3]],
+    5: [[1, 1], [1, 3], [2, 2], [3, 1], [3, 3]],
+    6: [[1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3]],
+};
+
+// Reuses the exact live-dice classes (.die / .dice-face / .dice-dot) so the
+// faded copy inherits identical light/dark styling — only one face, no id.
+function staticDieMarkup(value) {
+    const pips = (DIE_PIPS[value] || [])
+        .map(([r, c]) => `<div class="dice-dot" style="grid-row:${r};grid-column:${c};"></div>`)
+        .join('');
+    return `<div class="die"><div class="dice-face">${pips}</div></div>`;
+}
 
 export function initRailDeps(pt, getCpi, getFC) {
     _playerTypes = pt;
@@ -741,7 +785,7 @@ function pillMarkup(idx, finished, active) {
     const type = _playerTypes ? _playerTypes[idx] : null;
     const glyph = `<span class="corner-pill-glyph">${playerTypeGlyph(type, 14)}</span>`;
     const cls = active ? `corner-pill corner-pill--active player-bg-${idx}` : `corner-pill`;
-    const name = (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`;
+    const name = playerDisplayName(idx);
     const safe = escapeHtml(name);
     return `
         <div class="${cls}">
@@ -784,7 +828,13 @@ export function updateCornerWidgets() {
                 diceBtn.appendChild(dice);
             }
         } else {
-            diceBtn.className = `corner-dice corner-dice--idle player-bg-${idx}`;
+            const lastRoll = _lastRollByPlayer[idx];
+            if (lastRoll) {
+                diceBtn.className = `corner-dice corner-dice--rolled player-border-${idx}`;
+                diceBtn.innerHTML = staticDieMarkup(lastRoll);
+            } else {
+                diceBtn.className = `corner-dice corner-dice--idle player-bg-${idx}`;
+            }
         }
 
         if (layout === 'TD') {

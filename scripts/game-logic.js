@@ -74,7 +74,7 @@ export function getTokenNewPosition(currentPosition, diceRoll) {
  */
 export function findCapturedOpponents(playerIndex, tokenPosition, tokenPositions) {
     if (isSafePosition(tokenPosition)) {
-        return new Array(0)
+        return []
     }
 
     const tokenMarkIndex = getMarkIndex(playerIndex, tokenPosition);
@@ -98,7 +98,7 @@ export function findCapturedOpponents(playerIndex, tokenPosition, tokenPositions
     for (let pi = 0; pi < otherPlayerTokensOnThatMarkIndex.length; pi++) {
         const pt = otherPlayerTokensOnThatMarkIndex[pi];
         if (pt.length === 2) {
-            otherPlayerTokensOnThatMarkIndex[pi] = new Array(0)
+            otherPlayerTokensOnThatMarkIndex[pi] = []
         }
     }
 
@@ -131,7 +131,12 @@ export function getPlayerTypes(quickStartId) {
         }
     }
 
-    const chosenColors = parts.slice(3).filter(s => s !== "").map(Number)
+    // quickStartId carries each active seat's locked colour, by count:
+    // `qs,humanCount,botCount,<humanColours...>,<botColours...>`. Human
+    // colours come first (one per human, in seat order), then bot colours.
+    // Slicing by count keeps the two groups unambiguous.
+    const humanColors = parts.slice(3, 3 + humanCount).filter(s => s !== "").map(Number)
+    const botColors = parts.slice(3 + humanCount, 3 + humanCount + botCount).filter(s => s !== "").map(Number)
     const preferredPositions = HUMAN_PREFERRED_POSITIONS
 
     const playerTypes = new Array(4).fill(undefined)
@@ -139,7 +144,7 @@ export function getPlayerTypes(quickStartId) {
     const usedColors = new Set()
     const usedPositions = new Set()
 
-    chosenColors.forEach((color, i) => {
+    humanColors.forEach((color, i) => {
         const pos = preferredPositions[i]
         playerTypes[pos] = "PLAYER"
         colorMap[pos] = color
@@ -147,22 +152,32 @@ export function getPlayerTypes(quickStartId) {
         usedPositions.add(pos)
     })
 
+    // Bots keep their assigned seat colour (botColors, in seat order). Older
+    // saved games predate bot-colour encoding, so fall back to leftover
+    // colours in board order — the historical behaviour — for those.
+    const haveBotColors = botColors.length === botCount && botCount > 0
     const remainingColors = [0, 1, 2, 3].filter(c => !usedColors.has(c))
     let botIdx = 0
-    let colorIdx = 0
+    let leftoverIdx = 0
 
     for (let pos = 0; pos < 4 && botIdx < botCount; pos++) {
         if (!usedPositions.has(pos)) {
             playerTypes[pos] = "BOT"
-            colorMap[pos] = remainingColors[colorIdx++]
+            const color = haveBotColors ? botColors[botIdx] : remainingColors[leftoverIdx++]
+            colorMap[pos] = color
+            usedColors.add(color)
             usedPositions.add(pos)
             botIdx++
         }
     }
 
+    // Empty board positions (no player) still need a colour so applyColorMap
+    // has a full 4-entry map; fill them with whatever colours are left over.
+    const fillColors = [0, 1, 2, 3].filter(c => !usedColors.has(c))
+    let fillIdx = 0
     for (let pos = 0; pos < 4; pos++) {
         if (colorMap[pos] === -1) {
-            colorMap[pos] = remainingColors[colorIdx++]
+            colorMap[pos] = fillColors[fillIdx++]
         }
     }
 

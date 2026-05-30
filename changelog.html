@@ -50,6 +50,186 @@
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.19</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed the long-standing pause/resume freeze for good: pausing while the dice or a pawn was still animating could leave a bot stuck (you had to tap for it) or lock the game up entirely. Pause/resume no longer rewinds the game state, so play always picks up exactly where it left off.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.18</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: de-duplicated the player-name fallback used by the pause scoreboard and corner pills into one shared helper. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.17</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: extracted the shared pawn-shape SVG into one module so the launch, capture, and home-arrival overlays can never drift, and de-duplicated game-reset DOM helpers. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.16</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: removed three unused UI components and their stylesheets that were never rendered. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.15</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: removed an unused style rule and de-duplicated a couple of small bits of game-rendering logic. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.14</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Bots now keep their assigned seat colour. Before, a bot could grab a leftover colour (often red) instead of the colour locked to its seat &mdash; so a bot set up in the gold or blue seat might show up red on the board. Each bot now plays in exactly the colour shown on its seat.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.13</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Pausing or opening settings during a bot's turn no longer leaves the game stuck. Before, if you paused while a bot was mid-roll or mid-move, the bot could freeze on resume &mdash; sometimes only continuing after you tapped its dice or pawn, sometimes locking up entirely. The game now correctly picks the bot's turn back up when you resume.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.12</div>
+                        <div class="cl-entry-date">May 30, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Tapping a button (like the settings gear) no longer flashes a blue highlight block on touch devices. Disabled the browser's default tap-highlight so buttons only show their own hover/press styling.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.11</div>
+                        <div class="cl-entry-date">May 29, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Each player's corner now keeps their last dice roll on screen as a faded die. Before, a forfeited turn (three sixes in a row) or a roll with no movable pawn would flash by so fast you couldn't tell what happened — now the value stays visible until that player rolls again.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.18.10</div>
+                        <div class="cl-entry-date">May 29, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed a bot turn bug: after a bot landed its 4th and final pawn on the finish, it would roll the dice one more pointless time before play moved on. A player who has finished all their pawns now passes the turn immediately.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
                         <div class="cl-entry-version">v0.18.9</div>
                         <div class="cl-entry-date">May 29, 2026</div>
                     </div>

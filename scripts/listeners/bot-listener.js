@@ -12,7 +12,7 @@
 
 import { EVENTS, subscribe, dispatch } from '../game-store.js';
 import { COMMANDS } from '../command-handler.js';
-import { state } from '../game-state.js';
+import { state, PHASES } from '../game-state.js';
 import { scheduleTurn, isGameLogicPaused } from '../scheduler.js';
 import { pickBestMove, PERSONALITIES } from '../bot-ai.js';
 import { allTokensInHome, getUniqueTokenPositions } from '../index.js';
@@ -86,6 +86,31 @@ function maybeAutoSelect(movableTokenIndexes) {
     }
 }
 
+// Re-derive the pending bot/assist action from the current phase. Dice and
+// token-move animations are NOT pause-aware (they don't go through
+// scheduleTurn), so when a player pauses or opens settings mid-animation the
+// animation completes during the pause and emits its follow-up event
+// (MOVABLE_TOKENS_DETERMINED / TURN_ADVANCED) while _paused is true —
+// maybeAutoRoll/maybeAutoSelect early-return and silently drop it. The
+// scheduler's _pendingResume only recovers in-flight scheduleTurn timers, not
+// these dropped events, so resume would otherwise leave the bot frozen (game
+// stuck, or only unblockable by clicking the bot's dice/pawn).
+//
+// On resume the reducer has already advanced phase to the correct AWAITING_*
+// state, so we just re-trigger the matching action. ROLLING/ANIMATING mean an
+// animation is still running and will emit normally once unpaused, so we leave
+// those alone. If _pendingResume already re-fired the same continuation, that
+// dispatch synchronously moves phase off AWAITING_* before this runs, so the
+// guard below makes the re-derivation a no-op — no double roll/select.
+function resumeAutoplay() {
+    if (isGameLogicPaused()) return;
+    if (state.phase === PHASES.AWAITING_ROLL) {
+        maybeAutoRoll();
+    } else if (state.phase === PHASES.AWAITING_SELECTION) {
+        maybeAutoSelect(state.movableTokenIndexes);
+    }
+}
+
 export function installBotListener() {
     subscribe((event) => {
         switch (event.type) {
@@ -97,6 +122,9 @@ export function installBotListener() {
                 break;
             case EVENTS.MOVABLE_TOKENS_DETERMINED:
                 maybeAutoSelect(event.tokenIndexes);
+                break;
+            case EVENTS.GAME_RESUMED_FROM_PAUSE:
+                resumeAutoplay();
                 break;
         }
     });

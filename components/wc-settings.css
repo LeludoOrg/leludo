@@ -29,13 +29,6 @@
     gap: var(--space-6);
 }
 
-#settings-overlay .settings-group-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-}
-
 #settings-overlay .settings-group-card {
     padding: 0 14px;
 }
