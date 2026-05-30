@@ -475,6 +475,7 @@ class QuickStart extends HTMLElement {
         const humanCount = humans.length
         const botCount = bots.length
         const humanColors = humans.map(s => s.colorIndex)
+        const botColors = bots.map(s => s.colorIndex)
 
         const namesByPlayerIndex = new Array(4).fill('')
         if (humanCount === 4) {
@@ -496,7 +497,9 @@ class QuickStart extends HTMLElement {
             }
         }
 
-        const quickStartId = `qs,${humanCount},${botCount},${humanColors.join(",")}`
+        // Encode human colours then bot colours, both in seat order, so each
+        // bot keeps its locked seat colour instead of grabbing a leftover one.
+        const quickStartId = `qs,${humanCount},${botCount},${[...humanColors, ...botColors].join(",")}`
         dispatch({ type: COMMANDS.START_GAME, quickStartId, namesByPlayerIndex })
     }
 
