@@ -65,15 +65,33 @@ describe('phase machine', () => {
         expect(s.phase).toBe(PHASES.GAME_ENDED);
     });
 
-    it('GAME_PAUSED stashes phase, GAME_RESUMED_FROM_PAUSE restores', () => {
+    // Regression: pause/resume MUST NOT mutate phase. The old code swapped
+    // phase to 'PAUSED' and restored a snapshot on resume, which clobbered
+    // legitimate phase advances made by in-flight animations that complete
+    // DURING the pause — rewinding phase to ROLLING/ANIMATING left the bot
+    // frozen (game stuck) on resume. Pause is enforced by the scheduler's
+    // _paused flag, not by phase.
+    it('GAME_PAUSED / GAME_RESUMED_FROM_PAUSE leave phase untouched', () => {
         const s = initialGameState();
         s.phase = PHASES.AWAITING_SELECTION;
         reducer(s, { type: EVENTS.GAME_PAUSED });
-        expect(s.phase).toBe(PHASES.PAUSED);
-        expect(s.phaseBeforePause).toBe(PHASES.AWAITING_SELECTION);
+        expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
         reducer(s, { type: EVENTS.GAME_RESUMED_FROM_PAUSE });
         expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
-        expect(s.phaseBeforePause).toBeNull();
+    });
+
+    // The dangerous case the old phase-restore broke: an animation finishes
+    // while paused and advances phase (here AWAITING_ROLL -> AWAITING_SELECTION
+    // via MOVABLE_TOKENS_DETERMINED). Resume must keep the advanced phase so
+    // the bot listener can act on it — not rewind to the pre-pause snapshot.
+    it('phase advanced during pause survives resume', () => {
+        const s = initialGameState();
+        s.phase = PHASES.ROLLING;
+        reducer(s, { type: EVENTS.GAME_PAUSED });
+        reducer(s, { type: EVENTS.MOVABLE_TOKENS_DETERMINED, playerIndex: 0, tokenIndexes: [1] });
+        expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
+        reducer(s, { type: EVENTS.GAME_RESUMED_FROM_PAUSE });
+        expect(s.phase).toBe(PHASES.AWAITING_SELECTION);
     });
 });
 

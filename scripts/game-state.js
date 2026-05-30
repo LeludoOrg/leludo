@@ -18,7 +18,6 @@ export const PHASES = Object.freeze({
     ANIMATING: 'ANIMATING',
     TURN_TRANSITION: 'TURN_TRANSITION',
     GAME_ENDED: 'GAME_ENDED',
-    PAUSED: 'PAUSED',
 });
 
 export function initialGameState() {
@@ -59,7 +58,6 @@ export function initialGameState() {
         },
 
         phase: PHASES.AWAITING_ROLL,
-        phaseBeforePause: null,
         movableTokenIndexes: [],
     };
 }
