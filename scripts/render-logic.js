@@ -5,6 +5,9 @@ import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
 
+// Finish-cell DOM id, e.g. "p0s6" — the home-stretch goal square per player.
+const FINISH_CELL_ID_RE = /^p\ds6$/;
+
 /**
  *
  * @param {number} playerIndex
@@ -203,7 +206,7 @@ export function updateCellStacking(cell) {
     const badge = cell.querySelector('.stack-badge');
     if (badge) badge.remove();
 
-    if (/^p\ds6$/.test(cell.id)) {
+    if (FINISH_CELL_ID_RE.test(cell.id)) {
         applyFinishStacking(cell, tokens);
         return;
     }
@@ -521,7 +524,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             playStepSound();
             const isFinalStep = stepIndex === path.length - 1;
             const targetId = path[stepIndex];
-            const isFinishCell = /^p\ds6$/.test(targetId);
+            const isFinishCell = FINISH_CELL_ID_RE.test(targetId);
 
             if (isFinalStep && isFinishCell) {
                 const targetContainer = document.getElementById(targetId);

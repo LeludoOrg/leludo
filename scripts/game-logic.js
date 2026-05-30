@@ -74,7 +74,7 @@ export function getTokenNewPosition(currentPosition, diceRoll) {
  */
 export function findCapturedOpponents(playerIndex, tokenPosition, tokenPositions) {
     if (isSafePosition(tokenPosition)) {
-        return new Array(0)
+        return []
     }
 
     const tokenMarkIndex = getMarkIndex(playerIndex, tokenPosition);
@@ -98,7 +98,7 @@ export function findCapturedOpponents(playerIndex, tokenPosition, tokenPositions
     for (let pi = 0; pi < otherPlayerTokensOnThatMarkIndex.length; pi++) {
         const pt = otherPlayerTokensOnThatMarkIndex[pi];
         if (pt.length === 2) {
-            otherPlayerTokensOnThatMarkIndex[pi] = new Array(0)
+            otherPlayerTokensOnThatMarkIndex[pi] = []
         }
     }
 
