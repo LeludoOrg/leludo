@@ -43,6 +43,7 @@ const PRECACHE = [
   'scripts/ko-capture.js',
   'scripts/home-arrival.js',
   'scripts/pawn-launch.js',
+  'scripts/pawn-shape.js',
   'scripts/render-logic.js',
   'scripts/scheduler.js',
   'scripts/turn-rules.js',
