@@ -216,6 +216,49 @@ describe('getPlayerTypes', () => {
         expect(result.colorMap[2]).toBe(0);
         expect(result.colorMap[0]).toBe(1);
     });
+
+    // Regression: a bot used to grab a leftover colour by board order instead
+    // of its locked seat colour, so a bot in seat 2 (gold) would render red
+    // when red was free. quickStartId now carries bot colours after the human
+    // colours; the bot must keep its seat colour.
+    it('bot keeps its seat colour instead of grabbing a leftover (human seat 1, bot seat 2)', () => {
+        // 1 human colour=1 (seat 1, green), 1 bot colour=2 (seat 2, gold).
+        const result = getPlayerTypes('qs,1,1,1,2');
+        const botPos = result.playerTypes.indexOf('BOT');
+        expect(botPos).toBeGreaterThanOrEqual(0);
+        expect(result.colorMap[botPos]).toBe(2); // gold, NOT red(0)
+        expect(result.colorMap[botPos]).not.toBe(0);
+    });
+
+    // Regression: an empty seat between two bots used to shift the leftover
+    // colour list so the second bot took the empty seat's colour.
+    it('two bots keep their seat colours with an empty seat interleaved', () => {
+        // human seat 0 (red=0); bots seat 1 (green=1) and seat 3 (blue=3);
+        // seat 2 (gold) left empty.
+        const result = getPlayerTypes('qs,1,2,0,1,3');
+        // bots fill the first free board positions (0, then 1) in seat order.
+        expect(result.colorMap[0]).toBe(1); // first bot → green
+        expect(result.colorMap[1]).toBe(3); // second bot → blue (not gold)
+        expect(result.colorMap[2]).toBe(0); // human at preferred pos 2 → red
+        // colourMap is a complete permutation of 0..3.
+        expect([...result.colorMap].sort()).toEqual([0, 1, 2, 3]);
+    });
+
+    it('all bots keep their seat colours', () => {
+        const result = getPlayerTypes('qs,0,4,0,1,2,3');
+        expect(result.playerTypes).toEqual(['BOT', 'BOT', 'BOT', 'BOT']);
+        expect(result.colorMap).toEqual([0, 1, 2, 3]);
+    });
+
+    // Backward-compat: saved games created before bot-colour encoding have no
+    // bot colours in their quickStartId; getPlayerTypes must still produce a
+    // valid, complete colour map (historical leftover behaviour).
+    it('old quickStartId without bot colours still yields a complete colour map', () => {
+        const result = getPlayerTypes('q,1,3,1');
+        expect(result.playerTypes.filter(t => t === 'BOT')).toHaveLength(3);
+        expect(result.colorMap[2]).toBe(1); // human keeps its colour
+        expect([...result.colorMap].sort()).toEqual([0, 1, 2, 3]);
+    });
 });
 
 describe('getUniqueTokenPositions', () => {
