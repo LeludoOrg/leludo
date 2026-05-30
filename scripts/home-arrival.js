@@ -1,4 +1,5 @@
-// Home Arrival overlay. Standalone — no deps. Self-contained DOM/style.
+// Home Arrival overlay. Self-contained DOM/style; shares the pawn shape
+// with the other overlays via pawn-shape.js.
 // Pawn slides from approach cell into finish slot, settles with a bounce,
 // then confetti burst + 'HOME!' chip plays on top.
 //
@@ -13,6 +14,8 @@
 //   label,                 string on the chip. default 'HOME!'
 //   onComplete,            optional callback fired after cleanup
 // }) → Promise<void>
+
+import { pawnSVG } from "./pawn-shape.js";
 
 const STYLE_ID = 'hmarr-styles';
 
@@ -82,40 +85,6 @@ function injectCSS() {
     document.head.appendChild(style);
 }
 
-// Body + head path copied verbatim from components/wc-token.js so the
-// arriving pawn is the SAME shape as the real game token. Square
-// 0 0 100 100 viewBox (token aspect); the wrap is sized square too.
-const PAWN_BODY = 'M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z';
-let _gradUid = 0;
-
-function pawnSVG(color, size) {
-    const uid = 'hmarr-grad-' + (++_gradUid);
-    return (
-        '<svg class="hmarr-pawn-svg" viewBox="0 0 100 100" ' +
-        'width="' + size + '" height="' + size + '">' +
-        '<defs>' +
-            '<linearGradient id="' + uid + 'b" x1="0.2" y1="0" x2="0.8" y2="1">' +
-                '<stop offset="0%" stop-color="white" stop-opacity="0.35"/>' +
-                '<stop offset="100%" stop-color="black" stop-opacity="0.12"/>' +
-            '</linearGradient>' +
-            '<radialGradient id="' + uid + 'h" cx="0.4" cy="0.35" r="0.5">' +
-                '<stop offset="0%" stop-color="white" stop-opacity="0.45"/>' +
-                '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
-            '</radialGradient>' +
-        '</defs>' +
-        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
-        '<ellipse cx="50" cy="88" rx="30" ry="8" fill="black" opacity="0.1"/>' +
-        '<path d="' + PAWN_BODY + '" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
-        '<path d="' + PAWN_BODY + '" fill="url(#' + uid + 'b)"/>' +
-        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="' + color + '"/>' +
-        '<ellipse cx="50" cy="38" rx="13" ry="4" fill="white" opacity="0.15"/>' +
-        '<circle cx="50" cy="24" r="16" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
-        '<circle cx="50" cy="24" r="16" fill="url(#' + uid + 'h)"/>' +
-        '<ellipse cx="44" cy="18" rx="5" ry="3.5" fill="white" opacity="0.4" transform="rotate(-20 44 18)"/>' +
-        '</svg>'
-    );
-}
-
 function el(cls, css) {
     const d = document.createElement('div');
     d.className = cls;
@@ -164,7 +133,7 @@ export function playHomeArrival(opts) {
     // Inner element carries the SVG + the settle squash, layered on top of
     // the outer translate/scale.
     const squash = el('hmarr-pawn-squash');
-    squash.innerHTML = pawnSVG(color, pawnSize);
+    squash.innerHTML = pawnSVG(color, pawnSize, 'hmarr-pawn-svg', 'hmarr-grad-');
     traj.appendChild(squash);
     root.appendChild(traj);
 

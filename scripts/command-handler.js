@@ -111,12 +111,26 @@ function isPlayerFinished(playerIndex) {
 // rendered an extra yellow pawn on the track and an empty active-corner
 // dice slot. Cleaning here makes startGame idempotent regardless of the
 // caller's prior state.
-function resetGameDom() {
+// Tear down per-game DOM: the end-screen overlay and every on-board
+// token, plus the element-id cache that pointed at them.
+function removeGameTokens() {
     const gameEnd = document.querySelector('wc-game-end');
     if (gameEnd) gameEnd.remove();
 
     document.querySelectorAll('wc-token').forEach(t => t.remove());
     clearTokenElementCache();
+}
+
+// Restore the light-theme chrome (status-bar tint + page background)
+// that the in-game play screen overrides.
+function resetThemeChrome() {
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
+    document.body.style.background = '';
+}
+
+function resetGameDom() {
+    removeGameTokens();
 
     resetLastRolls();
 
@@ -431,17 +445,11 @@ function restartGame(emit) {
     if (!quickStartId) return;
     const namesByPlayerIndex = Array.from(state.playerNames);
 
-    const gameEnd = document.querySelector('wc-game-end');
-    if (gameEnd) gameEnd.remove();
-
-    document.querySelectorAll('wc-token').forEach(t => t.remove());
-    clearTokenElementCache();
+    removeGameTokens();
 
     document.getElementById('game').classList.remove('hidden');
 
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
-    document.body.style.background = '';
+    resetThemeChrome();
 
     replaceTo('game');
     startGame(quickStartId, namesByPlayerIndex, emit);
@@ -450,11 +458,7 @@ function restartGame(emit) {
 function exitToHome(emit) {
     pauseGameLogic();
 
-    const gameEnd = document.querySelector('wc-game-end');
-    if (gameEnd) gameEnd.remove();
-
-    document.querySelectorAll('wc-token').forEach(t => t.remove());
-    clearTokenElementCache();
+    removeGameTokens();
 
     // Reset --player-N CSS vars so the setup screen renders with the
     // default palette (seat 0 = red, etc.). applyColorMap during play
@@ -463,9 +467,7 @@ function exitToHome(emit) {
     // would pick "red" only to see green on the next launch.
     applyColorMap([0, 1, 2, 3]);
 
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
-    document.body.style.background = '';
+    resetThemeChrome();
 
     document.getElementById('game').classList.add('hidden');
     const pauseMenu = document.getElementById('pause-menu');

@@ -34,6 +34,29 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 - `npm run test:e2e` — Playwright smoke tests in [test/e2e/](test/e2e/). Spawns a static server via [tools/serve-static.mjs](tools/serve-static.mjs) on port 8889. Use `npm run test:e2e:ui` for the inspector.
 - `npm run cache-bust` — see Cache Busting below.
 
+## Don't repeat yourself — dedupe aggressively
+
+**Duplication is a bug.** If the same literal, helper, regex, magic
+number, or block of markup appears in 2+ places, extract it to one
+named export and import it everywhere. A copy-pasted constant that
+drifts is a defect waiting to happen — the launching pawn rendering a
+different shape than the captured pawn, two safe-square lists going out
+of sync, etc.
+
+Rules:
+- **No "standalone, no deps" excuse.** A module comment saying a file is
+  self-contained does NOT justify copy-pasting shared code into it.
+  Prefer one source of truth over an isolated copy — convert the
+  comment, add the import. (See [scripts/pawn-shape.js](scripts/pawn-shape.js),
+  shared by the three overlay modules.)
+- When two "duplicates" have subtly different semantics (e.g. a guard
+  one has and the other lacks, or a different drop-shadow), make the
+  difference an explicit parameter of the shared helper — don't keep two
+  copies, and don't silently collapse them either.
+- Shared pure constants/helpers go in the module they most belong to (or
+  a small dedicated `*-shape.js` / `*-constants.js`); import via the
+  relative path. Add new shared files to `PRECACHE` in [sw.js](sw.js).
+
 ## Bug-fix discipline
 
 **Every bug fix lands with a regression test.** If a CSS / layout /

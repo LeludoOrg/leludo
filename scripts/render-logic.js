@@ -5,6 +5,9 @@ import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
 
+// Finish-cell DOM id, e.g. "p0s6" — the home-stretch goal square per player.
+const FINISH_CELL_ID_RE = /^p\ds6$/;
+
 /**
  *
  * @param {number} playerIndex
@@ -203,7 +206,7 @@ export function updateCellStacking(cell) {
     const badge = cell.querySelector('.stack-badge');
     if (badge) badge.remove();
 
-    if (/^p\ds6$/.test(cell.id)) {
+    if (FINISH_CELL_ID_RE.test(cell.id)) {
         applyFinishStacking(cell, tokens);
         return;
     }
@@ -521,7 +524,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             playStepSound();
             const isFinalStep = stepIndex === path.length - 1;
             const targetId = path[stepIndex];
-            const isFinishCell = /^p\ds6$/.test(targetId);
+            const isFinishCell = FINISH_CELL_ID_RE.test(targetId);
 
             if (isFinalStep && isFinishCell) {
                 const targetContainer = document.getElementById(targetId);
@@ -656,7 +659,7 @@ function renderPauseScoreboard() {
     _playerTypes.forEach((type, idx) => {
         if (!type) return
         const finished = _getFinishedCount ? _getFinishedCount(idx) : 0
-        const name = (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`
+        const name = playerDisplayName(idx)
         const isActive = idx === currentIdx
         const dotCls = isActive ? `player-bg-${idx}` : 'pm-finish-dot--idle'
         const tag = isActive ? `<span class="pm-upnext">Up next</span>` : ''
@@ -716,6 +719,14 @@ let turnCount = 0;
 
 let _playerTypes = null;
 let _playerNames = ['', '', '', ''];
+
+// Trimmed display name for a seat, falling back to "P1".."P4" when the
+// stored name is blank/missing. Shared by the pause scoreboard and the
+// corner pills so the fallback stays identical.
+function playerDisplayName(idx) {
+    return (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`;
+}
+
 let _getCurrentPlayerIndex = null;
 let _getFinishedCount = null;
 
@@ -774,7 +785,7 @@ function pillMarkup(idx, finished, active) {
     const type = _playerTypes ? _playerTypes[idx] : null;
     const glyph = `<span class="corner-pill-glyph">${playerTypeGlyph(type, 14)}</span>`;
     const cls = active ? `corner-pill corner-pill--active player-bg-${idx}` : `corner-pill`;
-    const name = (_playerNames[idx] && String(_playerNames[idx]).trim()) || `P${idx + 1}`;
+    const name = playerDisplayName(idx);
     const safe = escapeHtml(name);
     return `
         <div class="${cls}">
