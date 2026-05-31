@@ -16,7 +16,11 @@ import {
     dispatch,
     COMMANDS,
     escapeHtml,
+    shouldShowStoreNudge,
+    isCapacitorNative,
+    openPlayStore,
 } from "../scripts/index.js";
+import {trackEvent} from "../scripts/analytics.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
 const CONFETTI_COUNT = 18;
@@ -65,6 +69,8 @@ function pawnSvg(playerIndex, size) {
     </svg>`;
 }
 
+const ICON_STAR = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.6 5.9 20.4l1.4-6.8L2.2 9l6.9-.7z"/></svg>`;
+const ICON_DOWNLOAD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>`;
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M15 6l-6 6 6 6"/></svg>`;
 const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>`;
 const CARD_ICONS = {
@@ -75,6 +81,32 @@ const CARD_ICONS = {
     home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`,
     crown:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 7l4 5 5-7 5 7 4-5v11H3z"/></svg>`,
 };
+
+/**
+ * Play Store nudge shown on the recap, Android only. Inside the APK it
+ * asks for a rating; in an Android browser it drives the install. Both
+ * route through openPlayStore(). Returns '' on non-Android so the card
+ * never renders elsewhere.
+ */
+function storeNudgeHtml() {
+    if (!shouldShowStoreNudge()) return '';
+    const native = isCapacitorNative();
+    const icon = native ? ICON_STAR : ICON_DOWNLOAD;
+    const title = native ? 'Enjoying Leludo?' : 'Get the Leludo app';
+    const body = native
+        ? 'A quick Play Store rating helps a ton.'
+        : 'Free on the Play Store — play offline, no ads.';
+    const action = native ? 'Rate us' : 'Get the app';
+    return `
+        <button id="ge-store" class="ge-store" data-native="${native ? '1' : '0'}">
+            <span class="ge-store-icon">${icon}</span>
+            <span class="ge-store-text">
+                <span class="ge-store-title">${title}</span>
+                <span class="ge-store-body">${body}</span>
+            </span>
+            <span class="ge-store-action">${action}</span>
+        </button>`;
+}
 
 function nameFor(pi) {
     const raw = playerNames[pi] && String(playerNames[pi]).trim();
@@ -333,6 +365,8 @@ class GameEnd extends HTMLElement {
 
                     <div class="ge-cards">${cardsHTML}</div>
 
+                    ${storeNudgeHtml()}
+
                     <div class="ge-spacer"></div>
 
                     <div class="ge-footer">
@@ -352,6 +386,18 @@ class GameEnd extends HTMLElement {
             playClickSound();
             dispatch({ type: COMMANDS.RESTART_GAME });
         });
+
+        const storeBtn = el.querySelector('#ge-store');
+        if (storeBtn) {
+            storeBtn.addEventListener('click', () => {
+                playClickSound();
+                trackEvent('store_nudge_click', {
+                    surface: 'game_end',
+                    native: storeBtn.dataset.native === '1',
+                });
+                openPlayStore();
+            });
+        }
 
         el.querySelector('#ge-share').addEventListener('click', async (ev) => {
             playClickSound();
