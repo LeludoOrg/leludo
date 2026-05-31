@@ -277,6 +277,73 @@ wc-game-end .ge-card-stat {
     flex-shrink: 0;
 }
 
+/* ---------- Play Store nudge (Android only) ---------- */
+
+wc-game-end .ge-store {
+    margin: 12px 14px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: calc(100% - 28px);
+    padding: 12px 14px;
+    text-align: left;
+    background: color-mix(in srgb, hsl(22 67% 56%) 12%, transparent);
+    border: 1px solid color-mix(in srgb, hsl(22 67% 56%) 32%, transparent);
+    border-radius: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--ge-fg);
+    transition: transform 120ms ease, background 120ms ease;
+}
+
+wc-game-end .ge-store:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, hsl(22 67% 56%) 18%, transparent);
+}
+
+wc-game-end .ge-store:active {
+    transform: translateY(0);
+}
+
+wc-game-end .ge-store-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: hsl(22 72% 48%);
+    background: color-mix(in srgb, hsl(22 67% 56%) 18%, transparent);
+}
+
+wc-game-end .ge-store-text {
+    flex: 1;
+    min-width: 0;
+}
+
+wc-game-end .ge-store-title {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+wc-game-end .ge-store-body {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--ge-fg-mute);
+}
+
+wc-game-end .ge-store-action {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: hsl(22 72% 48%);
+}
+
 /* ---------- Footer + CTA ---------- */
 
 wc-game-end .ge-spacer {
