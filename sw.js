@@ -44,6 +44,7 @@ const PRECACHE = [
   'scripts/home-arrival.js',
   'scripts/pawn-launch.js',
   'scripts/pawn-shape.js',
+  'scripts/platform.js',
   'scripts/render-logic.js',
   'scripts/scheduler.js',
   'scripts/turn-rules.js',

@@ -12,19 +12,12 @@
  */
 
 import { VERSION } from '../version.js';
+import { isCapacitorNative } from './platform.js';
 
 export const GA_MEASUREMENT_ID = 'G-SY4NN1BV58';
 
 let _enabled = false;
 let _initialized = false;
-
-function isCapacitorNative() {
-    try {
-        return !!window.Capacitor?.isNativePlatform?.();
-    } catch {
-        return false;
-    }
-}
 
 function isLocalhost() {
     const h = location.hostname;
