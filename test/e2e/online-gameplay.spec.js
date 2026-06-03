@@ -31,6 +31,19 @@ test.describe('Online gameplay', () => {
         await expect(page.locator('wc-token')).toHaveCount(8); // 2 players × 4 tokens
         await expect(page.locator('#main-menu')).toBeHidden();
 
+        // Perspective: this client (server seat 0) renders at board position 2
+        // (bottom-right); the bot (seat 1) at position 3. Other corners empty.
+        await expect(page.locator('#p-2-0')).toBeVisible(); // me, bottom-right
+        await expect(page.locator('#p-3-0')).toBeVisible(); // bot
+        await expect(page.locator('#p-0-0')).toHaveCount(0);
+        await expect(page.locator('#p-1-0')).toHaveCount(0);
+        // …in my own colour: board position 2 uses seat 0's base colour.
+        const sameColour = await page.evaluate(() => {
+            const cs = getComputedStyle(document.documentElement);
+            return cs.getPropertyValue('--player-2').trim() === cs.getPropertyValue('--base-color-0').trim();
+        });
+        expect(sameColour).toBe(true);
+
         // Drive play: on the human's turn, roll and move; the bot is server-driven.
         // Poll until the turn counter advances past 0 — proof the full
         // roll → render → advance loop works online (not stuck on "starting").

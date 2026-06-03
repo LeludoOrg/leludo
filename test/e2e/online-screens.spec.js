@@ -103,7 +103,11 @@ test.describe('Online lobby — create + join', () => {
         await host.getByTestId('online-start').click();
         await expect(host.getByTestId('online-started')).toHaveText('true');
         await expect(guest.getByTestId('online-started')).toHaveText('true');
-        await expect(guest.getByTestId('online-room-code')).toHaveText(code);
+
+        // Each device renders itself at board position 2 (bottom-right), its own
+        // perspective — both see #p-2-* tokens as theirs.
+        await expect(host.locator('#p-2-0')).toBeVisible();
+        await expect(guest.locator('#p-2-0')).toBeVisible();
 
         await ctxHost.close();
         await ctxGuest.close();

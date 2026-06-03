@@ -15,7 +15,7 @@
  */
 import { dispatch, subscribe, EVENTS } from './game-store.js';
 import { COMMANDS } from './command-handler.js';
-import { setOnline, clearOnline, onlineNet } from './online-state.js';
+import { setOnline, clearOnline, onlineNet, toLocal } from './online-state.js';
 
 let _started = false;
 let _chain = Promise.resolve();
@@ -30,12 +30,28 @@ export function startOnlineGame({ net, seat, state }) {
     setOnline(net, seat);
     _started = true;
     _chain = Promise.resolve();
+
+    // Rotate server seats to board positions so this client sits bottom-right
+    // (board pos 2) in its own colour; colorMap[pos] = server seat's colour.
+    const playerTypes = new Array(4).fill(undefined);
+    const playerNames = new Array(4).fill('');
+    const positions = new Array(4).fill(undefined);
+    const colorMap = [0, 1, 2, 3];
+    for (let s = 0; s < 4; s++) {
+        const pos = toLocal(s);
+        playerTypes[pos] = state.playerTypes[s];
+        playerNames[pos] = state.playerNames[s];
+        positions[pos] = state.positions[s];
+        colorMap[pos] = s;
+    }
+
     enqueue(() => dispatch({
         type: COMMANDS.NET_START_GAME,
-        playerTypes: state.playerTypes,
-        playerNames: state.playerNames,
-        positions: state.positions,
-        currentPlayerIndex: state.currentPlayerIndex,
+        playerTypes,
+        playerNames,
+        positions,
+        colorMap,
+        currentPlayerIndex: toLocal(state.currentPlayerIndex),
     }));
 }
 
@@ -49,7 +65,7 @@ export function handleOnlineMessage(msg) {
             enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_ROLL, value }));
         }
     } else if (msg.t === 'moved') {
-        enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: msg.p, tokenIndex: msg.token }));
+        enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: toLocal(msg.p), tokenIndex: msg.token }));
     }
     // 'ended' needs no action: the local move that finished the game already
     // mounted the end screen via the normal handleAfterTokenMove path.

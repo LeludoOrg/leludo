@@ -66,7 +66,7 @@ import {
 } from "./scheduler.js";
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "./nav-history.js";
 import { dispatch } from "./game-store.js";
-import { isOnlineActive, onlineNet, onlineSeat } from "./online-state.js";
+import { isOnlineActive, onlineNet, onlineLocalSelf } from "./online-state.js";
 
 export {
     pauseGameLogic,
@@ -238,7 +238,7 @@ function netStartGame(payload, emit) {
     resetGameDom();
     resetTurnCount();
     initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
-    applyColorMap([0, 1, 2, 3]);
+    applyColorMap(payload.colorMap || [0, 1, 2, 3]);
 
     const playerTypes = payload.playerTypes.map(t => t || undefined);
     const botPersonalities = payload.botPersonalities
@@ -692,14 +692,14 @@ export function commandHandler(currentState, command, services, emit) {
     // server and render nothing locally until the server's broadcast arrives.
     if (isOnlineActive()) {
         if (command.type === COMMANDS.ROLL_DICE) {
-            if (state.phase === PHASES.AWAITING_ROLL && state.currentPlayerIndex === onlineSeat()) {
+            if (state.phase === PHASES.AWAITING_ROLL && state.currentPlayerIndex === onlineLocalSelf()) {
                 onlineNet()?.roll();
             }
             return;
         }
         if (command.type === COMMANDS.SELECT_TOKEN) {
             if (state.phase === PHASES.AWAITING_SELECTION
-                && state.currentPlayerIndex === onlineSeat()
+                && state.currentPlayerIndex === onlineLocalSelf()
                 && state.movableTokenIndexes.includes(command.tokenIndex)) {
                 onlineNet()?.move(command.tokenIndex);
             }
