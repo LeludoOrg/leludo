@@ -176,6 +176,278 @@ wc-quick-start .home-version {
     letter-spacing: 0.08em;
 }
 
+/* Two equal paths: offline (primary) + online (outlined). Both full width. */
+wc-quick-start .home-cta-stack .cta-primary,
+wc-quick-start .home-cta-stack .cta-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+}
+
+wc-quick-start .home-online-cta {
+    height: 56px;
+    border-radius: 28px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* ----- Online (lobby) ----- */
+
+wc-quick-start .online-body {
+    text-align: center;
+}
+
+wc-quick-start .online-body .display-title {
+    text-align: center;
+}
+
+wc-quick-start .online-body .body-helper {
+    margin: 0 auto;
+    text-align: center;
+}
+
+wc-quick-start .online-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+}
+
+wc-quick-start .online-field .section-label {
+    align-self: center;
+}
+
+wc-quick-start .online-name {
+    width: 100%;
+    max-width: 220px;
+    text-align: center;
+    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--color-fg);
+    font-size: 16px;
+    font-weight: 500;
+    padding: 10px 14px;
+    outline: 0;
+}
+
+wc-quick-start .online-name:focus {
+    border-color: color-mix(in srgb, var(--color-fg) 35%, transparent);
+}
+
+wc-quick-start .online-seg {
+    display: inline-flex;
+    gap: 4px;
+    background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 8%, transparent);
+    border-radius: var(--radius-pill);
+    padding: 4px;
+}
+
+wc-quick-start .online-seg-btn {
+    min-width: 44px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--color-fg);
+    font: inherit;
+    font-weight: 600;
+    opacity: 0.5;
+    cursor: pointer;
+    transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+wc-quick-start .online-seg-btn.is-on {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    opacity: 1;
+}
+
+wc-quick-start .online-options {
+    margin-top: var(--space-5);
+    gap: var(--space-3);
+}
+
+wc-quick-start .online-opt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+}
+
+wc-quick-start .online-public:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+wc-quick-start .online-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--color-fg);
+    opacity: 0.4;
+    font-size: 12px;
+}
+
+wc-quick-start .online-divider::before,
+wc-quick-start .online-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-fg) 15%, transparent);
+}
+
+wc-quick-start .online-join-row {
+    display: flex;
+    gap: var(--space-2);
+}
+
+wc-quick-start .online-code-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--color-fg);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    outline: 0;
+}
+
+wc-quick-start .online-code-input::placeholder {
+    opacity: 0.35;
+    letter-spacing: 0.22em;
+}
+
+wc-quick-start .online-join-btn {
+    width: auto;
+    flex-shrink: 0;
+    height: auto;
+    padding: 0 22px;
+    border-radius: var(--radius-lg);
+}
+
+wc-quick-start .online-status {
+    min-height: 18px;
+    margin-top: var(--space-4);
+    font-size: 13px;
+    opacity: 0.7;
+    color: var(--color-fg);
+}
+
+/* ----- Online lobby (room) ----- */
+
+wc-quick-start .online-lobby-body {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+wc-quick-start .online-code-display {
+    font-family: var(--font-mono);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    margin: var(--space-2) 0 var(--space-1);
+    padding-left: 0.18em;
+}
+
+wc-quick-start .online-seats {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: var(--space-5) 0 var(--space-3);
+}
+
+wc-quick-start .online-seat {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
+    border-radius: var(--radius-xl);
+    padding: 12px 16px;
+    text-align: left;
+}
+
+wc-quick-start .online-seat.is-filled {
+    background: var(--color-surface);
+}
+
+wc-quick-start .online-seat-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+wc-quick-start .online-seat-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+wc-quick-start .online-seat-status {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+wc-quick-start .online-lobby-status {
+    font-size: 14px;
+    opacity: 0.7;
+    margin-top: var(--space-2);
+}
+
+/* ----- Online (public match search) ----- */
+
+wc-quick-start .online-search-body {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+}
+
+wc-quick-start .online-search-body .display-title {
+    text-align: center;
+}
+
+wc-quick-start .online-search-pulse {
+    line-height: 0;
+    padding: 10px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+    animation: home-die-pulse 1.6s ease-in-out infinite;
+    --pulse-color: color-mix(in srgb, var(--color-fg) 22%, transparent);
+}
+
+wc-quick-start .online-search-status {
+    font-size: 14px;
+    opacity: 0.6;
+    max-width: 260px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-quick-start .online-search-pulse { animation: none; }
+}
+
 /* ----- Setup ----- */
 
 wc-quick-start .setup-body {

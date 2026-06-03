@@ -30,6 +30,7 @@ const PRECACHE = [
   'scripts/analytics.js',
   'scripts/audio.js',
   'scripts/nav-history.js',
+  'scripts/net-client.js',
   'scripts/bot-ai.js',
   'scripts/bot-names.js',
   'scripts/command-handler.js',

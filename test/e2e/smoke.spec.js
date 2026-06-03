@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Home screen', () => {
-    test('renders title and New game button', async ({ page }) => {
+    test('renders title and the offline / online paths', async ({ page }) => {
         const errors = [];
         page.on('pageerror', e => errors.push(String(e)));
         page.on('console', msg => {
@@ -14,16 +14,17 @@ test.describe('Home screen', () => {
         await expect(title).toContainText('le');
         await expect(title).toContainText('ludo');
 
-        const newGameBtn = page.locator('.new-game-btn');
-        await expect(newGameBtn).toBeVisible();
-        await expect(newGameBtn).toContainText('New game');
+        // Home now offers two clear, separate paths.
+        await expect(page.getByTestId('home-play-offline')).toBeVisible();
+        await expect(page.getByTestId('home-play-offline')).toContainText(/play offline|new offline/i);
+        await expect(page.getByTestId('home-play-online')).toBeVisible();
 
         expect(errors, `Console / page errors: ${errors.join('\n')}`).toHaveLength(0);
     });
 
-    test('clicking New game opens setup screen', async ({ page }) => {
+    test('the offline path opens the local setup screen', async ({ page }) => {
         await page.goto('/');
-        await page.locator('.new-game-btn').click();
+        await page.getByTestId('home-play-offline').click();
         await expect(page.locator('.start-btn')).toBeVisible();
         await expect(page.locator('.start-btn')).toContainText(/start|play/i);
     });

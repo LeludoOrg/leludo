@@ -23,6 +23,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { Admission } from './admission.js';
 import { RoomEngine } from './room-engine.js';
+import { Matchmaker } from './matchmaker.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
 const TEST_HOOKS = process.env.DEV_TEST_HOOKS === '1';
@@ -82,6 +83,44 @@ function makeRoom(roomId, cfg) {
     return room;
 }
 
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function mintCode() {
+    let code;
+    do {
+        code = '';
+        for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    } while (rooms.has(code));
+    return code;
+}
+
+/** Attach an (already open) connection to a room and seat its player. */
+function bindConnToRoom(conn, room) {
+    conn.room = room;
+    if (!room.socketsBySession.has(conn.sessionId)) room.socketsBySession.set(conn.sessionId, new Set());
+    room.socketsBySession.get(conn.sessionId).add(conn.ws);
+    const joined = room.engine.handleJoin(conn.sessionId, conn.name);
+    if (!joined.ok) safeSend(conn.ws, { t: 'error', error: joined.error });
+}
+
+// Public matchmaking: form a room for a batch of queued players (+ bots on fill).
+const matchmaker = new Matchmaker({
+    fillMs: process.env.MATCH_FILL_MS ? Number(process.env.MATCH_FILL_MS) : 20_000,
+    formMatch(size, entries, withBots) {
+        const code = mintCode();
+        const verdict = admission.tryAdmit(code);
+        if (!verdict.ok) {
+            for (const e of entries) safeSend(e.ws, { t: 'busy', reason: verdict.reason });
+            return;
+        }
+        const humans = entries.length;
+        const room = makeRoom(code, { humans, bots: withBots ? Math.max(0, size - humans) : 0, seed: 1 });
+        for (const e of entries) {
+            safeSend(e.ws, { t: 'matched', room: code });
+            bindConnToRoom(e.conn, room);
+        }
+    },
+});
+
 const httpServer = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/health') {
@@ -102,9 +141,14 @@ const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws, req) => {
     const q = new URL(req.url, 'http://localhost').searchParams;
-    const roomId = q.get('room') || 'default';
     const sessionId = q.get('session') || `anon-${Math.random().toString(36).slice(2)}`;
     const name = q.get('name') || '';
+    const mode = q.get('mode');
+    const roomId = q.get('room') || 'default';
+
+    // Per-connection state. `room` is null until bound (immediately for private
+    // rooms, on match-form for public matchmaking).
+    const conn = { ws, sessionId, name, room: null };
 
     // Test-only deterministic busy: exercises the client busy overlay without
     // depending on global counters (so it stays parallel-safe in CI).
@@ -114,35 +158,42 @@ wss.on('connection', (ws, req) => {
         return;
     }
 
-    let room = rooms.get(roomId);
-    if (!room) {
-        const verdict = admission.tryAdmit(roomId);
-        if (!verdict.ok) {
-            safeSend(ws, { t: 'busy', reason: verdict.reason });
-            ws.close();
-            return;
+    if (mode === 'public') {
+        // Public random match: join a per-size queue; bound when a match forms.
+        const size = Math.max(2, clampSeats(q.get('size'), 2));
+        conn.size = size;
+        const res = matchmaker.enqueue({ id: sessionId, size, name, ws, conn });
+        if (res.queued) safeSend(ws, { t: 'queued', size, waiting: res.waiting });
+        // else: matched synchronously — formMatch already sent 'matched' + seated.
+    } else {
+        // Private room (by code): find or create, admit, bind immediately.
+        let room = rooms.get(roomId);
+        if (!room) {
+            const verdict = admission.tryAdmit(roomId);
+            if (!verdict.ok) {
+                safeSend(ws, { t: 'busy', reason: verdict.reason });
+                ws.close();
+                return;
+            }
+            room = makeRoom(roomId, {
+                humans: clampSeats(q.get('humans'), 2),
+                bots: clampSeats(q.get('bots'), 0),
+                seed: TEST_HOOKS && q.get('seed') != null ? Number(q.get('seed')) : 1,
+            });
         }
-        room = makeRoom(roomId, {
-            humans: clampSeats(q.get('humans'), 2),
-            bots: clampSeats(q.get('bots'), 0),
-            seed: TEST_HOOKS && q.get('seed') != null ? Number(q.get('seed')) : 1,
-        });
-    }
-
-    const { engine, socketsBySession } = room;
-    if (!socketsBySession.has(sessionId)) socketsBySession.set(sessionId, new Set());
-    socketsBySession.get(sessionId).add(ws);
-
-    const joined = engine.handleJoin(sessionId, name);
-    if (!joined.ok) {
-        safeSend(ws, { t: 'error', error: joined.error });
-        ws.close();
-        return;
+        bindConnToRoom(conn, room);
     }
 
     ws.on('message', (raw) => {
         let msg;
         try { msg = JSON.parse(raw.toString()); } catch { return; }
+        if (msg.t === 'queue_cancel') {
+            matchmaker.cancel(sessionId);
+            safeSend(ws, { t: 'queue_left' });
+            return;
+        }
+        if (!conn.room) return; // not seated in a room yet
+        const { engine } = conn.room;
         switch (msg.t) {
             case 'roll': engine.handleRoll(sessionId); break;
             case 'move': engine.handleMove(sessionId, msg.token); break;
@@ -152,6 +203,9 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', () => {
+        matchmaker.cancel(sessionId); // no-op if not queued
+        if (!conn.room) return;
+        const { engine, socketsBySession } = conn.room;
         const set = socketsBySession.get(sessionId);
         if (set) {
             set.delete(ws);

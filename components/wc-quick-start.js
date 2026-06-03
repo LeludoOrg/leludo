@@ -2,7 +2,8 @@ import {htmlToElement} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
-import {goTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
+import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
+import {NetClient, getConfiguredServerUrl, getSessionId} from "../scripts/net-client.js";
 
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
@@ -66,6 +67,8 @@ const ICON_PLUS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" s
 const ICON_USER = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0"/></svg>`;
 const ICON_BOT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M8 7h8a3 3 0 013 3v7a3 3 0 01-3 3H8a3 3 0 01-3-3v-7a3 3 0 013-3zM9 13h.01M15 13h.01M9 17h6"/></svg>`;
 const ICON_PENCIL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+const ICON_GLOBE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>`;
+const ICON_DEVICE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>`;
 
 class QuickStart extends HTMLElement {
     constructor() {
@@ -116,6 +119,9 @@ class QuickStart extends HTMLElement {
         this.showHomeScreen()
         document.addEventListener("bot-name-pool-changed", () => this._reshuffleBotNames())
         registerScreenHandler('setup', () => this.showHomeScreen())
+        registerScreenHandler('online', () => { this._leaveOnline(); this.showHomeScreen() })
+        registerScreenHandler('online-search', () => { this._leaveOnline(); this.showOnlineScreen() })
+        registerScreenHandler('online-lobby', () => { this._leaveOnline(); this.showOnlineScreen() })
     }
 
     _reshuffleBotNames() {
@@ -151,20 +157,25 @@ class QuickStart extends HTMLElement {
 
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
-                <div class="frame-footer">
-                    ${saved
-                        ? `<button class="new-game-btn cta-primary">Start a new game</button>`
-                        : `<button class="new-game-btn cta-primary">New game</button>`}
+                <div class="frame-footer home-cta-stack">
+                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline">${ICON_DEVICE}<span>${saved ? 'New offline game' : 'Play offline'}</span></button>
+                    <button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online">${ICON_GLOBE}<span>Play online</span></button>
                 </div>
             </div>
         `
 
         const el = htmlToElement(html)
 
-        el.querySelector(".new-game-btn").addEventListener("click", () => {
+        el.querySelector(".play-offline-btn").addEventListener("click", () => {
             playClickSound()
             this.showSetupScreen()
             goTo('setup')
+        })
+
+        el.querySelector(".play-online-btn").addEventListener("click", () => {
+            playClickSound()
+            this.showOnlineScreen()
+            goTo('online')
         })
 
         const resumeEl = el.querySelector(".resume-card")
@@ -223,6 +234,7 @@ class QuickStart extends HTMLElement {
 
     disconnectedCallback() {
         this._stopHomeDieCycle()
+        this._leaveOnline()
     }
 
     _readSavedGame() {
@@ -464,6 +476,287 @@ class QuickStart extends HTMLElement {
         if (startBtn) {
             startBtn.disabled = activeCount < 2
         }
+    }
+
+    // ===== Online (multiplayer) =====================================
+
+    _genCode() {
+        // Short, human-shareable, no ambiguous chars (0/O, 1/I/L).
+        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+        let code = ''
+        for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)]
+        return code
+    }
+
+    showOnlineScreen() {
+        this._stopHomeDieCycle()
+        this._leaveOnline()
+        this.innerHTML = ""
+        if (!this._onlinePlayers) this._onlinePlayers = 2
+
+        const savedName = (getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 9)
+        const seg = (n) => `<button class="online-seg-btn ${this._onlinePlayers === n ? 'is-on' : ''}" data-n="${n}" data-testid="online-players-${n}">${n}</button>`
+
+        const html = /*html*/ `
+            <div class="frame">
+                <div class="top-bar">
+                    <button class="back-btn icon-btn">${ICON_BACK}</button>
+                    <div class="top-bar-title">Play online</div>
+                    <wc-settings></wc-settings>
+                </div>
+
+                <div class="frame-body online-body">
+                    <h2 class="display-title">Play online</h2>
+                    <p class="body-helper">Live games against people on other devices. The server runs every roll and move — no cheating.</p>
+
+                    <label class="online-field">
+                        <span class="section-label">Your name</span>
+                        <input class="online-name" data-testid="online-name" type="text" maxlength="9" autocomplete="off" autocorrect="off" spellcheck="false" value="${escapeHtml(savedName)}" />
+                    </label>
+
+                    <div class="online-field">
+                        <span class="section-label">Room size</span>
+                        <div class="online-seg" data-testid="online-players">${seg(2)}${seg(3)}${seg(4)}</div>
+                    </div>
+
+                    <div class="section-group online-options">
+                        <button class="online-opt cta-primary" data-testid="online-public">${ICON_GLOBE}<span>Find a public match</span></button>
+
+                        <div class="online-divider"><span>private room</span></div>
+
+                        <button class="online-opt cta-secondary" data-testid="online-create">${ICON_PLUS}<span>Create a room</span></button>
+
+                        <div class="online-join-row">
+                            <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
+                            <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
+                        </div>
+                    </div>
+
+                    <p class="online-status" data-testid="online-status"></p>
+                </div>
+            </div>
+        `
+
+        const el = htmlToElement(html)
+
+        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
+
+        const nameInput = el.querySelector(".online-name")
+        nameInput.addEventListener("blur", () => {
+            const v = (nameInput.value || '').trim()
+            if (v) setSavedSeatName('PLAYER', 0, v)
+        })
+
+        el.querySelector(".online-seg").addEventListener("click", (e) => {
+            const btn = e.target.closest(".online-seg-btn")
+            if (!btn) return
+            playClickSound()
+            this._onlinePlayers = Number(btn.dataset.n)
+            el.querySelectorAll(".online-seg-btn").forEach(b => b.classList.toggle("is-on", b === btn))
+        })
+
+        el.querySelector('[data-testid="online-public"]').addEventListener("click", () => {
+            playClickSound()
+            this._enterMatchmaking(this._onlinePlayers || 2)
+        })
+
+        el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
+            playClickSound()
+            this._enterLobby(this._genCode(), { create: true })
+        })
+
+        const codeInput = el.querySelector(".online-code-input")
+        const doJoin = () => {
+            const code = (codeInput.value || '').trim().toUpperCase()
+            if (code.length < 4) {
+                this._setOnlineStatus("Enter the 4-letter room code your host shared.")
+                codeInput.focus()
+                return
+            }
+            playClickSound()
+            this._enterLobby(code, { create: false })
+        }
+        el.querySelector(".online-join-btn").addEventListener("click", doJoin)
+        codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
+
+        this.appendChild(el)
+    }
+
+    _setOnlineStatus(text) {
+        const el = this.querySelector('[data-testid="online-status"]')
+        if (el) el.textContent = text
+    }
+
+    _myName() {
+        return (getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 9)
+    }
+
+    // Single net-message handler shared by private rooms and public matchmaking.
+    _onNetMessage(msg, client) {
+        if (this._net !== client) return
+        switch (msg.t) {
+            case 'queued':
+                this._setSearchStatus(`Searching for a ${msg.size}-player match…`)
+                break
+            case 'matched':
+                this._roomCode = msg.room
+                this.showOnlineLobby(msg.room)
+                replaceTo('online-lobby') // replace the search entry so back → menu
+                break
+            case 'seated':
+                this._mySeat = msg.playerIndex
+                break
+            case 'state':
+                this._renderLobby(msg.state)
+                break
+            case 'busy':
+                this._onLobbyBusy(msg.reason)
+                this._setSearchStatus('Servers are busy right now — please try again in a few minutes.')
+                break
+            default:
+                break
+        }
+    }
+
+    _connect({ room, params }) {
+        this._leaveOnline()
+        this._mySeat = -1
+        const client = new NetClient({
+            url: getConfiguredServerUrl(),
+            room,
+            session: getSessionId(),
+            name: this._myName(),
+            params,
+            onClose: () => { if (this._net === client) this._setLobbyStatus('Disconnected from the server.') },
+            onMessage: (msg) => this._onNetMessage(msg, client),
+        })
+        this._net = client
+        client.connect()
+        return client
+    }
+
+    _enterLobby(code, { create }) {
+        this._roomCode = code
+        const players = create ? (this._onlinePlayers || 2) : 2
+        this.showOnlineLobby(code)
+        goTo('online-lobby')
+        this._connect({ room: code, params: { humans: String(players) } })
+    }
+
+    _enterMatchmaking(size) {
+        this.showOnlineSearch(size)
+        goTo('online-search')
+        this._connect({ room: undefined, params: { mode: 'public', size: String(size) } })
+    }
+
+    showOnlineSearch(size) {
+        this.innerHTML = ""
+        const html = /*html*/ `
+            <div class="frame">
+                <div class="top-bar">
+                    <button class="back-btn icon-btn">${ICON_BACK}</button>
+                    <div class="top-bar-title">Public match</div>
+                    <wc-settings></wc-settings>
+                </div>
+
+                <div class="frame-body online-search-body">
+                    <div class="online-search-pulse">${QUAD_CHIP_SVG(40)}</div>
+                    <h2 class="display-title">Finding players…</h2>
+                    <p class="online-search-status" data-testid="online-search-status">Searching for a ${size}-player match…</p>
+                </div>
+
+                <div class="frame-footer">
+                    <button class="cta-secondary" data-testid="online-search-cancel">Cancel</button>
+                </div>
+            </div>
+        `
+        const el = htmlToElement(html)
+        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
+        el.querySelector('[data-testid="online-search-cancel"]').addEventListener("click", () => { playClickSound(); navBack() })
+        this.appendChild(el)
+    }
+
+    _setSearchStatus(text) {
+        const el = this.querySelector('[data-testid="online-search-status"]')
+        if (el) el.textContent = text
+    }
+
+    showOnlineLobby(code) {
+        this.innerHTML = ""
+        const html = /*html*/ `
+            <div class="frame">
+                <div class="top-bar">
+                    <button class="back-btn icon-btn">${ICON_BACK}</button>
+                    <div class="top-bar-title">Online room</div>
+                    <wc-settings></wc-settings>
+                </div>
+
+                <div class="frame-body online-lobby-body">
+                    <span class="section-label">Room code</span>
+                    <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
+                    <p class="body-helper">Share this code with your friends. The game starts once everyone joins.</p>
+
+                    <div class="online-seats" data-testid="online-seats"></div>
+
+                    <p class="online-lobby-status" data-testid="online-lobby-status">Connecting…</p>
+                    <span data-testid="online-started" hidden>false</span>
+                </div>
+
+                <div class="frame-footer">
+                    <button class="online-leave-btn cta-secondary" data-testid="online-leave">Leave room</button>
+                </div>
+            </div>
+        `
+        const el = htmlToElement(html)
+        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
+        el.querySelector(".online-leave-btn").addEventListener("click", () => { playClickSound(); navBack() })
+        this.appendChild(el)
+    }
+
+    _setLobbyStatus(text) {
+        const el = this.querySelector('[data-testid="online-lobby-status"]')
+        if (el) el.textContent = text
+    }
+
+    _renderLobby(state) {
+        const seatsEl = this.querySelector('.online-seats')
+        const humanSeats = (state.seats || []).filter(s => s.type === 'PLAYER')
+        if (seatsEl) {
+            seatsEl.innerHTML = humanSeats.map(s => {
+                const me = s.index === this._mySeat
+                const label = s.connected ? (s.name || `Player ${s.index + 1}`) : 'Waiting…'
+                const statusText = s.connected ? 'Ready' : 'Open'
+                return /*html*/ `
+                    <div class="online-seat ${s.connected ? 'is-filled' : ''}" data-testid="online-seat-${s.index}">
+                        <span class="online-seat-dot" style="background:hsl(var(--player-${s.index}));opacity:${s.connected ? 1 : 0.3};"></span>
+                        <span class="online-seat-name">${escapeHtml(label)}${me ? ' (you)' : ''}</span>
+                        <span class="online-seat-status">${statusText}</span>
+                    </div>`
+            }).join('')
+        }
+        const connected = humanSeats.filter(s => s.connected).length
+        const total = humanSeats.length
+        const startedEl = this.querySelector('[data-testid="online-started"]')
+        if (startedEl) startedEl.textContent = String(!!state.started)
+        if (state.started) {
+            this._setLobbyStatus('All players in — game starting…')
+        } else {
+            this._setLobbyStatus(`Waiting for players… ${connected}/${total} joined`)
+        }
+    }
+
+    _onLobbyBusy(reason) {
+        this._setLobbyStatus('Servers are busy right now — please try again in a few minutes.')
+        const startedEl = this.querySelector('[data-testid="online-started"]')
+        if (startedEl) startedEl.textContent = 'false'
+    }
+
+    _leaveOnline() {
+        if (this._net) {
+            try { this._net.close() } catch { /* ignore */ }
+            this._net = null
+        }
+        this._mySeat = -1
     }
 
     _startGame() {

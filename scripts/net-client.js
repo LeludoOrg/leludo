@@ -16,6 +16,37 @@ export function resolveServerUrl(explicit) {
     return `${proto}//${location.hostname}:${DEFAULT_PORT}`;
 }
 
+/**
+ * Server base URL for the app's online mode. Resolution order:
+ *   1. `?server=` query param (used by e2e / manual testing),
+ *   2. `leludo-mp-server` in localStorage (operator override),
+ *   3. the default ws://<host>:8890 (local dev) — replaced by the deployed
+ *      Cloudflare Worker URL in production.
+ */
+export function getConfiguredServerUrl() {
+    try {
+        const fromQuery = new URLSearchParams(location.search).get('server');
+        if (fromQuery) return fromQuery;
+        const stored = localStorage.getItem('leludo-mp-server');
+        if (stored) return stored;
+    } catch { /* non-browser / blocked storage */ }
+    return resolveServerUrl();
+}
+
+/** Stable per-device session id (reconnect key). Persisted in localStorage. */
+export function getSessionId() {
+    try {
+        let s = localStorage.getItem('leludo-mp-session');
+        if (!s) {
+            s = `s-${Math.random().toString(36).slice(2)}`;
+            localStorage.setItem('leludo-mp-session', s);
+        }
+        return s;
+    } catch {
+        return `s-${Math.random().toString(36).slice(2)}`;
+    }
+}
+
 export class NetClient {
     /**
      * @param {object} opts
@@ -37,11 +68,11 @@ export class NetClient {
     connect() {
         const base = resolveServerUrl(this.opts.url);
         const q = new URLSearchParams({
-            room: this.opts.room,
             session: this.opts.session,
             name: this.opts.name || '',
             ...(this.opts.params || {}),
         });
+        if (this.opts.room) q.set('room', this.opts.room); // omitted in public matchmaking
         this.ws = new WebSocket(`${base}/?${q.toString()}`);
         this.ws.addEventListener('open', () => {
             this.connected = true;
