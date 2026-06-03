@@ -2,14 +2,21 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Home now offers two clear, separate paths — offline (pass-and-play on this
- * device) and online (server-backed multiplayer). These guard that split plus
- * the online lobby flow (create a private room, share the code, a second device
- * joins by code and the room fills).
+ * device) and online (server-backed multiplayer). These guard that split, the
+ * online lobby flow (host-managed private rooms + public matchmaking), and the
+ * remembered username.
  *
  * The online lobby talks to the real Node ws server that Playwright starts
  * (server/local-server.mjs on 8890), so "both clients meet in one room" is an
  * end-to-end check, not a mock.
  */
+
+/** Open the online menu and enter a display name (required to play online). */
+async function openOnline(page, name) {
+    await page.goto('/');
+    await page.getByTestId('home-play-online').click();
+    await page.getByTestId('online-name').fill(name);
+}
 
 test.describe('Home — offline / online split', () => {
     test('home shows both paths', async ({ page }) => {
@@ -43,6 +50,25 @@ test.describe('Home — offline / online split', () => {
     });
 });
 
+test.describe('Online — username', () => {
+    test('requires a name before going online', async ({ page }) => {
+        await page.goto('/');
+        await page.getByTestId('home-play-online').click();
+        await expect(page.getByTestId('online-name')).toHaveValue(''); // fresh device
+        await page.getByTestId('online-create').click();
+        // Blocked: no room is created, a prompt is shown.
+        await expect(page.getByTestId('online-status')).toContainText(/name/i);
+        await expect(page.getByTestId('online-room-code')).toHaveCount(0);
+    });
+
+    test('remembers the name for next time', async ({ page }) => {
+        await openOnline(page, 'Zelda');
+        await page.goBack(); // back home
+        await page.getByTestId('home-play-online').click();
+        await expect(page.getByTestId('online-name')).toHaveValue('Zelda');
+    });
+});
+
 test.describe('Online lobby — create + join', () => {
     test('two devices meet in one room via a shared code and the room starts', async ({ browser }) => {
         const ctxHost = await browser.newContext();
@@ -51,21 +77,19 @@ test.describe('Online lobby — create + join', () => {
         const guest = await ctxGuest.newPage();
 
         // Host creates a private 2-player room.
-        await host.goto('/');
-        await host.getByTestId('home-play-online').click();
+        await openOnline(host, 'Hosty');
         await host.getByTestId('online-create').click();
 
         const code = (await host.getByTestId('online-room-code').textContent())?.trim();
         expect(code).toMatch(/^[A-Z0-9]{4}$/);
         await expect(host.getByTestId('online-started')).toHaveText('false'); // waiting for the guest
 
-        // Only the host sees the Start control; the guest does not yet exist.
+        // Only the host sees the Start control.
         await expect(host.getByTestId('online-is-host')).toHaveText('true');
         await expect(host.getByTestId('online-start')).toBeVisible();
 
         // Guest joins by the shared code.
-        await guest.goto('/');
-        await guest.getByTestId('home-play-online').click();
+        await openOnline(guest, 'Guesty');
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
 
@@ -73,6 +97,7 @@ test.describe('Online lobby — create + join', () => {
         await expect(guest.getByTestId('online-is-host')).toHaveText('false');
         await expect(guest.getByTestId('online-start')).toBeHidden();
         await expect(host.getByTestId('online-seat-1')).toContainText('Ready');
+        await expect(host.getByTestId('online-seat-1')).toContainText('Guesty'); // remembered name shows
 
         // Host starts the game; both transition together.
         await host.getByTestId('online-start').click();
@@ -90,14 +115,12 @@ test.describe('Online lobby — create + join', () => {
         const host = await ctxHost.newPage();
         const guest = await ctxGuest.newPage();
 
-        await host.goto('/');
-        await host.getByTestId('home-play-online').click();
+        await openOnline(host, 'Hosty');
         await host.getByTestId('online-create').click();
         const code = (await host.getByTestId('online-room-code').textContent())?.trim();
 
         // Guest joins, host sees the Kick control on seat 1.
-        await guest.goto('/');
-        await guest.getByTestId('home-play-online').click();
+        await openOnline(guest, 'Guesty');
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
         await expect(host.getByTestId('online-seat-1-kick')).toBeVisible();
@@ -119,8 +142,7 @@ test.describe('Online lobby — create + join', () => {
 
 test.describe('Online — public matchmaking', () => {
     test('cancelling a public search returns to the online menu', async ({ page }) => {
-        await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await openOnline(page, 'Solo');
         await page.getByTestId('online-public').click();
         await expect(page.getByTestId('online-search-cancel')).toBeVisible();
         await page.getByTestId('online-search-cancel').click();
@@ -134,13 +156,11 @@ test.describe('Online — public matchmaking', () => {
         const b = await ctxB.newPage();
 
         // Both pick "Find a public match" at the default size (2).
-        await a.goto('/');
-        await a.getByTestId('home-play-online').click();
+        await openOnline(a, 'Ann');
         await a.getByTestId('online-public').click();
         await expect(a.getByTestId('online-search-status')).toBeVisible();
 
-        await b.goto('/');
-        await b.getByTestId('home-play-online').click();
+        await openOnline(b, 'Bo');
         await b.getByTestId('online-public').click();
 
         // The queue pairs them into one room (same server-assigned code) and the

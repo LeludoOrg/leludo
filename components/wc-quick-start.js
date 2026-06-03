@@ -3,7 +3,7 @@ import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.j
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
-import {NetClient, getConfiguredServerUrl, getSessionId} from "../scripts/net-client.js";
+import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
 
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
@@ -494,7 +494,8 @@ class QuickStart extends HTMLElement {
         this.innerHTML = ""
         if (!this._onlinePlayers) this._onlinePlayers = 2
 
-        const savedName = (getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 9)
+        // Remembered username; fall back to the offline seat name as a suggestion.
+        const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
         const seg = (n) => `<button class="online-seg-btn ${this._onlinePlayers === n ? 'is-on' : ''}" data-n="${n}" data-testid="online-players-${n}">${n}</button>`
 
         const html = /*html*/ `
@@ -511,7 +512,7 @@ class QuickStart extends HTMLElement {
 
                     <label class="online-field">
                         <span class="section-label">Your name</span>
-                        <input class="online-name" data-testid="online-name" type="text" maxlength="9" autocomplete="off" autocorrect="off" spellcheck="false" value="${escapeHtml(savedName)}" />
+                        <input class="online-name" data-testid="online-name" type="text" maxlength="12" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Enter your name" value="${escapeHtml(savedName)}" />
                     </label>
 
                     <div class="online-field">
@@ -542,9 +543,10 @@ class QuickStart extends HTMLElement {
         el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
 
         const nameInput = el.querySelector(".online-name")
-        nameInput.addEventListener("blur", () => {
+        // Remember the name as it's typed and clear any "enter a name" prompt.
+        nameInput.addEventListener("input", () => {
             const v = (nameInput.value || '').trim()
-            if (v) setSavedSeatName('PLAYER', 0, v)
+            if (v) { setUsername(v); this._setOnlineStatus("") }
         })
 
         el.querySelector(".online-seg").addEventListener("click", (e) => {
@@ -556,17 +558,20 @@ class QuickStart extends HTMLElement {
         })
 
         el.querySelector('[data-testid="online-public"]').addEventListener("click", () => {
+            if (!this._requireName()) return
             playClickSound()
             this._enterMatchmaking(this._onlinePlayers || 2)
         })
 
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
+            if (!this._requireName()) return
             playClickSound()
             this._enterLobby(this._genCode(), { create: true })
         })
 
         const codeInput = el.querySelector(".online-code-input")
         const doJoin = () => {
+            if (!this._requireName()) return
             const code = (codeInput.value || '').trim().toUpperCase()
             if (code.length < 4) {
                 this._setOnlineStatus("Enter the 4-letter room code your host shared.")
@@ -582,13 +587,27 @@ class QuickStart extends HTMLElement {
         this.appendChild(el)
     }
 
+    /** Require a non-empty name before going online; remember it. Returns the
+     *  trimmed name, or null (and prompts) when empty. */
+    _requireName() {
+        const input = this.querySelector('.online-name')
+        const name = (input?.value || '').trim()
+        if (!name) {
+            this._setOnlineStatus('Enter a name to play online.')
+            input?.focus()
+            return null
+        }
+        setUsername(name)
+        return name
+    }
+
     _setOnlineStatus(text) {
         const el = this.querySelector('[data-testid="online-status"]')
         if (el) el.textContent = text
     }
 
     _myName() {
-        return (getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 9)
+        return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
     }
 
     // Single net-message handler shared by private rooms and public matchmaking.

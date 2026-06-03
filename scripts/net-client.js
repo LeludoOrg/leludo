@@ -33,6 +33,25 @@ export function getConfiguredServerUrl() {
     return resolveServerUrl();
 }
 
+const USERNAME_KEY = 'leludo-username';
+
+/** The player's remembered online display name (empty if never set). */
+export function getUsername() {
+    try {
+        return (localStorage.getItem(USERNAME_KEY) || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+/** Persist the player's online display name for next time. */
+export function setUsername(name) {
+    try {
+        const trimmed = (name || '').trim();
+        if (trimmed) localStorage.setItem(USERNAME_KEY, trimmed);
+    } catch { /* storage blocked */ }
+}
+
 /** Stable per-device session id (reconnect key). Persisted in localStorage. */
 export function getSessionId() {
     try {
