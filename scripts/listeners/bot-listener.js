@@ -16,6 +16,7 @@ import { state, PHASES } from '../game-state.js';
 import { scheduleTurn, isGameLogicPaused } from '../scheduler.js';
 import { pickBestMove, PERSONALITIES } from '../bot-ai.js';
 import { allTokensInHome, getUniqueTokenPositions } from '../index.js';
+import { isOnlineActive } from '../online-state.js';
 
 const DICE_ROLL_DELAY = 600;
 const BOT_TOKEN_SELECT_DELAY = 400;
@@ -30,6 +31,7 @@ function isAutoplay() {
 }
 
 function maybeAutoRoll() {
+    if (isOnlineActive()) return; // bots + rolls are server-driven online
     if (isGameLogicPaused()) return;
     if (!isAutoplay()) return;
     scheduleTurn(() => dispatch({ type: COMMANDS.ROLL_DICE }), DICE_ROLL_DELAY);
@@ -55,6 +57,7 @@ function pickBotToken(movableTokenIndexes) {
 }
 
 function maybeAutoSelect(movableTokenIndexes) {
+    if (isOnlineActive()) return; // moves are server-driven online
     if (isGameLogicPaused()) return;
     if (isCurrentPlayerBot()) {
         scheduleTurn(() => {

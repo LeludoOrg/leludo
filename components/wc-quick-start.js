@@ -4,6 +4,7 @@ import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} fro
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
+import {startOnlineGame, handleOnlineMessage} from "../scripts/online-game.js";
 
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
@@ -137,6 +138,10 @@ class QuickStart extends HTMLElement {
     }
 
     showHomeScreen() {
+        // Returning home (incl. exiting an online game, whose driver already
+        // closed the socket): drop any stale online references.
+        this._inGame = false
+        this._net = null
         this.innerHTML = ""
 
         const saved = this._readSavedGame()
@@ -613,6 +618,8 @@ class QuickStart extends HTMLElement {
     // Single net-message handler shared by private rooms and public matchmaking.
     _onNetMessage(msg, client) {
         if (this._net !== client) return
+        // Once the game has started, every message drives the board.
+        if (this._inGame) { handleOnlineMessage(msg); return }
         switch (msg.t) {
             case 'queued':
                 this._setSearchStatus(`Searching for a ${msg.size}-player match…`)
@@ -628,6 +635,14 @@ class QuickStart extends HTMLElement {
                 break
             case 'state':
                 this._renderLobby(msg.state)
+                if (msg.state.started) {
+                    // Hand off to the real board, server-driven from here on.
+                    this._inGame = true
+                    startOnlineGame({ net: this._net, seat: this._mySeat, state: msg.state })
+                    const menu = document.getElementById('main-menu')
+                    if (menu) menu.classList.add('hidden')
+                    replaceTo('game')
+                }
                 break
             case 'kicked':
                 this._leaveOnline()
@@ -837,11 +852,14 @@ class QuickStart extends HTMLElement {
     }
 
     _leaveOnline() {
-        if (this._net) {
+        // Don't kill the socket once the game has handed off to the board — the
+        // online-game driver owns it then and closes it on exit.
+        if (this._net && !this._inGame) {
             try { this._net.close() } catch { /* ignore */ }
-            this._net = null
         }
+        this._net = null
         this._mySeat = -1
+        this._inGame = false
     }
 
     _startGame() {

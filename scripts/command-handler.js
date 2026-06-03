@@ -66,6 +66,7 @@ import {
 } from "./scheduler.js";
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "./nav-history.js";
 import { dispatch } from "./game-store.js";
+import { isOnlineActive, onlineNet, onlineSeat } from "./online-state.js";
 
 export {
     pauseGameLogic,
@@ -85,7 +86,17 @@ export const COMMANDS = Object.freeze({
     EXIT_TO_HOME: 'EXIT_TO_HOME',
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
     GOD_TELEPORT: 'GOD_TELEPORT',
+    // Online (multiplayer) — server-driven render commands. NET_START_GAME
+    // mounts the board from a server snapshot; NET_APPLY_ROLL/MOVE replay the
+    // server's authoritative dice value + token choice through the normal path.
+    NET_START_GAME: 'NET_START_GAME',
+    NET_APPLY_ROLL: 'NET_APPLY_ROLL',
+    NET_APPLY_MOVE: 'NET_APPLY_MOVE',
 });
+
+// When set, the next rollDice uses this value instead of the local RNG. Used
+// by NET_APPLY_ROLL so the client renders the server's authoritative dice.
+let _forcedDice = null;
 
 // --- phase machine guards ---
 
@@ -219,6 +230,56 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
     moveDice(state.currentPlayerIndex);
 }
 
+// Online: mount the board from a server snapshot. Mirrors startGame, but the
+// player config + positions come from the server, seats map 1:1 to colours
+// (seat 0 = red…), and no local turn machinery is kicked off — the online
+// driver replays the server's rolls/moves through NET_APPLY_ROLL/MOVE.
+function netStartGame(payload, emit) {
+    resetGameDom();
+    resetTurnCount();
+    initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
+    applyColorMap([0, 1, 2, 3]);
+
+    const playerTypes = payload.playerTypes.map(t => t || undefined);
+    const botPersonalities = payload.botPersonalities
+        ? payload.botPersonalities.slice()
+        : playerTypes.map(t => (t === 'BOT' ? 'balanced' : null));
+    const playerNames = new Array(4).fill('');
+    for (let i = 0; i < 4; i++) playerNames[i] = (payload.playerNames && payload.playerNames[i]) || '';
+    const playerTokenPositions = payload.positions.map(p => (p ? p.slice() : undefined));
+
+    emit({
+        type: EVENTS.GAME_STARTED,
+        quickStartId: null,
+        gameStartedAt: new Date().getTime(),
+        playerTypes,
+        botPersonalities,
+        playerNames,
+        playerTokenPositions,
+        currentPlayerIndex: payload.currentPlayerIndex,
+    });
+
+    setPlayerNames(state.playerNames);
+    showGame();
+
+    const containersToRestack = new Set();
+    state.playerTypes.forEach((playerType, playerIndex) => {
+        if (!playerType || !state.playerTokenPositions[playerIndex]) return;
+        state.playerTokenPositions[playerIndex].forEach((pos, tokenIndex) => {
+            const token = document.createElement("wc-token");
+            token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
+            const container = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, pos));
+            if (container) {
+                container.appendChild(token);
+                containersToRestack.add(container);
+            }
+        });
+    });
+    containersToRestack.forEach(cell => updateCellStacking(cell));
+
+    moveDice(state.currentPlayerIndex);
+}
+
 function resumeSavedGame(emit) {
     const saved = deserializeGameState(localStorage.getItem('ludo-save'));
     if (!saved) return;
@@ -296,7 +357,8 @@ function rollDice(emit) {
     return animateDiceRoll(state.currentDiceRoll)
         .then(() => {
             const lastDiceRoll = state.currentDiceRoll;
-            const newRoll = generateDiceRoll();
+            const newRoll = _forcedDice != null ? _forcedDice : generateDiceRoll();
+            _forcedDice = null;
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
             setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
@@ -626,11 +688,37 @@ export function getSavedGame() {
 // --- the command handler entry point ---
 
 export function commandHandler(currentState, command, services, emit) {
+    // In online mode a human's dice/token taps are intents: send them to the
+    // server and render nothing locally until the server's broadcast arrives.
+    if (isOnlineActive()) {
+        if (command.type === COMMANDS.ROLL_DICE) {
+            if (state.phase === PHASES.AWAITING_ROLL && state.currentPlayerIndex === onlineSeat()) {
+                onlineNet()?.roll();
+            }
+            return;
+        }
+        if (command.type === COMMANDS.SELECT_TOKEN) {
+            if (state.phase === PHASES.AWAITING_SELECTION
+                && state.currentPlayerIndex === onlineSeat()
+                && state.movableTokenIndexes.includes(command.tokenIndex)) {
+                onlineNet()?.move(command.tokenIndex);
+            }
+            return;
+        }
+    }
+
     switch (command.type) {
         case COMMANDS.START_GAME:
             return startGame(command.quickStartId, command.namesByPlayerIndex, emit);
         case COMMANDS.RESUME_SAVED_GAME:
             return resumeSavedGame(emit);
+        case COMMANDS.NET_START_GAME:
+            return netStartGame(command, emit);
+        case COMMANDS.NET_APPLY_ROLL:
+            _forcedDice = command.value;
+            return rollDice(emit);
+        case COMMANDS.NET_APPLY_MOVE:
+            return selectToken(command.playerIndex, command.tokenIndex, emit);
         case COMMANDS.ROLL_DICE:
             return rollDice(emit);
         case COMMANDS.SELECT_TOKEN:
