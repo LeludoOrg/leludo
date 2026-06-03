@@ -40,14 +40,6 @@ function safeSend(ws, msg) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
-function buildPlayerTypes(humans, bots) {
-    const types = [undefined, undefined, undefined, undefined];
-    let i = 0;
-    for (let h = 0; h < humans && i < 4; h++, i++) types[i] = 'PLAYER';
-    for (let b = 0; b < bots && i < 4; b++, i++) types[i] = 'BOT';
-    return types;
-}
-
 function makeRoom(roomId, cfg) {
     const socketsBySession = new Map();
 
@@ -58,12 +50,10 @@ function makeRoom(roomId, cfg) {
             }
         },
         send(seat, msg) {
-            // seat -> session(s) via the engine's seat map, then session -> sockets.
-            for (const [sid, s] of engine.seatBySession) {
-                if (s !== seat) continue;
-                const set = socketsBySession.get(sid);
-                if (set) for (const ws of set) safeSend(ws, msg);
-            }
+            const sid = engine.seats[seat]?.sessionId;
+            if (!sid) return;
+            const set = socketsBySession.get(sid);
+            if (set) for (const ws of set) safeSend(ws, msg);
         },
         release() {
             admission.release(roomId);
@@ -73,7 +63,8 @@ function makeRoom(roomId, cfg) {
 
     const engine = new RoomEngine({
         roomId,
-        playerTypes: buildPlayerTypes(cfg.humans, cfg.bots),
+        size: cfg.size,
+        seatPlan: cfg.seatPlan,
         seed: cfg.seed,
         transport,
     });
@@ -113,7 +104,14 @@ const matchmaker = new Matchmaker({
             return;
         }
         const humans = entries.length;
-        const room = makeRoom(code, { humans, bots: withBots ? Math.max(0, size - humans) : 0, seed: 1 });
+        // Seat plan: matched humans take PLAYER seats (the first becomes host),
+        // remaining seats are bots when bot-filling, else open human seats.
+        const seatPlan = [0, 1, 2, 3].map(i => {
+            if (i >= size) return null;
+            if (i < humans) return 'PLAYER';
+            return withBots ? 'BOT' : 'PLAYER';
+        });
+        const room = makeRoom(code, { size, seatPlan });
         for (const e of entries) {
             safeSend(e.ws, { t: 'matched', room: code });
             bindConnToRoom(e.conn, room);
@@ -175,9 +173,11 @@ wss.on('connection', (ws, req) => {
                 ws.close();
                 return;
             }
+            // `size` is the host's chosen seat count; `humans` is accepted as an
+            // alias for the dev harness. The creator becomes host on join.
+            const size = Math.max(2, clampSeats(q.get('size') ?? q.get('humans'), 2));
             room = makeRoom(roomId, {
-                humans: clampSeats(q.get('humans'), 2),
-                bots: clampSeats(q.get('bots'), 0),
+                size,
                 seed: TEST_HOOKS && q.get('seed') != null ? Number(q.get('seed')) : 1,
             });
         }
@@ -198,6 +198,11 @@ wss.on('connection', (ws, req) => {
             case 'roll': engine.handleRoll(sessionId); break;
             case 'move': engine.handleMove(sessionId, msg.token); break;
             case 'join': engine.handleJoin(sessionId, msg.name); break;
+            // host-only lobby controls (the engine enforces NOT_HOST / NOT_IN_LOBBY)
+            case 'lobby_size': engine.handleSetSize(sessionId, msg.n); break;
+            case 'lobby_seat': engine.handleSetSeat(sessionId, msg.seat, msg.seatType); break;
+            case 'lobby_kick': engine.handleKick(sessionId, msg.seat); break;
+            case 'lobby_start': engine.handleStart(sessionId); break;
             default: break;
         }
     });

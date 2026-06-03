@@ -59,18 +59,58 @@ test.describe('Online lobby — create + join', () => {
         expect(code).toMatch(/^[A-Z0-9]{4}$/);
         await expect(host.getByTestId('online-started')).toHaveText('false'); // waiting for the guest
 
+        // Only the host sees the Start control; the guest does not yet exist.
+        await expect(host.getByTestId('online-is-host')).toHaveText('true');
+        await expect(host.getByTestId('online-start')).toBeVisible();
+
         // Guest joins by the shared code.
         await guest.goto('/');
         await guest.getByTestId('home-play-online').click();
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
 
-        // Both devices now see the same full room and the game starting.
+        // The guest is seated but is NOT the host and waits for the host to start.
+        await expect(guest.getByTestId('online-is-host')).toHaveText('false');
+        await expect(guest.getByTestId('online-start')).toBeHidden();
+        await expect(host.getByTestId('online-seat-1')).toContainText('Ready');
+
+        // Host starts the game; both transition together.
+        await host.getByTestId('online-start').click();
         await expect(host.getByTestId('online-started')).toHaveText('true');
         await expect(guest.getByTestId('online-started')).toHaveText('true');
-        // The host now sees the guest seated and ready (both seats filled).
-        await expect(host.getByTestId('online-seat-1')).toContainText('Ready');
         await expect(guest.getByTestId('online-room-code')).toHaveText(code);
+
+        await ctxHost.close();
+        await ctxGuest.close();
+    });
+
+    test('host can add a bot and kick a player', async ({ browser }) => {
+        const ctxHost = await browser.newContext();
+        const ctxGuest = await browser.newContext();
+        const host = await ctxHost.newPage();
+        const guest = await ctxGuest.newPage();
+
+        await host.goto('/');
+        await host.getByTestId('home-play-online').click();
+        await host.getByTestId('online-create').click();
+        const code = (await host.getByTestId('online-room-code').textContent())?.trim();
+
+        // Guest joins, host sees the Kick control on seat 1.
+        await guest.goto('/');
+        await guest.getByTestId('home-play-online').click();
+        await guest.getByTestId('online-code-input').fill(code);
+        await guest.getByTestId('online-join').click();
+        await expect(host.getByTestId('online-seat-1-kick')).toBeVisible();
+
+        // Host kicks the guest → guest is bounced back to the online menu.
+        await host.getByTestId('online-seat-1-kick').click();
+        await expect(guest.getByTestId('online-create')).toBeVisible();
+        await expect(guest.getByTestId('online-status')).toContainText(/removed/i);
+
+        // Seat 1 reopens; host fills it with a bot and seat 1 reads "Bot".
+        await expect(host.getByTestId('online-seat-1-bot')).toBeVisible();
+        await host.getByTestId('online-seat-1-bot').click();
+        await expect(host.getByTestId('online-seat-1')).toContainText('Bot');
 
         await ctxHost.close();
         await ctxGuest.close();
@@ -103,14 +143,18 @@ test.describe('Online — public matchmaking', () => {
         await b.getByTestId('home-play-online').click();
         await b.getByTestId('online-public').click();
 
-        // The queue pairs them into one room and the game starts for both.
-        await expect(a.getByTestId('online-started')).toHaveText('true');
-        await expect(b.getByTestId('online-started')).toHaveText('true');
-
+        // The queue pairs them into one room (same server-assigned code).
         const codeA = (await a.getByTestId('online-room-code').textContent())?.trim();
         const codeB = (await b.getByTestId('online-room-code').textContent())?.trim();
         expect(codeA).toMatch(/^[A-Z0-9]{4}$/);
-        expect(codeA).toBe(codeB); // same server-assigned room
+        expect(codeA).toBe(codeB);
+
+        // One of them is the host; the host starts and both transition together.
+        const aIsHost = (await a.getByTestId('online-is-host').textContent()) === 'true';
+        const host = aIsHost ? a : b;
+        await host.getByTestId('online-start').click();
+        await expect(a.getByTestId('online-started')).toHaveText('true');
+        await expect(b.getByTestId('online-started')).toHaveText('true');
 
         await ctxA.close();
         await ctxB.close();

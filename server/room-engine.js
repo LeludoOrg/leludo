@@ -1,20 +1,18 @@
 /**
- * RoomEngine — server-authoritative Ludo room, runtime-agnostic.
+ * RoomEngine — server-authoritative Ludo room with a host-managed lobby.
  *
- * This is the "thin state shell" from docs/multiplayer-plan.md. ALL game rules
- * stay in the existing pure modules (game-logic / turn-rules / bot-ai); this
- * class is an *interactive* version of scripts/game-driver.js `runGame`: instead
- * of one synchronous `while`, it pauses at each human decision and waits for an
- * intent message, then resumes the same loop body.
+ * Two layers:
+ *   1. LOBBY — a networked version of the offline "who's playing?" setup. The
+ *      first human to join is the HOST. Only the host can change the room size,
+ *      set a seat to a bot, kick a player, and START the game. Everyone else
+ *      waits. Open (unclaimed) human seats become bots on start.
+ *   2. IN-GAME — once started, this is an interactive version of
+ *      scripts/game-driver.js `runGame`: roll → three-sixes → legal moves →
+ *      forced-move auto-apply → capture → finish/rank → plays-again → advance.
+ *      All rules stay in the pure modules; this validates every intent.
  *
- * It owns no transport. The host (Node ws server, Cloudflare DO, or a unit-test
- * fake) injects a `transport` with broadcast/send/release, and a `schedule` for
- * paced bot turns. That keeps this file identical across runtimes.
- *
- * Authority guarantees (every handler validates against server state):
- *   - roll only when phase===AWAIT_ROLL and sender===currentPlayer
- *   - move only when phase===AWAIT_MOVE, sender===currentPlayer, token∈legalMoves
- *   - the client never sends positions/dice — those live here only
+ * Transport-agnostic: the host (Node ws server, Cloudflare DO, unit-test fake)
+ * injects `transport` {broadcast, send, release} and a `schedule` for paced bots.
  */
 import {
     isTokenMovable,
@@ -38,6 +36,8 @@ export const PHASES = Object.freeze({
     AWAIT_MOVE: 'AWAIT_MOVE',
     ENDED: 'ENDED',
 });
+
+const MIN_PLAYERS = 2;
 
 function cloneBoard(positions) {
     return positions.map(p => (p ? p.slice() : null));
@@ -69,96 +69,266 @@ export class RoomEngine {
     /**
      * @param {object} opts
      * @param {string} opts.roomId
-     * @param {('PLAYER'|'BOT'|undefined|null)[]} opts.playerTypes  length-4 seat plan
-     * @param {string[]} [opts.names]
-     * @param {string[]} [opts.personalities]   per-seat bot personality
-     * @param {number} [opts.seed]              server dice RNG seed (deterministic)
+     * @param {number} [opts.size]       initial open human seats (2..4), default 2
+     * @param {('PLAYER'|'BOT'|null)[]} [opts.seatPlan]  explicit seat plan (overrides size)
+     * @param {number} [opts.seed]       server dice RNG seed (deterministic)
      * @param {{broadcast:Function, send:Function, release?:Function}} opts.transport
-     * @param {(fn:Function, ms:number)=>void} [opts.schedule]  paced bot scheduler
+     * @param {(fn:Function, ms:number)=>void} [opts.schedule]
      * @param {number} [opts.botDelayMs]
      */
     constructor(opts) {
         this.roomId = opts.roomId;
-        this.playerTypes = [0, 1, 2, 3].map(i => opts.playerTypes[i] || undefined);
-        this.playerNames = [0, 1, 2, 3].map(i =>
-            opts.names?.[i] || (this.playerTypes[i] === 'BOT' ? `Bot ${i + 1}` : `Player ${i + 1}`));
-        this.botPersonalities = [0, 1, 2, 3].map(i =>
-            this.playerTypes[i] === 'BOT' ? (opts.personalities?.[i] || 'balanced') : null);
         this.rng = makeRng(opts.seed ?? 1);
         this.transport = opts.transport;
         this.schedule = opts.schedule || ((fn, ms) => setTimeout(fn, ms));
         this.botDelayMs = opts.botDelayMs ?? 600;
 
-        this.positions = this.playerTypes.map(t => (t ? [-1, -1, -1, -1] : null));
-        this.currentPlayerIndex = this._firstActive();
+        // ---- lobby seat model ----
+        const size = Math.max(MIN_PLAYERS, Math.min(4, opts.size ?? 2));
+        const plan = opts.seatPlan || [0, 1, 2, 3].map(i => (i < size ? 'PLAYER' : null));
+        this.seats = [0, 1, 2, 3].map(i => ({
+            type: plan[i] || null,       // 'PLAYER' | 'BOT' | null(closed)
+            sessionId: null,             // null = open (PLAYER) or n/a (BOT/closed)
+            name: plan[i] === 'BOT' ? `Bot ${i + 1}` : '',
+            personality: plan[i] === 'BOT' ? 'balanced' : null,
+            connected: false,
+        }));
+        this.hostSession = null;
+
+        // ---- in-game state (materialised on start) ----
+        this.phase = PHASES.LOBBY;
+        this.started = false;
+        this.positions = [null, null, null, null];
+        this.playerTypes = [undefined, undefined, undefined, undefined];
+        this.playerNames = ['', '', '', ''];
+        this.botPersonalities = [null, null, null, null];
+        this.currentPlayerIndex = 0;
         this.currentDiceRoll = 0;
         this.consecutiveSixes = 0;
         this.captures = [0, 0, 0, 0];
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
         this.legalMoves = [];
-        this.phase = PHASES.LOBBY;
-
-        this.seatBySession = new Map(); // sessionId -> seat index
-        this.connected = new Set();     // connected seat indexes
-        this.started = false;
     }
 
     // ---- seat helpers -------------------------------------------------------
+
+    _seatOf(sessionId) {
+        return this.seats.findIndex(s => s.sessionId === sessionId);
+    }
+
+    _hostSeat() {
+        return this.hostSession == null ? -1 : this.seats.findIndex(s => s.sessionId === this.hostSession);
+    }
+
+    _isHost(sessionId) {
+        return this.hostSession != null && this.hostSession === sessionId;
+    }
+
+    _activeCount() {
+        return this.seats.filter(s => s.type).length;
+    }
 
     _firstActive() {
         return this.playerTypes.findIndex(t => t !== undefined);
     }
 
-    _humanSeats() {
-        return [0, 1, 2, 3].filter(i => this.playerTypes[i] === 'PLAYER');
-    }
+    // ---- lobby intents ------------------------------------------------------
 
-    _nextOpenHumanSeat() {
-        const taken = new Set(this.seatBySession.values());
-        return this._humanSeats().find(i => !taken.has(i)) ?? -1;
-    }
-
-    seatOf(sessionId) {
-        return this.seatBySession.get(sessionId) ?? -1;
-    }
-
-    // ---- intents ------------------------------------------------------------
-
-    /**
-     * Seat a (re)connecting human. Reconnect is keyed by sessionId → same seat.
-     * @returns {{ok:true, seat:number} | {ok:false, error:string}}
-     */
+    /** Seat a (re)connecting human. First to join becomes host. Reconnect = same seat. */
     handleJoin(sessionId, name) {
-        let seat = this.seatBySession.get(sessionId);
-        if (seat === undefined) {
-            seat = this._nextOpenHumanSeat();
+        let seat = this._seatOf(sessionId);
+        if (seat === -1) {
+            seat = this.seats.findIndex(s => s.type === 'PLAYER' && s.sessionId === null);
             if (seat === -1) return { ok: false, error: 'ROOM_FULL' };
-            this.seatBySession.set(sessionId, seat);
+            this.seats[seat].sessionId = sessionId;
+            this.seats[seat].name = name || `Player ${seat + 1}`;
+            if (this.hostSession == null) this.hostSession = sessionId;
         }
-        if (name) this.playerNames[seat] = name;
-        this.connected.add(seat);
-        this.transport.send(seat, { t: 'seated', playerIndex: seat, roomId: this.roomId });
+        if (name) this.seats[seat].name = name;
+        this.seats[seat].connected = true;
+        this.transport.send(seat, {
+            t: 'seated',
+            playerIndex: seat,
+            isHost: this._isHost(sessionId),
+            roomId: this.roomId,
+        });
         this._broadcastState('join');
-        this._maybeStart();
         return { ok: true, seat };
     }
 
-    handleDisconnect(sessionId) {
-        const seat = this.seatBySession.get(sessionId);
-        if (seat === undefined) return;
-        this.connected.delete(seat);
-        this._broadcastState('disconnect');
-        // Pause-and-forfeit grace handling is a later phase; if nobody human is
-        // left connected, release the room so it never holds a capacity slot.
-        const anyHumanConnected = this._humanSeats().some(i => this.connected.has(i));
-        if (!anyHumanConnected) this._end('abandoned');
+    /** Host: set the number of active seats (2..4), opening/closing as needed. */
+    handleSetSize(sessionId, n) {
+        const guard = this._hostLobbyGuard(sessionId);
+        if (guard) return guard;
+        const size = Math.max(MIN_PLAYERS, Math.min(4, Number(n) || 0));
+        while (this._activeCount() < size) {
+            const i = this.seats.findIndex(s => !s.type);
+            if (i === -1) break;
+            this._openSeat(i);
+        }
+        while (this._activeCount() > size) {
+            const i = this._findRemovableSeat();
+            if (i === -1) return this._reject(this._seatOf(sessionId), 'CANT_SHRINK'); // would kick a human
+            this._closeSeat(i);
+        }
+        this._broadcastState('lobby');
+        return { ok: true };
     }
 
-    /** @returns {{ok:true} | {ok:false, error:string}} */
+    /**
+     * Host: set seat `i` to 'PLAYER' (open human seat), 'BOT', or 'CLOSED'.
+     * Replacing a connected human boots them (a kick).
+     */
+    handleSetSeat(sessionId, i, type) {
+        const guard = this._hostLobbyGuard(sessionId);
+        if (guard) return guard;
+        const seat = this.seats[i];
+        if (!seat) return this._reject(this._seatOf(sessionId), 'BAD_SEAT');
+        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), 'CANT_CHANGE_HOST');
+
+        if (type === 'BOT') {
+            this._bootIfHuman(i);
+            seat.type = 'BOT';
+            seat.sessionId = null;
+            seat.connected = false;
+            seat.name = `Bot ${i + 1}`;
+            seat.personality = 'balanced';
+        } else if (type === 'PLAYER') {
+            this._openSeat(i);
+        } else if (type === 'CLOSED') {
+            if (this._activeCount() <= MIN_PLAYERS) return this._reject(this._seatOf(sessionId), 'MIN_TWO');
+            this._closeSeat(i);
+        } else {
+            return this._reject(this._seatOf(sessionId), 'BAD_TYPE');
+        }
+        this._broadcastState('lobby');
+        return { ok: true };
+    }
+
+    /** Host: remove the human in seat `i` (back to an open seat). */
+    handleKick(sessionId, i) {
+        const guard = this._hostLobbyGuard(sessionId);
+        if (guard) return guard;
+        const seat = this.seats[i];
+        if (!seat || seat.type !== 'PLAYER' || !seat.sessionId) return this._reject(this._seatOf(sessionId), 'NOTHING_TO_KICK');
+        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), 'CANT_KICK_HOST');
+        this._bootIfHuman(i); // notifies + reopens
+        this._broadcastState('lobby');
+        return { ok: true };
+    }
+
+    /** Host: start the game. Open human seats fill with bots. */
+    handleStart(sessionId) {
+        const guard = this._hostLobbyGuard(sessionId);
+        if (guard) return guard;
+        if (this._activeCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), 'NEED_TWO_PLAYERS');
+        this._startGame();
+        return { ok: true };
+    }
+
+    _hostLobbyGuard(sessionId) {
+        const seat = this._seatOf(sessionId);
+        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
+        if (this.phase !== PHASES.LOBBY) return this._reject(seat, 'NOT_IN_LOBBY');
+        if (!this._isHost(sessionId)) return this._reject(seat, 'NOT_HOST');
+        return null;
+    }
+
+    _openSeat(i) {
+        const s = this.seats[i];
+        this._bootIfHuman(i);
+        s.type = 'PLAYER';
+        s.sessionId = null;
+        s.connected = false;
+        s.name = '';
+        s.personality = null;
+    }
+
+    _closeSeat(i) {
+        this._bootIfHuman(i);
+        const s = this.seats[i];
+        s.type = null;
+        s.sessionId = null;
+        s.connected = false;
+        s.name = '';
+        s.personality = null;
+    }
+
+    /** If a connected human sits here, tell them they were removed, then clear. */
+    _bootIfHuman(i) {
+        const s = this.seats[i];
+        if (s.type === 'PLAYER' && s.sessionId && s.sessionId !== this.hostSession) {
+            this.transport.send(i, { t: 'kicked' });
+            s.sessionId = null;
+            s.connected = false;
+            s.name = '';
+        }
+    }
+
+    /** Removable for shrink: a bot or an open (unclaimed) human seat, highest index first. */
+    _findRemovableSeat() {
+        for (let i = 3; i >= 0; i--) {
+            const s = this.seats[i];
+            if (!s.type) continue;
+            if (s.sessionId === this.hostSession) continue;
+            const connectedHuman = s.type === 'PLAYER' && s.sessionId && s.connected;
+            if (!connectedHuman) return i;
+        }
+        return -1;
+    }
+
+    _startGame() {
+        // Open human seats with nobody in them become bots.
+        this.seats.forEach((s, i) => {
+            if (s.type === 'PLAYER' && s.sessionId === null) {
+                s.type = 'BOT';
+                s.name = `Bot ${i + 1}`;
+                s.personality = 'balanced';
+            }
+            if (s.type === 'BOT' && !s.personality) s.personality = 'balanced';
+        });
+
+        this.playerTypes = this.seats.map(s => s.type || undefined);
+        this.playerNames = this.seats.map((s, i) => s.name || (s.type === 'BOT' ? `Bot ${i + 1}` : `Player ${i + 1}`));
+        this.botPersonalities = this.seats.map(s => (s.type === 'BOT' ? (s.personality || 'balanced') : null));
+        this.positions = this.seats.map(s => (s.type ? [-1, -1, -1, -1] : null));
+        this.captures = [0, 0, 0, 0];
+        this.ranks = [0, 0, 0, 0];
+        this.lastRank = 0;
+        this.consecutiveSixes = 0;
+        this.currentPlayerIndex = this._firstActive();
+        this.started = true;
+        this._beginTurn();
+    }
+
+    handleDisconnect(sessionId) {
+        const seat = this._seatOf(sessionId);
+        if (seat === -1) return;
+        this.seats[seat].connected = false;
+
+        if (this.phase === PHASES.LOBBY) {
+            // Free the seat so someone else can take it; promote a new host if needed.
+            this.seats[seat].sessionId = null;
+            this.seats[seat].name = '';
+            if (sessionId === this.hostSession) {
+                const next = this.seats.find(s => s.sessionId && s.connected);
+                this.hostSession = next ? next.sessionId : null;
+            }
+            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) return this._end('abandoned');
+            this._broadcastState('disconnect');
+            return;
+        }
+
+        this._broadcastState('disconnect');
+        if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) this._end('abandoned');
+    }
+
+    // ---- in-game intents ----------------------------------------------------
+
     handleRoll(sessionId) {
-        const seat = this.seatBySession.get(sessionId);
-        if (seat === undefined) return this._reject(seat, 'NOT_SEATED');
+        const seat = this._seatOf(sessionId);
+        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
         if (this.phase !== PHASES.AWAIT_ROLL) return this._reject(seat, 'NOT_AWAITING_ROLL');
         if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
         if (this.playerTypes[seat] !== 'PLAYER') return this._reject(seat, 'NOT_A_HUMAN_SEAT');
@@ -166,10 +336,9 @@ export class RoomEngine {
         return { ok: true };
     }
 
-    /** @returns {{ok:true} | {ok:false, error:string}} */
     handleMove(sessionId, tokenIndex) {
-        const seat = this.seatBySession.get(sessionId);
-        if (seat === undefined) return this._reject(seat, 'NOT_SEATED');
+        const seat = this._seatOf(sessionId);
+        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
         if (this.phase !== PHASES.AWAIT_MOVE) return this._reject(seat, 'NOT_AWAITING_MOVE');
         if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
         if (!this.legalMoves.includes(tokenIndex)) return this._reject(seat, 'ILLEGAL_MOVE');
@@ -178,16 +347,6 @@ export class RoomEngine {
     }
 
     // ---- turn machine -------------------------------------------------------
-
-    _maybeStart() {
-        if (this.started) return;
-        const taken = new Set(this.seatBySession.values());
-        const allHumansSeated = this._humanSeats().every(i => taken.has(i));
-        if (!allHumansSeated) return;
-        this.started = true;
-        this.currentPlayerIndex = this._firstActive();
-        this._beginTurn();
-    }
 
     _beginTurn() {
         if (this.phase === PHASES.ENDED) return;
@@ -200,7 +359,7 @@ export class RoomEngine {
         }
     }
 
-    _doRoll(seat) {
+    _doRoll() {
         const dice = generateDiceRoll(this.rng);
         this.currentDiceRoll = dice;
         this.consecutiveSixes = dice === 6 ? this.consecutiveSixes + 1 : 0;
@@ -219,8 +378,6 @@ export class RoomEngine {
         this.legalMoves = movable;
         this.phase = PHASES.AWAIT_MOVE;
         this._broadcastState('rolled');
-        // Forced-move optimization: a single legal move auto-applies (saves the
-        // client a second message). Bots always auto-apply via _botStep.
         if (movable.length === 1) this._applyMoveAndContinue(movable[0]);
     }
 
@@ -283,8 +440,6 @@ export class RoomEngine {
 
         if (ended) return this._end('finished');
 
-        // A 6, a capture, or a completed trip grants another turn — unless the
-        // player just finished their last token. Mirrors game-driver `playsAgain`.
         const playsAgain = (dice === 6 || result.captureCount > 0 || result.tripComplete)
             && !isPlayerFinished(this.positions[pi]);
         if (playsAgain) {
@@ -307,9 +462,10 @@ export class RoomEngine {
 
     _end(reason) {
         if (this.phase === PHASES.ENDED) return;
-        // Rank anyone still unranked (covers abandonment / early end).
-        computeLeftoverRankOrder(this.playerTypes, this.positions, this.ranks)
-            .forEach(idx => { this.ranks[idx] = ++this.lastRank; });
+        if (this.started) {
+            computeLeftoverRankOrder(this.playerTypes, this.positions, this.ranks)
+                .forEach(idx => { this.ranks[idx] = ++this.lastRank; });
+        }
         this.phase = PHASES.ENDED;
         this.transport.broadcast({ t: 'ended', reason, ranks: this.ranks.slice(), state: this._publicState() });
         this.transport.release?.();
@@ -331,28 +487,30 @@ export class RoomEngine {
         return { ok: false, error };
     }
 
-    /** Seat-agnostic public snapshot. Each client knows its own seat from `seated`. */
     _publicState() {
-        const claimed = new Set(this.seatBySession.values());
         return {
             roomId: this.roomId,
             phase: this.phase,
             started: this.started,
+            hostSeat: this._hostSeat(),
+            size: this._activeCount(),
             currentPlayerIndex: this.currentPlayerIndex,
             dice: this.currentDiceRoll,
             legalMoves: this.legalMoves.slice(),
-            playerTypes: this.playerTypes.map(t => t ?? null),
-            playerNames: this.playerNames.slice(),
+            playerTypes: this.seats.map(s => s.type ?? null),
+            playerNames: this.seats.map(s => s.name),
             positions: this.positions.map(p => (p ? p.slice() : null)),
             captures: this.captures.slice(),
             ranks: this.ranks.slice(),
             lastRank: this.lastRank,
-            seats: [0, 1, 2, 3].map(i => ({
+            seats: this.seats.map((s, i) => ({
                 index: i,
-                type: this.playerTypes[i] ?? null,
-                name: this.playerNames[i],
-                connected: this.connected.has(i),
-                claimed: claimed.has(i),
+                type: s.type ?? null,
+                name: s.name,
+                connected: s.connected,
+                claimed: s.sessionId != null,
+                isBot: s.type === 'BOT',
+                isHost: s.sessionId != null && s.sessionId === this.hostSession,
             })),
         };
     }

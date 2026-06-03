@@ -31,6 +31,7 @@
     <h1>Leludo Multiplayer — dev harness</h1>
 
     <div class="row">
+        <button data-testid="mp-start" type="button">Start</button>
         <button data-testid="mp-roll" type="button">Roll</button>
         <button data-testid="mp-move-0" type="button">Move 0</button>
         <button data-testid="mp-move-1" type="button">Move 1</button>
@@ -42,6 +43,7 @@
         <span>Connection</span><span data-testid="mp-connection" id="mp-connection">connecting…</span>
         <span>Room</span><span data-testid="mp-room"><code id="mp-room"></code></span>
         <span>Your seat</span><span data-testid="mp-seat" id="mp-seat">—</span>
+        <span>Host</span><span data-testid="mp-is-host" id="mp-is-host">false</span>
         <span>Your turn</span><span data-testid="mp-your-turn" id="mp-your-turn">false</span>
         <span>Started</span><span data-testid="mp-started" id="mp-started">false</span>
         <span>Phase</span><span data-testid="mp-phase" id="mp-phase">—</span>
@@ -120,10 +122,17 @@
                     case 'seated':
                         mySeat = msg.playerIndex;
                         set('mp-seat', String(mySeat));
+                        set('mp-is-host', String(!!msg.isHost));
                         break;
                     case 'state':
                     case 'moved':
-                        if (msg.state) renderState(msg.state);
+                        if (msg.state) {
+                            renderState(msg.state);
+                            set('mp-is-host', String(msg.state.hostSeat === mySeat));
+                        }
+                        break;
+                    case 'kicked':
+                        set('mp-status', 'kicked');
                         break;
                     case 'ended':
                         if (msg.state) renderState(msg.state);
@@ -144,6 +153,7 @@
             },
         }).connect();
 
+        document.querySelector('[data-testid="mp-start"]').addEventListener('click', () => client.start());
         document.querySelector('[data-testid="mp-roll"]').addEventListener('click', () => client.roll());
         document.querySelectorAll('[data-testid^="mp-move-"]').forEach((btn) => {
             const token = Number(btn.getAttribute('data-testid').split('-').pop());

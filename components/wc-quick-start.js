@@ -605,9 +605,16 @@ class QuickStart extends HTMLElement {
                 break
             case 'seated':
                 this._mySeat = msg.playerIndex
+                this._isHost = !!msg.isHost
                 break
             case 'state':
                 this._renderLobby(msg.state)
+                break
+            case 'kicked':
+                this._leaveOnline()
+                this.showOnlineScreen()
+                replaceTo('online')
+                this._setOnlineStatus('The host removed you from the room.')
                 break
             case 'busy':
                 this._onLobbyBusy(msg.reason)
@@ -640,7 +647,7 @@ class QuickStart extends HTMLElement {
         const players = create ? (this._onlinePlayers || 2) : 2
         this.showOnlineLobby(code)
         goTo('online-lobby')
-        this._connect({ room: code, params: { humans: String(players) } })
+        this._connect({ room: code, params: { size: String(players) } })
     }
 
     _enterMatchmaking(size) {
@@ -683,26 +690,34 @@ class QuickStart extends HTMLElement {
 
     showOnlineLobby(code) {
         this.innerHTML = ""
+        const seg = (n) => `<button class="online-seg-btn" data-action="size" data-n="${n}" data-testid="online-lobby-size-${n}">${n}</button>`
         const html = /*html*/ `
             <div class="frame">
                 <div class="top-bar">
                     <button class="back-btn icon-btn">${ICON_BACK}</button>
-                    <div class="top-bar-title">Online room</div>
+                    <div class="top-bar-title">Game room</div>
                     <wc-settings></wc-settings>
                 </div>
 
                 <div class="frame-body online-lobby-body">
                     <span class="section-label">Room code</span>
                     <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
-                    <p class="body-helper">Share this code with your friends. The game starts once everyone joins.</p>
+                    <p class="body-helper online-lobby-hint" data-testid="online-lobby-hint">Share this code with your friends.</p>
+
+                    <div class="online-host-tools" data-testid="online-host-tools" hidden>
+                        <span class="section-label">Room size</span>
+                        <div class="online-seg" data-testid="online-lobby-size">${seg(2)}${seg(3)}${seg(4)}</div>
+                    </div>
 
                     <div class="online-seats" data-testid="online-seats"></div>
 
                     <p class="online-lobby-status" data-testid="online-lobby-status">Connecting…</p>
                     <span data-testid="online-started" hidden>false</span>
+                    <span data-testid="online-is-host" hidden>false</span>
                 </div>
 
                 <div class="frame-footer">
+                    <button class="online-start-btn cta-primary" data-testid="online-start" hidden>${PLAY_ICON_SVG(13)}<span>Start game</span></button>
                     <button class="online-leave-btn cta-secondary" data-testid="online-leave">Leave room</button>
                 </div>
             </div>
@@ -710,6 +725,20 @@ class QuickStart extends HTMLElement {
         const el = htmlToElement(html)
         el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
         el.querySelector(".online-leave-btn").addEventListener("click", () => { playClickSound(); navBack() })
+        el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._net?.start() })
+
+        // Delegated host controls: size selector + per-seat actions.
+        el.querySelector(".frame-body").addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-action]")
+            if (!btn || !this._net) return
+            const action = btn.dataset.action
+            const seat = Number(btn.dataset.seat)
+            playClickSound()
+            if (action === "size") this._net.setSize(Number(btn.dataset.n))
+            else if (action === "kick") this._net.kick(seat)
+            else if (action === "bot") this._net.setSeat(seat, "BOT")
+            else if (action === "open") this._net.setSeat(seat, "PLAYER")
+        })
         this.appendChild(el)
     }
 
@@ -719,29 +748,66 @@ class QuickStart extends HTMLElement {
     }
 
     _renderLobby(state) {
+        const isHost = state.hostSeat === this._mySeat && this._mySeat !== -1
+        this._isHost = isHost
+        const setHidden = (testid, hidden) => {
+            const el = this.querySelector(`[data-testid="${testid}"]`)
+            if (el) el.hidden = hidden
+        }
+        setHidden('online-host-tools', !isHost || state.started)
+        setHidden('online-start', !isHost || state.started)
+        const isHostEl = this.querySelector('[data-testid="online-is-host"]')
+        if (isHostEl) isHostEl.textContent = String(isHost)
+
+        // Reflect current size on the host's segmented control.
+        this.querySelectorAll('[data-testid="online-lobby-size"] .online-seg-btn')
+            .forEach(b => b.classList.toggle('is-on', Number(b.dataset.n) === state.size))
+
+        const activeSeats = (state.seats || []).filter(s => s.type) // PLAYER or BOT
         const seatsEl = this.querySelector('.online-seats')
-        const humanSeats = (state.seats || []).filter(s => s.type === 'PLAYER')
         if (seatsEl) {
-            seatsEl.innerHTML = humanSeats.map(s => {
+            seatsEl.innerHTML = activeSeats.map(s => {
                 const me = s.index === this._mySeat
-                const label = s.connected ? (s.name || `Player ${s.index + 1}`) : 'Waiting…'
-                const statusText = s.connected ? 'Ready' : 'Open'
+                const isBot = s.type === 'BOT'
+                let label, status
+                if (isBot) { label = s.name || `Bot ${s.index + 1}`; status = 'Bot' }
+                else if (s.connected) { label = s.name || `Player ${s.index + 1}`; status = s.isHost ? 'Host' : 'Ready' }
+                else { label = 'Open seat'; status = 'Open' }
+                const tags = me ? ' (you)' : ''
+
+                // Host-only per-seat controls (never on the host's own seat).
+                let controls = ''
+                if (isHost && !state.started && !s.isHost) {
+                    if (isBot) {
+                        controls = `<button class="online-seat-btn" data-action="open" data-seat="${s.index}" data-testid="online-seat-${s.index}-open">Open</button>`
+                    } else if (s.connected) {
+                        controls = `<button class="online-seat-btn online-seat-btn--danger" data-action="kick" data-seat="${s.index}" data-testid="online-seat-${s.index}-kick">Kick</button>`
+                    } else {
+                        controls = `<button class="online-seat-btn" data-action="bot" data-seat="${s.index}" data-testid="online-seat-${s.index}-bot">Add bot</button>`
+                    }
+                }
+                const dim = (!isBot && !s.connected) ? 0.35 : 1
                 return /*html*/ `
-                    <div class="online-seat ${s.connected ? 'is-filled' : ''}" data-testid="online-seat-${s.index}">
-                        <span class="online-seat-dot" style="background:hsl(var(--player-${s.index}));opacity:${s.connected ? 1 : 0.3};"></span>
-                        <span class="online-seat-name">${escapeHtml(label)}${me ? ' (you)' : ''}</span>
-                        <span class="online-seat-status">${statusText}</span>
+                    <div class="online-seat ${s.connected || isBot ? 'is-filled' : ''}" data-testid="online-seat-${s.index}">
+                        <span class="online-seat-dot" style="background:hsl(var(--player-${s.index}));opacity:${dim};"></span>
+                        <span class="online-seat-name">${escapeHtml(label)}${tags}</span>
+                        <span class="online-seat-status">${status}</span>
+                        ${controls}
                     </div>`
             }).join('')
         }
-        const connected = humanSeats.filter(s => s.connected).length
-        const total = humanSeats.length
+
         const startedEl = this.querySelector('[data-testid="online-started"]')
         if (startedEl) startedEl.textContent = String(!!state.started)
+
+        const humans = activeSeats.filter(s => s.type === 'PLAYER')
+        const joined = humans.filter(s => s.connected).length
         if (state.started) {
-            this._setLobbyStatus('All players in — game starting…')
+            this._setLobbyStatus('Game starting…')
+        } else if (isHost) {
+            this._setLobbyStatus(`You're the host. ${joined} player${joined === 1 ? '' : 's'} in — start when ready.`)
         } else {
-            this._setLobbyStatus(`Waiting for players… ${connected}/${total} joined`)
+            this._setLobbyStatus('Waiting for the host to start…')
         }
     }
 

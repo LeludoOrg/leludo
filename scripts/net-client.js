@@ -98,5 +98,12 @@ export class NetClient {
 
     roll() { this.send({ t: 'roll' }); }
     move(token) { this.send({ t: 'move', token }); }
+
+    // Host-only lobby controls (the server rejects them from non-hosts).
+    setSize(n) { this.send({ t: 'lobby_size', n }); }
+    setSeat(seat, seatType) { this.send({ t: 'lobby_seat', seat, seatType }); }
+    kick(seat) { this.send({ t: 'lobby_kick', seat }); }
+    start() { this.send({ t: 'lobby_start' }); }
+
     close() { this.ws?.close(); }
 }

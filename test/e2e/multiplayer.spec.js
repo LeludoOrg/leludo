@@ -38,7 +38,11 @@ test.describe('Multiplayer — server authority', () => {
         await pageA.goto(`/multiplayer.html?room=${room}&session=sa&name=Alice&humans=2&seed=7`);
         await pageB.goto(`/multiplayer.html?room=${room}&session=sb&name=Bob&humans=2&seed=7`);
 
-        // Game starts only when both human seats are claimed.
+        // Both seated; the host (first to join) starts the game manually.
+        await expect(pageA.getByTestId('mp-seat')).not.toHaveText('—');
+        await expect(pageB.getByTestId('mp-seat')).not.toHaveText('—');
+        const host = (await pageA.getByTestId('mp-is-host').textContent()) === 'true' ? pageA : pageB;
+        await host.getByTestId('mp-start').click();
         await expect(pageA.getByTestId('mp-started')).toHaveText('true');
         await expect(pageB.getByTestId('mp-started')).toHaveText('true');
 
