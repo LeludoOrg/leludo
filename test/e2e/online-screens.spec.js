@@ -143,18 +143,15 @@ test.describe('Online — public matchmaking', () => {
         await b.getByTestId('home-play-online').click();
         await b.getByTestId('online-public').click();
 
-        // The queue pairs them into one room (same server-assigned code).
+        // The queue pairs them into one room (same server-assigned code) and the
+        // public game auto-starts once seats are filled — no host action needed.
+        await expect(a.getByTestId('online-started')).toHaveText('true');
+        await expect(b.getByTestId('online-started')).toHaveText('true');
+
         const codeA = (await a.getByTestId('online-room-code').textContent())?.trim();
         const codeB = (await b.getByTestId('online-room-code').textContent())?.trim();
         expect(codeA).toMatch(/^[A-Z0-9]{4}$/);
         expect(codeA).toBe(codeB);
-
-        // One of them is the host; the host starts and both transition together.
-        const aIsHost = (await a.getByTestId('online-is-host').textContent()) === 'true';
-        const host = aIsHost ? a : b;
-        await host.getByTestId('online-start').click();
-        await expect(a.getByTestId('online-started')).toHaveText('true');
-        await expect(b.getByTestId('online-started')).toHaveText('true');
 
         await ctxA.close();
         await ctxB.close();

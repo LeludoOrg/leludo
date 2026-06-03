@@ -82,6 +82,9 @@ export class RoomEngine {
         this.transport = opts.transport;
         this.schedule = opts.schedule || ((fn, ms) => setTimeout(fn, ms));
         this.botDelayMs = opts.botDelayMs ?? 600;
+        // Public matches auto-start once every human seat is filled; private
+        // rooms stay host-managed (the host presses Start).
+        this.autoStart = !!opts.autoStart;
 
         // ---- lobby seat model ----
         const size = Math.max(MIN_PLAYERS, Math.min(4, opts.size ?? 2));
@@ -154,7 +157,16 @@ export class RoomEngine {
             roomId: this.roomId,
         });
         this._broadcastState('join');
+        this._maybeAutoStart();
         return { ok: true, seat };
+    }
+
+    /** Public rooms only: start as soon as every human seat is filled. */
+    _maybeAutoStart() {
+        if (!this.autoStart || this.phase !== PHASES.LOBBY) return;
+        if (this._activeCount() < MIN_PLAYERS) return;
+        const allHumansSeated = this.seats.every(s => s.type !== 'PLAYER' || s.sessionId);
+        if (allHumansSeated) this._startGame();
     }
 
     /** Host: set the number of active seats (2..4), opening/closing as needed. */

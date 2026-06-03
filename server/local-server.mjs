@@ -65,6 +65,7 @@ function makeRoom(roomId, cfg) {
         roomId,
         size: cfg.size,
         seatPlan: cfg.seatPlan,
+        autoStart: cfg.autoStart,
         seed: cfg.seed,
         transport,
     });
@@ -111,7 +112,8 @@ const matchmaker = new Matchmaker({
             if (i < humans) return 'PLAYER';
             return withBots ? 'BOT' : 'PLAYER';
         });
-        const room = makeRoom(code, { size, seatPlan });
+        // Public matches auto-start once everyone is seated (no host wait).
+        const room = makeRoom(code, { size, seatPlan, autoStart: true });
         for (const e of entries) {
             safeSend(e.ws, { t: 'matched', room: code });
             bindConnToRoom(e.conn, room);

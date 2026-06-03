@@ -122,6 +122,31 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.handleKick('h', 0)).toEqual({ ok: false, error: 'CANT_KICK_HOST' });
     });
 
+    it('auto-starts a public room once every human seat is filled', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({ roomId: 'r', size: 2, autoStart: true, transport: fake.transport, schedule: fake.schedule });
+        engine.handleJoin('a', 'A');
+        expect(engine.started).toBe(false); // 1/2, still waiting
+        engine.handleJoin('b', 'B');
+        expect(engine.started).toBe(true);  // full -> auto-start, no host action
+        expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
+    });
+
+    it('auto-starts a public bot-filled room after the lone human joins', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({ roomId: 'r', seatPlan: ['PLAYER', 'BOT', null, null], autoStart: true, transport: fake.transport, schedule: fake.schedule });
+        engine.handleJoin('a', 'A');
+        expect(engine.started).toBe(true);
+        expect(engine.playerTypes[1]).toBe('BOT');
+    });
+
+    it('does NOT auto-start a private room (host must press start)', () => {
+        const { engine } = room(2); // autoStart defaults to false
+        engine.handleJoin('h', 'Host');
+        engine.handleJoin('g', 'Guest');
+        expect(engine.started).toBe(false);
+    });
+
     it('promotes a new host when the host leaves the lobby', () => {
         const { engine } = room(2);
         engine.handleJoin('h', 'Host');
