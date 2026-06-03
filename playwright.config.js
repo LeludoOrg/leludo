@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 8889;
 const BASE_URL = `http://localhost:${PORT}`;
+const MP_PORT = 8890; // multiplayer ws server (server/local-server.mjs)
 
 export default defineConfig({
     testDir: './test/e2e',
@@ -18,10 +19,21 @@ export default defineConfig({
     projects: [
         { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     ],
-    webServer: {
-        command: `node tools/serve-static.mjs ${PORT}`,
-        url: BASE_URL,
-        reuseExistingServer: !process.env.CI,
-        timeout: 60_000,
-    },
+    webServer: [
+        {
+            command: `node tools/serve-static.mjs ${PORT}`,
+            url: BASE_URL,
+            reuseExistingServer: !process.env.CI,
+            timeout: 60_000,
+        },
+        {
+            // Server-authoritative multiplayer runtime for the e2e suite.
+            // DEV_TEST_HOOKS enables the deterministic seed + __busy__ room used
+            // by test/e2e/multiplayer.spec.js.
+            command: `DEV_TEST_HOOKS=1 node server/local-server.mjs ${MP_PORT}`,
+            url: `http://localhost:${MP_PORT}/health`,
+            reuseExistingServer: !process.env.CI,
+            timeout: 60_000,
+        },
+    ],
 });

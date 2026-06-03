@@ -5,8 +5,10 @@
   "license": "GPL-3.0-or-later",
   "author": "Vishal Gidwani",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node tools/dev.mjs",
+    "mp:server": "node server/local-server.mjs 8890",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -25,7 +27,8 @@
     "@playwright/test": "^1.60.0",
     "five-server": "^0.5.0",
     "happy-dom": "^20.9.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "ws": "^8.21.0"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
