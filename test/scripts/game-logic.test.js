@@ -9,6 +9,7 @@ import {
     isTripComplete,
     getPlayerTypes,
     getUniqueTokenPositions,
+    fillColorMap,
 } from '../../scripts/game-logic.js';
 
 describe('isTokenMovable', () => {
@@ -258,6 +259,25 @@ describe('getPlayerTypes', () => {
         expect(result.playerTypes.filter(t => t === 'BOT')).toHaveLength(3);
         expect(result.colorMap[2]).toBe(1); // human keeps its colour
         expect([...result.colorMap].sort()).toEqual([0, 1, 2, 3]);
+    });
+});
+
+describe('fillColorMap', () => {
+    it('fills empty (-1) slots with leftover colours, in board order', () => {
+        // Active: pos0 = colour 1 (green), pos2 = colour 0 (red). Empties get
+        // the leftovers [2,3] in order → no colour repeats.
+        expect(fillColorMap([1, -1, 0, -1])).toEqual([1, 2, 0, 3]);
+    });
+
+    it('always returns a permutation of [0,1,2,3]', () => {
+        const cases = [[-1, -1, -1, -1], [1, -1, 0, -1], [0, 1, 2, 3], [2, -1, 0, -1]];
+        for (const c of cases) {
+            expect([...fillColorMap(c)].sort()).toEqual([0, 1, 2, 3]);
+        }
+    });
+
+    it('leaves a complete map untouched', () => {
+        expect(fillColorMap([2, 0, 1, 3])).toEqual([2, 0, 1, 3]);
     });
 });
 

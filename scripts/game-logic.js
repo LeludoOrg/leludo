@@ -173,15 +173,26 @@ export function getPlayerTypes(quickStartId) {
 
     // Empty board positions (no player) still need a colour so applyColorMap
     // has a full 4-entry map; fill them with whatever colours are left over.
-    const fillColors = [0, 1, 2, 3].filter(c => !usedColors.has(c))
-    let fillIdx = 0
-    for (let pos = 0; pos < 4; pos++) {
-        if (colorMap[pos] === -1) {
-            colorMap[pos] = fillColors[fillIdx++]
-        }
-    }
+    return { playerTypes, colorMap: fillColorMap(colorMap) }
+}
 
-    return { playerTypes, colorMap }
+/**
+ * Complete a partial colour map into a permutation of [0,1,2,3].
+ *
+ * Active board positions carry their player's colour; empty positions are -1.
+ * Fill the empties (in board order) with the colours not already claimed, so
+ * the result is always a permutation — never repeating an active player's
+ * colour on an unused quad (which would render, e.g., two green corners). Shared
+ * by offline setup (getPlayerTypes) and online seating (online-game).
+ *
+ * @param {number[]} colorMap length-4, active slots set, empties = -1
+ * @returns {number[]} a length-4 permutation of [0,1,2,3]
+ */
+export function fillColorMap(colorMap) {
+    const used = new Set(colorMap.filter(c => c !== -1))
+    const leftover = [0, 1, 2, 3].filter(c => !used.has(c))
+    let i = 0
+    return colorMap.map(c => (c === -1 ? leftover[i++] : c))
 }
 
 /**

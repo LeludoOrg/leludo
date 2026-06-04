@@ -16,6 +16,7 @@
 import { dispatch, subscribe, EVENTS } from './game-store.js';
 import { COMMANDS } from './command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal } from './online-state.js';
+import { fillColorMap } from './game-logic.js';
 
 let _started = false;
 let _chain = Promise.resolve();
@@ -25,23 +26,27 @@ function enqueue(makeStep) {
     return _chain;
 }
 
-/** Hand off from the lobby: mount the board from the first started snapshot. */
-export function startOnlineGame({ net, seat, state }) {
-    // Rank seats among the occupied ones (the turn order), so a 2-player match
-    // on adjacent server seats still seats the opponent diagonally for BOTH
-    // players — not just the host. See online-state.toLocal.
+/**
+ * Map a server snapshot onto local board positions for this client.
+ *
+ * Rank seats among the occupied ones (the turn order) so a 2-player match on
+ * adjacent server seats still seats the opponent diagonally for BOTH players —
+ * not just the host (see online-state.toLocal). The colour map is completed into
+ * a permutation (fillColorMap) so empty quads never repeat an active player's
+ * colour. Pure apart from setOnline; exported for tests.
+ */
+export function buildSeatLayout(net, seat, state) {
     const activeSeats = [];
     for (let s = 0; s < 4; s++) if (state.playerTypes[s] != null) activeSeats.push(s);
     setOnline(net, seat, activeSeats);
-    _started = true;
-    _chain = Promise.resolve();
 
     // Rotate server seats to board positions so this client sits bottom-right
-    // (board pos 2) in its own colour; colorMap[pos] = server seat's colour.
+    // (board pos 2) in its own colour; a seat's index doubles as its base-colour
+    // index, and leftover colours fill the empty quads.
     const playerTypes = new Array(4).fill(undefined);
     const playerNames = new Array(4).fill('');
     const positions = new Array(4).fill(undefined);
-    const colorMap = [0, 1, 2, 3];
+    const colorMap = new Array(4).fill(-1);
     for (const s of activeSeats) {
         const pos = toLocal(s);
         playerTypes[pos] = state.playerTypes[s];
@@ -50,12 +55,18 @@ export function startOnlineGame({ net, seat, state }) {
         colorMap[pos] = s;
     }
 
+    return { playerTypes, playerNames, positions, colorMap: fillColorMap(colorMap) };
+}
+
+/** Hand off from the lobby: mount the board from the first started snapshot. */
+export function startOnlineGame({ net, seat, state }) {
+    const layout = buildSeatLayout(net, seat, state);
+    _started = true;
+    _chain = Promise.resolve();
+
     enqueue(() => dispatch({
         type: COMMANDS.NET_START_GAME,
-        playerTypes,
-        playerNames,
-        positions,
-        colorMap,
+        ...layout,
         currentPlayerIndex: toLocal(state.currentPlayerIndex),
     }));
 }
