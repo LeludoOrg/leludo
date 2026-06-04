@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { reducer, applyEvents, EVENTS } from '../../scripts/game-reducer.js';
-import { initialGameState } from '../../scripts/game-state.js';
+import { initialGameState, PHASES } from '../../scripts/game-state.js';
 import { runGame, makeRng } from '../../scripts/game-driver.js';
 
 describe('reducer', () => {
@@ -133,6 +133,25 @@ describe('reducer', () => {
         reducer(state, { type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 3 });
         expect(state.currentPlayerIndex).toBe(3);
         expect(state.consecutiveSixesCount).toBe(0);
+    });
+
+    it('NET_TURN_SYNCED forces currentPlayerIndex without bumping turnCount', () => {
+        // Online: the diagonal seat→board layout is not a pure rotation, so the
+        // local round-robin can drift from the server's seat order. NET_TURN_SYNCED
+        // realigns the current player to the server's authority and re-arms the
+        // roll phase — but must NOT bump turnCount (the local advance already did).
+        const state = initialGameState();
+        state.currentPlayerIndex = 3;        // local engine drifted here
+        state.turnCount = 7;
+        state.consecutiveSixesCount = 1;
+        state.phase = PHASES.AWAITING_SELECTION;
+        state.movableTokenIndexes = [0, 2];
+        reducer(state, { type: EVENTS.NET_TURN_SYNCED, playerIndex: 0 }); // server says seat→pos 0
+        expect(state.currentPlayerIndex).toBe(0);
+        expect(state.turnCount).toBe(7);     // unchanged
+        expect(state.consecutiveSixesCount).toBe(0);
+        expect(state.phase).toBe(PHASES.AWAITING_ROLL);
+        expect(state.movableTokenIndexes).toEqual([]);
     });
 
     it('ASSIST_FLAG_CHANGED toggles flag', () => {

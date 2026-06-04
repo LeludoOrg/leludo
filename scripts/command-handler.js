@@ -90,6 +90,7 @@ export const COMMANDS = Object.freeze({
     // mounts the board from a server snapshot; NET_APPLY_ROLL/MOVE replay the
     // server's authoritative dice value + token choice through the normal path.
     NET_START_GAME: 'NET_START_GAME',
+    NET_SYNC_TURN: 'NET_SYNC_TURN',
     NET_APPLY_ROLL: 'NET_APPLY_ROLL',
     NET_APPLY_MOVE: 'NET_APPLY_MOVE',
 });
@@ -277,6 +278,16 @@ function netStartGame(payload, emit) {
     });
     containersToRestack.forEach(cell => updateCellStacking(cell));
 
+    moveDice(state.currentPlayerIndex);
+}
+
+// Online: realign the local renderer's current player to the server's. No-op
+// when already in sync (the common case in 2- and 3-player games, where the
+// diagonal mapping happens to preserve turn order). Repositions the dice/corner
+// widgets onto the corrected seat.
+function netSyncTurn(playerIndex, emit) {
+    if (playerIndex == null || playerIndex === state.currentPlayerIndex) return;
+    emit({ type: EVENTS.NET_TURN_SYNCED, playerIndex });
     moveDice(state.currentPlayerIndex);
 }
 
@@ -714,6 +725,8 @@ export function commandHandler(currentState, command, services, emit) {
             return resumeSavedGame(emit);
         case COMMANDS.NET_START_GAME:
             return netStartGame(command, emit);
+        case COMMANDS.NET_SYNC_TURN:
+            return netSyncTurn(command.playerIndex, emit);
         case COMMANDS.NET_APPLY_ROLL:
             _forcedDice = command.value;
             return rollDice(emit);

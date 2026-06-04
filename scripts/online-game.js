@@ -59,6 +59,15 @@ export function startOnlineGame({ net, seat, state }) {
 export function handleOnlineMessage(msg) {
     if (!_started) return;
     if (msg.t === 'state') {
+        if (!msg.state.started) return;
+        // The server is authoritative for whose turn it is. The seat→board
+        // mapping is diagonal-first (not a pure rotation), so the local engine's
+        // own round-robin can drift from the server's — re-sync currentPlayerIndex
+        // from every broadcast before replaying anything.
+        enqueue(() => dispatch({
+            type: COMMANDS.NET_SYNC_TURN,
+            playerIndex: toLocal(msg.state.currentPlayerIndex),
+        }));
         // A roll happened iff the broadcast carries a fresh dice result.
         if (msg.reason === 'rolled' || msg.reason === 'no-move' || msg.reason === 'three-sixes') {
             const value = msg.state.dice;

@@ -35,6 +35,7 @@ export const EVENTS = Object.freeze({
     GAME_RESUMED_FROM_PAUSE: 'GAME_RESUMED_FROM_PAUSE',
     DICE_ROLL_STARTED: 'DICE_ROLL_STARTED',
     GOD_TELEPORTED: 'GOD_TELEPORTED',
+    NET_TURN_SYNCED: 'NET_TURN_SYNCED',
 });
 
 function resetArraysInPlace(state) {
@@ -241,6 +242,19 @@ export function reducer(state, event) {
         }
 
         case EVENTS.TURN_REPEATS: {
+            state.phase = PHASES.AWAITING_ROLL;
+            state.movableTokenIndexes = [];
+            return state;
+        }
+
+        // Online only: force currentPlayerIndex to the server's authority. The
+        // seat→board mapping is diagonal-first (not a pure rotation), so the
+        // local round-robin can pick a different next player than the server;
+        // this realigns it without bumping turnCount (the local advance already
+        // did, or the server is the source of truth either way).
+        case EVENTS.NET_TURN_SYNCED: {
+            state.currentPlayerIndex = event.playerIndex;
+            state.consecutiveSixesCount = 0;
             state.phase = PHASES.AWAITING_ROLL;
             state.movableTokenIndexes = [];
             return state;
