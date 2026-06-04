@@ -59,6 +59,44 @@ export function generateDiceRoll(randomFn = Math.random) {
     return cumulativeWeights.findIndex(cw => randomValue < cw) + 1
 }
 
+// Pity-six window. A player who can't move any pawn for many turns (the classic
+// "all four pawns stuck in the yard, never rolling a six" rut) eventually gets a
+// guaranteed six so they aren't frozen out of the game. The trigger is fuzzy on
+// purpose: never before FLOOR stuck turns, always by CEIL, ramping linearly
+// between — so it lands "around ten" rather than at an exact, predictable count.
+export const PITY_SIX_FLOOR = 7;
+export const PITY_SIX_CEIL = 13;
+
+/**
+ * Should this roll be a forced "pity six"?
+ * @param {number} noMoveStreak   consecutive turns the player moved no pawn.
+ * @param {boolean} hasTokenAtHome a six only helps if a pawn can launch from the
+ *   yard; without a home token a forced six is useless, so never grant one.
+ * @param {() => number} [randomFn] defaults to Math.random; inject for tests.
+ * @returns {boolean}
+ */
+export function shouldGrantPitySix(noMoveStreak, hasTokenAtHome, randomFn = Math.random) {
+    if (!hasTokenAtHome) return false;
+    if (noMoveStreak < PITY_SIX_FLOOR) return false;
+    if (noMoveStreak >= PITY_SIX_CEIL) return true;
+    const span = PITY_SIX_CEIL - PITY_SIX_FLOOR;
+    const chance = (noMoveStreak - PITY_SIX_FLOOR + 1) / span;
+    return randomFn() < chance;
+}
+
+/**
+ * Roll the die, granting a pity six when the player has been stuck too long.
+ * Shared by the live game (command-handler) and the headless driver so both
+ * obey the same anti-frustration rule.
+ * @param {number} noMoveStreak
+ * @param {boolean} hasTokenAtHome
+ * @param {() => number} [randomFn]
+ * @returns {number}
+ */
+export function rollDiceWithPity(noMoveStreak, hasTokenAtHome, randomFn = Math.random) {
+    return shouldGrantPitySix(noMoveStreak, hasTokenAtHome, randomFn) ? 6 : generateDiceRoll(randomFn);
+}
+
 /**
  *
  * @param {number} currentPosition

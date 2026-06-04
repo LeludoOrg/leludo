@@ -32,6 +32,10 @@ export function initialGameState() {
         currentDiceRoll: 1,
         consecutiveSixesCount: 0,
 
+        // Consecutive turns each player moved no pawn at all (the stuck-in-yard
+        // drought). Feeds the pity-six rule; reset the moment a player can move.
+        noMoveStreak: new Array(4).fill(0),
+
         playerRanks: new Array(4).fill(0),
         playerTimes: new Array(4).fill(0),
         playerCaptures: new Array(4).fill(0),

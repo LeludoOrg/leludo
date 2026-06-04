@@ -16,7 +16,7 @@ import {
     animateDiceRoll,
     clearTokenElementCache,
     findCapturedOpponents,
-    generateDiceRoll,
+    rollDiceWithPity,
     applyColorMap, getPlayerTypes,
     getTokenContainerId,
     getTokenElement,
@@ -368,7 +368,11 @@ function rollDice(emit) {
     return animateDiceRoll(state.currentDiceRoll)
         .then(() => {
             const lastDiceRoll = state.currentDiceRoll;
-            const newRoll = _forcedDice != null ? _forcedDice : generateDiceRoll();
+            const pi = state.currentPlayerIndex;
+            const hasTokenAtHome = state.playerTokenPositions[pi].includes(-1);
+            const newRoll = _forcedDice != null
+                ? _forcedDice
+                : rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome);
             _forcedDice = null;
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
@@ -393,6 +397,7 @@ function handleAfterDiceRoll(emit) {
     });
 
     if (movableTokenIndexes.length === 0) {
+        emit({ type: EVENTS.PLAYER_STUCK });
         advanceToNextPlayer(emit);
         return;
     }

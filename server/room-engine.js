@@ -19,7 +19,7 @@ import {
     getTokenNewPosition,
     findCapturedOpponents,
     isTripComplete,
-    generateDiceRoll,
+    rollDiceWithPity,
 } from '../scripts/game-logic.js';
 import { pickBestMove, PERSONALITIES } from '../scripts/bot-ai.js';
 import {
@@ -108,6 +108,9 @@ export class RoomEngine {
         this.currentPlayerIndex = 0;
         this.currentDiceRoll = 0;
         this.consecutiveSixes = 0;
+        // Consecutive no-move turns per seat — feeds the pity-six rule so an
+        // online player can't get stranded in the yard either.
+        this.noMoveStreak = [0, 0, 0, 0];
         this.captures = [0, 0, 0, 0];
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
@@ -309,6 +312,7 @@ export class RoomEngine {
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
         this.consecutiveSixes = 0;
+        this.noMoveStreak = [0, 0, 0, 0];
         this.currentPlayerIndex = this._firstActive();
         this.started = true;
         this._beginTurn();
@@ -379,7 +383,9 @@ export class RoomEngine {
      *   already advanced (bust / no move) and the caller should stop.
      */
     _rollAndResolve() {
-        const dice = generateDiceRoll(this.rng);
+        const pi = this.currentPlayerIndex;
+        const hasTokenAtHome = !!this.positions[pi] && this.positions[pi].includes(-1);
+        const dice = rollDiceWithPity(this.noMoveStreak[pi], hasTokenAtHome, this.rng);
         this.currentDiceRoll = dice;
         this.consecutiveSixes = dice === 6 ? this.consecutiveSixes + 1 : 0;
 
@@ -392,10 +398,12 @@ export class RoomEngine {
         const movable = this._movable();
         if (movable.length === 0) {
             this.consecutiveSixes = 0;
+            this.noMoveStreak[pi]++;
             this._broadcastState('no-move');
             this._advanceTurn();
             return null;
         }
+        this.noMoveStreak[pi] = 0;
         this.legalMoves = movable;
         this.phase = PHASES.AWAIT_MOVE;
         this._broadcastState('rolled');

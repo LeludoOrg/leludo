@@ -10,6 +10,10 @@ import {
     getPlayerTypes,
     getUniqueTokenPositions,
     fillColorMap,
+    shouldGrantPitySix,
+    rollDiceWithPity,
+    PITY_SIX_FLOOR,
+    PITY_SIX_CEIL,
 } from '../../scripts/game-logic.js';
 
 describe('isTokenMovable', () => {
@@ -291,6 +295,59 @@ describe('fillColorMap', () => {
 
     it('leaves a complete map untouched', () => {
         expect(fillColorMap([2, 0, 1, 3])).toEqual([2, 0, 1, 3]);
+    });
+});
+
+describe('shouldGrantPitySix (anti-stuck rescue)', () => {
+    // Regression: a player with every pawn in the yard could roll for dozens of
+    // turns without a six and stay frozen out. After a long no-move drought they
+    // now get a guaranteed six — but only when a pawn can actually launch.
+
+    it('never grants below the floor, even with a home token', () => {
+        for (let streak = 0; streak < PITY_SIX_FLOOR; streak++) {
+            // randomFn forced to 0 would pass any chance check; the floor still blocks it.
+            expect(shouldGrantPitySix(streak, true, () => 0)).toBe(false);
+        }
+    });
+
+    it('never grants when no pawn is in the yard (a six would not help)', () => {
+        expect(shouldGrantPitySix(100, false, () => 0)).toBe(false);
+        expect(shouldGrantPitySix(PITY_SIX_CEIL, false, () => 0)).toBe(false);
+    });
+
+    it('always grants at or beyond the ceiling, regardless of luck', () => {
+        expect(shouldGrantPitySix(PITY_SIX_CEIL, true, () => 0.999)).toBe(true);
+        expect(shouldGrantPitySix(PITY_SIX_CEIL + 5, true, () => 0.999)).toBe(true);
+    });
+
+    it('ramps probabilistically inside the window', () => {
+        // At the floor the chance is small: a high roll misses, a low roll hits.
+        expect(shouldGrantPitySix(PITY_SIX_FLOOR, true, () => 0.99)).toBe(false);
+        expect(shouldGrantPitySix(PITY_SIX_FLOOR, true, () => 0.0)).toBe(true);
+    });
+});
+
+describe('rollDiceWithPity', () => {
+    it('returns 6 when the pity rule fires', () => {
+        expect(rollDiceWithPity(PITY_SIX_CEIL, true, () => 0.999)).toBe(6);
+    });
+
+    it('falls back to a normal weighted roll (1..6) when it does not fire', () => {
+        const roll = rollDiceWithPity(0, true, () => 0.5);
+        expect(roll).toBeGreaterThanOrEqual(1);
+        expect(roll).toBeLessThanOrEqual(6);
+    });
+
+    it('a stuck player is rescued within the pity window, not left frozen', () => {
+        // Constant RNG that yields a non-six normal roll yet eventually trips the
+        // rising pity chance — the six must arrive between FLOOR and CEIL.
+        const rng = () => 0.7;
+        let rescuedAt = -1;
+        for (let streak = 0; streak < 40; streak++) {
+            if (rollDiceWithPity(streak, true, rng) === 6) { rescuedAt = streak; break; }
+        }
+        expect(rescuedAt).toBeGreaterThanOrEqual(PITY_SIX_FLOOR);
+        expect(rescuedAt).toBeLessThanOrEqual(PITY_SIX_CEIL);
     });
 });
 

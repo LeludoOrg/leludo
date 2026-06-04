@@ -8,7 +8,7 @@ import {
     getTokenNewPosition,
     findCapturedOpponents,
     isTripComplete,
-    generateDiceRoll,
+    rollDiceWithPity,
 } from './game-logic.js';
 import { pickBestMove, PERSONALITIES } from './bot-ai.js';
 import {
@@ -117,6 +117,7 @@ export function runGame(opts) {
     let currentPlayerIndex = opts.startingPlayerIndex
         ?? playerTypes.findIndex(t => t !== undefined);
     let consecutiveSixes = 0;
+    const noMoveStreak = [0, 0, 0, 0];
     let lastRank = 0;
     let turns = 0;
     let ended = false;
@@ -144,7 +145,8 @@ export function runGame(opts) {
             continue;
         }
 
-        const dice = generateDiceRoll(rng);
+        const hasTokenAtHome = positions[currentPlayerIndex].includes(-1);
+        const dice = rollDiceWithPity(noMoveStreak[currentPlayerIndex], hasTokenAtHome, rng);
         events.push({ type: EVENTS.DICE_ROLLED, value: dice });
         if (dice === 6) consecutiveSixes++;
         else consecutiveSixes = 0;
@@ -163,12 +165,16 @@ export function runGame(opts) {
 
         if (movable.length === 0) {
             consecutiveSixes = 0;
+            noMoveStreak[currentPlayerIndex]++;
+            events.push({ type: EVENTS.PLAYER_STUCK });
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }
             events.push({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
             currentPlayerIndex = next;
             continue;
         }
+
+        noMoveStreak[currentPlayerIndex] = 0;
 
         const weights = PERSONALITIES[personalities[currentPlayerIndex]] || PERSONALITIES.balanced;
         let tokenIndex = pickBestMove(currentPlayerIndex, dice, positions, weights, botDepth);

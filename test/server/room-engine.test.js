@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { RoomEngine, PHASES } from '../../server/room-engine.js';
+import { PITY_SIX_CEIL } from '../../scripts/game-logic.js';
 
 /**
  * Authority + host-lobby tests. A fake transport collects every broadcast /
  * per-seat send; bots run synchronously via the injected scheduler. Dice are
  * weighted, so we force rolls by stubbing `engine.rng` with a constant in the
- * band that maps to the value we want (cumulative weights [1,3,5,6,8,10]):
+ * band that maps to the value we want (cumulative weights [1,3,5,6,8,11]):
  *   0.05 -> 1, 0.7 -> 5, 0.85 -> 6.
  */
 function makeFake() {
@@ -239,6 +240,22 @@ describe('RoomEngine — rules fidelity', () => {
         expect(engine.ranks[1]).toBe(2);
         expect(fake.released).toBe(true);
         expect(fake.broadcasts.some(b => b.t === 'ended')).toBe(true);
+    });
+
+    // Regression: an online player stuck in the yard could never roll a six and
+    // sat out the whole game. After a long no-move drought the server forces a
+    // six so the pawn finally launches. rng=0.7 normally rolls a 5 (no move with
+    // all pawns home), so the six can only come from the pity rule.
+    it('grants a pity six to a player stranded in the yard', () => {
+        const { fake, engine } = started2();
+        engine.positions = [[-1, -1, -1, -1], [-1, -1, -1, -1], null, null];
+        engine.noMoveStreak[0] = PITY_SIX_CEIL; // long drought for the current seat
+        engine.rng = () => 0.7;                 // a normal roll would be a 5 (no move)
+        engine.handleRoll('h');
+        const rolled = [...fake.broadcasts].reverse().find(b => b.reason === 'rolled' || b.reason === 'no-move');
+        expect(rolled.state.dice).toBe(6);          // pity six, not the 5 the rng gives
+        expect(engine.phase).toBe(PHASES.AWAIT_MOVE); // a launch is now possible
+        expect(engine.noMoveStreak[0]).toBe(0);       // drought cleared once movable
     });
 });
 

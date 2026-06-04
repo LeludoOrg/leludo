@@ -22,6 +22,7 @@ export const EVENTS = Object.freeze({
     GAME_RESTARTED: 'GAME_RESTARTED',
     DICE_ROLLED: 'DICE_ROLLED',
     THREE_SIXES_LOST: 'THREE_SIXES_LOST',
+    PLAYER_STUCK: 'PLAYER_STUCK',
     MOVABLE_TOKENS_DETERMINED: 'MOVABLE_TOKENS_DETERMINED',
     TOKEN_MOVED: 'TOKEN_MOVED',
     TOKEN_CAPTURED: 'TOKEN_CAPTURED',
@@ -53,6 +54,7 @@ function resetArraysInPlace(state) {
         state.distanceTraveled[i] = 0;
         state.pawnsAtBaseAtTurn20[i] = -1;
         state.bestDiceStreak[i] = null;
+        state.noMoveStreak[i] = 0;
     }
     state.currentDiceStreak = null;
 }
@@ -81,6 +83,7 @@ export function reducer(state, event) {
                 state.distanceTraveled[i] = 0;
                 state.pawnsAtBaseAtTurn20[i] = -1;
                 state.bestDiceStreak[i] = null;
+                state.noMoveStreak[i] = 0;
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
@@ -113,6 +116,7 @@ export function reducer(state, event) {
                 state.distanceTraveled[i] = 0;
                 state.pawnsAtBaseAtTurn20[i] = -1;
                 state.bestDiceStreak[i] = null;
+                state.noMoveStreak[i] = 0;
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
@@ -169,6 +173,14 @@ export function reducer(state, event) {
 
         case EVENTS.THREE_SIXES_LOST: {
             state.consecutiveSixesCount = 0;
+            return state;
+        }
+
+        case EVENTS.PLAYER_STUCK: {
+            // No movable pawn this turn — extend the drought so the pity-six
+            // rule can eventually rescue a player frozen in the yard.
+            const pi = state.currentPlayerIndex;
+            state.noMoveStreak[pi] = (state.noMoveStreak[pi] || 0) + 1;
             return state;
         }
 
@@ -263,6 +275,8 @@ export function reducer(state, event) {
         case EVENTS.MOVABLE_TOKENS_DETERMINED: {
             state.movableTokenIndexes = event.tokenIndexes.slice();
             state.phase = PHASES.AWAITING_SELECTION;
+            // The player can move this turn — the drought is over.
+            state.noMoveStreak[state.currentPlayerIndex] = 0;
             return state;
         }
 
