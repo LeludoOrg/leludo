@@ -48,10 +48,7 @@ wc-quick-start .home-die-inner {
     line-height: 0;
 }
 
-@keyframes home-die-pulse {
-    0%, 100% { box-shadow: 0 0 0 0  var(--pulse-color); }
-    50%      { box-shadow: 0 0 0 12px transparent; }
-}
+/* @keyframes home-die-pulse lives in styles/base.css (shared with .pulse-chip). */
 
 @media (prefers-reduced-motion: reduce) {
     wc-quick-start .home-die { animation: none; }
@@ -474,23 +471,12 @@ wc-quick-start .online-search-body .display-title {
     text-align: center;
 }
 
-wc-quick-start .online-search-pulse {
-    line-height: 0;
-    padding: 10px;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--color-fg) 6%, transparent);
-    animation: home-die-pulse 1.6s ease-in-out infinite;
-    --pulse-color: color-mix(in srgb, var(--color-fg) 22%, transparent);
-}
+/* The pulse chip is the shared global .pulse-chip helper (styles/base.css). */
 
 wc-quick-start .online-search-status {
     font-size: 14px;
     opacity: 0.6;
     max-width: 260px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    wc-quick-start .online-search-pulse { animation: none; }
 }
 
 /* ----- Setup ----- */

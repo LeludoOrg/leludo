@@ -251,6 +251,43 @@ table td {
     }
 }
 
+/* Pulsing mini-board chip — the "looking for / found a match" indicator shared
+   by the public-match search screen and the "Match found!" announcement. */
+.pulse-chip {
+    line-height: 0;
+    padding: 10px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+    animation: home-die-pulse 1.6s ease-in-out infinite;
+    --pulse-color: color-mix(in srgb, var(--color-fg) 22%, transparent);
+}
+
+@keyframes home-die-pulse {
+    0%, 100% { box-shadow: 0 0 0 0  var(--pulse-color); }
+    50%      { box-shadow: 0 0 0 12px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pulse-chip { animation: none; }
+}
+
+/* "Match found!" announcement (#match-starting overlay). */
+.match-starting-body {
+    flex: 1;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+}
+
+.match-starting-body .body-helper {
+    font-size: 14px;
+    opacity: 0.6;
+    max-width: 260px;
+}
+
 .top-bar {
     display: flex;
     align-items: center;

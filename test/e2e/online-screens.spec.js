@@ -167,6 +167,13 @@ test.describe('Online — public matchmaking', () => {
         await openOnline(b, 'Bo');
         await b.getByTestId('online-public').click();
 
+        // Match found → a brief "Match found!" announcement covers the
+        // auto-starting board for a beat (instead of snapping straight to play)
+        // and names the opponent. (Fails before the #match-starting overlay.)
+        await expect(a.locator('#match-starting')).toBeVisible();
+        await expect(a.getByText('Match found!')).toBeVisible();
+        await expect(a.getByTestId('match-starting-status')).toHaveText(/Bo/);
+
         // The queue pairs them into one room (same server-assigned code) and the
         // public game auto-starts once seats are filled — no host action needed.
         await expect(a.getByTestId('online-started')).toHaveText('true');
@@ -176,6 +183,10 @@ test.describe('Online — public matchmaking', () => {
         const codeB = (await b.getByTestId('online-room-code').textContent())?.trim();
         expect(codeA).toMatch(/^[A-Z0-9]{4}$/);
         expect(codeA).toBe(codeB);
+
+        // After the window the announcement clears and the real board is revealed.
+        await expect(a.locator('#match-starting')).toBeHidden({ timeout: 10_000 });
+        await expect(a.locator('wc-board .board-grid')).toBeVisible();
 
         await ctxA.close();
         await ctxB.close();

@@ -7,6 +7,12 @@ import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsernam
 import {startOnlineGame, handleOnlineMessage} from "../scripts/online-game.js";
 import {mintRoomCode} from "../scripts/room-code.js";
 
+// Public match: how long the "Match found!" announcement stays up before the
+// board is revealed. The board mounts and runs underneath immediately — this is
+// a purely cosmetic cover so an auto-started public game doesn't snap straight
+// to the board with no breath. Private rooms skip it (players saw the lobby).
+const MATCH_STARTING_MS = 2500;
+
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
         1: [[1,1]],
@@ -142,6 +148,8 @@ class QuickStart extends HTMLElement {
         // Returning home (incl. exiting an online game, whose driver already
         // closed the socket): drop any stale online references.
         this._inGame = false
+        this._isPublic = false
+        this._hideMatchStarting()
         this._net = null
         this.innerHTML = ""
 
@@ -488,6 +496,7 @@ class QuickStart extends HTMLElement {
 
     showOnlineScreen() {
         this._stopHomeDieCycle()
+        this._isPublic = false
         this._leaveOnline()
         this.innerHTML = ""
         if (!this._onlinePlayers) this._onlinePlayers = 2
@@ -621,6 +630,9 @@ class QuickStart extends HTMLElement {
                 this._roomCode = msg.room
                 this.showOnlineLobby(msg.room)
                 replaceTo('online-lobby') // replace the search entry so back → menu
+                // Public matches auto-start the instant seats fill, so cover the
+                // brief lobby flash with a "Match found!" announcement.
+                if (this._isPublic) this._showMatchStarting()
                 break
             case 'seated':
                 this._mySeat = msg.playerIndex
@@ -631,10 +643,16 @@ class QuickStart extends HTMLElement {
                 if (msg.state.started) {
                     // Hand off to the real board, server-driven from here on.
                     this._inGame = true
+                    if (this._isPublic) this._updateMatchStartingNames(msg.state)
                     startOnlineGame({ net: this._net, seat: this._mySeat, state: msg.state })
                     const menu = document.getElementById('main-menu')
                     if (menu) menu.classList.add('hidden')
                     replaceTo('game')
+                    // The board is now live under the announcement (if any). Reveal
+                    // it once the minimum window has elapsed; private rooms have no
+                    // overlay so this hides nothing.
+                    if (this._isPublic) this._scheduleHideMatchStarting()
+                    else this._hideMatchStarting()
                 }
                 break
             case 'kicked':
@@ -670,6 +688,7 @@ class QuickStart extends HTMLElement {
     }
 
     _enterLobby(code, { create }) {
+        this._isPublic = false
         this._roomCode = code
         const players = create ? (this._onlinePlayers || 2) : 2
         this.showOnlineLobby(code)
@@ -678,6 +697,7 @@ class QuickStart extends HTMLElement {
     }
 
     _enterMatchmaking(size) {
+        this._isPublic = true
         this.showOnlineSearch(size)
         goTo('online-search')
         this._connect({ room: undefined, params: { mode: 'public', size: String(size) } })
@@ -694,7 +714,7 @@ class QuickStart extends HTMLElement {
                 </div>
 
                 <div class="frame-body online-search-body">
-                    <div class="online-search-pulse">${QUAD_CHIP_SVG(40)}</div>
+                    <div class="online-search-pulse pulse-chip">${QUAD_CHIP_SVG(40)}</div>
                     <h2 class="display-title">Finding players…</h2>
                     <p class="online-search-status" data-testid="online-search-status">Searching for a ${size}-player match…</p>
                 </div>
@@ -853,6 +873,56 @@ class QuickStart extends HTMLElement {
         this._net = null
         this._mySeat = -1
         this._inGame = false
+        // NB: don't reset _isPublic here — _connect() calls _leaveOnline() right
+        // before wiring the public socket, so clearing it here would clobber the
+        // flag _enterMatchmaking just set. It's reset at true leave points
+        // (showHomeScreen / showOnlineScreen) instead.
+        this._hideMatchStarting()
+    }
+
+    // ----- "Match found!" announcement (public matches only) -----
+
+    _showMatchStarting() {
+        const el = document.getElementById('match-starting')
+        if (!el) return
+        const chip = el.querySelector('.match-starting-chip')
+        if (chip && !chip.innerHTML) chip.innerHTML = QUAD_CHIP_SVG(40)
+        this._setMatchStartingStatus('Setting up the board…')
+        el.classList.remove('hidden')
+        this._matchFoundAt = performance.now()
+    }
+
+    _setMatchStartingStatus(text) {
+        const el = document.querySelector('#match-starting [data-testid="match-starting-status"]')
+        if (el) el.textContent = text
+    }
+
+    // Once seated, name the opponents so the wait feels purposeful.
+    _updateMatchStartingNames(state) {
+        const types = state.playerTypes || []
+        const names = state.playerNames || []
+        const others = []
+        for (let i = 0; i < types.length; i++) {
+            if (!types[i] || i === this._mySeat) continue
+            others.push(names[i] || (types[i] === 'BOT' ? 'Bot' : 'Player'))
+        }
+        if (!others.length) this._setMatchStartingStatus('Starting game…')
+        else if (others.length === 1) this._setMatchStartingStatus(`Playing against ${others[0]}`)
+        else this._setMatchStartingStatus(`Playing with ${others.join(' · ')}`)
+    }
+
+    _scheduleHideMatchStarting() {
+        const elapsed = performance.now() - (this._matchFoundAt ?? performance.now())
+        const wait = Math.max(0, MATCH_STARTING_MS - elapsed)
+        clearTimeout(this._matchStartTimer)
+        this._matchStartTimer = setTimeout(() => this._hideMatchStarting(), wait)
+    }
+
+    _hideMatchStarting() {
+        clearTimeout(this._matchStartTimer)
+        this._matchStartTimer = null
+        const el = document.getElementById('match-starting')
+        if (el) el.classList.add('hidden')
     }
 
     _startGame() {
