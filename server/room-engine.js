@@ -344,7 +344,7 @@ export class RoomEngine {
         if (this.phase !== PHASES.AWAIT_ROLL) return this._reject(seat, 'NOT_AWAITING_ROLL');
         if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
         if (this.playerTypes[seat] !== 'PLAYER') return this._reject(seat, 'NOT_A_HUMAN_SEAT');
-        this._doRoll(seat);
+        this._doRoll();
         return { ok: true };
     }
 
@@ -371,7 +371,14 @@ export class RoomEngine {
         }
     }
 
-    _doRoll() {
+    /**
+     * Shared roll resolution for human and bot turns: roll the dice, handle the
+     * three-sixes bust and the no-legal-move pass (both advance the turn), else
+     * enter AWAIT_MOVE and broadcast 'rolled'.
+     * @returns {number[]|null} the legal token indexes, or null when the turn was
+     *   already advanced (bust / no move) and the caller should stop.
+     */
+    _rollAndResolve() {
         const dice = generateDiceRoll(this.rng);
         this.currentDiceRoll = dice;
         this.consecutiveSixes = dice === 6 ? this.consecutiveSixes + 1 : 0;
@@ -379,17 +386,26 @@ export class RoomEngine {
         if (this.consecutiveSixes === 3) {
             this.consecutiveSixes = 0;
             this._broadcastState('three-sixes');
-            return this._advanceTurn();
+            this._advanceTurn();
+            return null;
         }
         const movable = this._movable();
         if (movable.length === 0) {
             this.consecutiveSixes = 0;
             this._broadcastState('no-move');
-            return this._advanceTurn();
+            this._advanceTurn();
+            return null;
         }
         this.legalMoves = movable;
         this.phase = PHASES.AWAIT_MOVE;
         this._broadcastState('rolled');
+        return movable;
+    }
+
+    _doRoll() {
+        const movable = this._rollAndResolve();
+        if (!movable) return;
+        // A forced single move auto-applies; otherwise wait for the human's pick.
         if (movable.length === 1) this._applyMoveAndContinue(movable[0]);
     }
 
@@ -397,27 +413,10 @@ export class RoomEngine {
         if (this.phase === PHASES.ENDED) return;
         const pi = this.currentPlayerIndex;
         if (this.playerTypes[pi] !== 'BOT') return;
-
-        const dice = generateDiceRoll(this.rng);
-        this.currentDiceRoll = dice;
-        this.consecutiveSixes = dice === 6 ? this.consecutiveSixes + 1 : 0;
-
-        if (this.consecutiveSixes === 3) {
-            this.consecutiveSixes = 0;
-            this._broadcastState('three-sixes');
-            return this._advanceTurn();
-        }
-        const movable = this._movable();
-        if (movable.length === 0) {
-            this.consecutiveSixes = 0;
-            this._broadcastState('no-move');
-            return this._advanceTurn();
-        }
-        this.legalMoves = movable;
-        this.phase = PHASES.AWAIT_MOVE;
-        this._broadcastState('rolled');
+        const movable = this._rollAndResolve();
+        if (!movable) return;
         const weights = PERSONALITIES[this.botPersonalities[pi]] || PERSONALITIES.balanced;
-        let tokenIndex = pickBestMove(pi, dice, this.positions, weights, 0);
+        let tokenIndex = pickBestMove(pi, this.currentDiceRoll, this.positions, weights, 0);
         if (tokenIndex < 0 || !movable.includes(tokenIndex)) tokenIndex = movable[0];
         this._applyMoveAndContinue(tokenIndex);
     }
@@ -434,8 +433,7 @@ export class RoomEngine {
         if (result.tripComplete && isPlayerFinished(this.positions[pi])) {
             this.ranks[pi] = ++this.lastRank;
             if (shouldEndGame(this.playerTypes, this.positions)) {
-                computeLeftoverRankOrder(this.playerTypes, this.positions, this.ranks)
-                    .forEach(idx => { this.ranks[idx] = ++this.lastRank; });
+                this._rankLeftovers();
                 ended = true;
             }
         }
@@ -464,6 +462,12 @@ export class RoomEngine {
         }
     }
 
+    /** Award finishing ranks to every still-unfinished active player, by progress. */
+    _rankLeftovers() {
+        computeLeftoverRankOrder(this.playerTypes, this.positions, this.ranks)
+            .forEach(idx => { this.ranks[idx] = ++this.lastRank; });
+    }
+
     _advanceTurn() {
         const next = getNextPlayerIndex(this.currentPlayerIndex, this.playerTypes, this.positions);
         if (next === -1) return this._end('no-active-players');
@@ -474,10 +478,7 @@ export class RoomEngine {
 
     _end(reason) {
         if (this.phase === PHASES.ENDED) return;
-        if (this.started) {
-            computeLeftoverRankOrder(this.playerTypes, this.positions, this.ranks)
-                .forEach(idx => { this.ranks[idx] = ++this.lastRank; });
-        }
+        if (this.started) this._rankLeftovers();
         this.phase = PHASES.ENDED;
         this.transport.broadcast({ t: 'ended', reason, ranks: this.ranks.slice(), state: this._publicState() });
         this.transport.release?.();

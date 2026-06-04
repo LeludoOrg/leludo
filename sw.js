@@ -49,6 +49,7 @@ const PRECACHE = [
   'scripts/pawn-shape.js',
   'scripts/platform.js',
   'scripts/render-logic.js',
+  'scripts/room-code.js',
   'scripts/scheduler.js',
   'scripts/turn-rules.js',
   'scripts/listeners/analytics-listener.js',

@@ -5,6 +5,7 @@ import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage} from "../scripts/online-game.js";
+import {mintRoomCode} from "../scripts/room-code.js";
 
 const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {
@@ -485,14 +486,6 @@ class QuickStart extends HTMLElement {
 
     // ===== Online (multiplayer) =====================================
 
-    _genCode() {
-        // Short, human-shareable, no ambiguous chars (0/O, 1/I/L).
-        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
-        let code = ''
-        for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)]
-        return code
-    }
-
     showOnlineScreen() {
         this._stopHomeDieCycle()
         this._leaveOnline()
@@ -571,7 +564,7 @@ class QuickStart extends HTMLElement {
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
             if (!this._requireName()) return
             playClickSound()
-            this._enterLobby(this._genCode(), { create: true })
+            this._enterLobby(mintRoomCode(), { create: true })
         })
 
         const codeInput = el.querySelector(".online-code-input")

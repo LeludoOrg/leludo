@@ -24,6 +24,7 @@ import { WebSocketServer } from 'ws';
 import { Admission } from './admission.js';
 import { RoomEngine } from './room-engine.js';
 import { Matchmaker } from './matchmaker.js';
+import { mintRoomCode } from '../scripts/room-code.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
 const TEST_HOOKS = process.env.DEV_TEST_HOOKS === '1';
@@ -75,14 +76,8 @@ function makeRoom(roomId, cfg) {
     return room;
 }
 
-const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function mintCode() {
-    let code;
-    do {
-        code = '';
-        for (let i = 0; i < 4; i++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-    } while (rooms.has(code));
-    return code;
+    return mintRoomCode(code => rooms.has(code));
 }
 
 /** Attach an (already open) connection to a room and seat its player. */
