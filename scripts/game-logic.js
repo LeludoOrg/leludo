@@ -40,11 +40,19 @@ export function isSafePosition(tokenPosition) {
 }
 
 /**
+ * Per-face roll weights (faces 1..6). 1 and 4 are rarer; 6 is the most likely
+ * face so players stuck in the yard get a launch sooner — being unable to roll a
+ * six for many turns drains the fun. Keep 6 strictly above the rest.
+ * @type {number[]}
+ */
+export const DICE_WEIGHTS = [1, 2, 2, 1, 2, 3];
+
+/**
  * @param {() => number} [randomFn]  defaults to Math.random; pass a seeded PRNG to make rolls reproducible (e.g. in tests).
  * @returns {number}
  */
 export function generateDiceRoll(randomFn = Math.random) {
-    const weights = [1, 2, 2, 1, 2, 2];
+    const weights = DICE_WEIGHTS;
     const cumulativeWeights = weights.map((sum => value => sum += value)(0));
     const maxWeight = cumulativeWeights[cumulativeWeights.length - 1];
     const randomValue = randomFn() * maxWeight;

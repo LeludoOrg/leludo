@@ -1,8 +1,12 @@
-import { SAFE_SQUARES as SAFE_SQUARES_ARR } from "./game-logic.js";
+import { SAFE_SQUARES as SAFE_SQUARES_ARR, DICE_WEIGHTS } from "./game-logic.js";
 
 const SAFE_SQUARES = new Set(SAFE_SQUARES_ARR);
 
-const DICE_PROB = [0, 1/9, 2/9, 2/9, 1/9, 2/9, 2/9];
+// Per-face probabilities for the expectiminimax chance nodes. Derived from the
+// single source of truth (DICE_WEIGHTS) so the bot's model always matches the
+// real loaded die — index 0 is a placeholder, faces are 1..6.
+const DICE_WEIGHT_TOTAL = DICE_WEIGHTS.reduce((a, b) => a + b, 0);
+const DICE_PROB = [0, ...DICE_WEIGHTS.map(w => w / DICE_WEIGHT_TOTAL)];
 
 const DISCOUNT = 0.7;
 

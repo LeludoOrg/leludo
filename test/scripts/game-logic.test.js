@@ -94,11 +94,24 @@ describe('generateDiceRoll', () => {
         for (let i = 0; i < 60000; i++) {
             counts[generateDiceRoll()]++;
         }
-        // 1 and 4 have weight 1, others weight 2. Expect ~10000 vs ~20000.
+        // 1 and 4 have weight 1, others weight >=2. Expect ~5500 vs ~11000.
         expect(counts[1]).toBeLessThan(counts[2]);
         expect(counts[1]).toBeLessThan(counts[3]);
         expect(counts[4]).toBeLessThan(counts[5]);
         expect(counts[4]).toBeLessThan(counts[6]);
+    });
+
+    // Regression: players could sit in the yard for many turns waiting on a six,
+    // which drains the fun. Six now carries the highest weight (3 vs 2), so it
+    // must be the single most frequent face — strictly above every other.
+    it('six is the most frequent face (highest weight)', () => {
+        const counts = new Array(7).fill(0);
+        for (let i = 0; i < 120000; i++) {
+            counts[generateDiceRoll()]++;
+        }
+        for (let face = 1; face <= 5; face++) {
+            expect(counts[6]).toBeGreaterThan(counts[face]);
+        }
     });
 });
 
