@@ -6,7 +6,7 @@ import { PITY_SIX_CEIL } from '../../scripts/game-logic.js';
  * Authority + host-lobby tests. A fake transport collects every broadcast /
  * per-seat send; bots run synchronously via the injected scheduler. Dice are
  * weighted, so we force rolls by stubbing `engine.rng` with a constant in the
- * band that maps to the value we want (cumulative weights [1,3,5,6,8,11]):
+ * band that maps to the value we want (cumulative weights [1,3,5,7,9,12]):
  *   0.05 -> 1, 0.7 -> 5, 0.85 -> 6.
  */
 function makeFake() {

@@ -40,12 +40,17 @@ export function isSafePosition(tokenPosition) {
 }
 
 /**
- * Per-face roll weights (faces 1..6). 1 and 4 are rarer; 6 is the most likely
- * face so players stuck in the yard get a launch sooner — being unable to roll a
- * six for many turns drains the fun. Keep 6 strictly above the rest.
+ * Per-face roll weights (faces 1..6), total 12:
+ *   1 -> 1/12 (~8%)   2..5 -> 2/12 (~17% each)   6 -> 3/12 (25%)
+ * Rationale: 6 stays the most likely face (it launches a pawn and grants another
+ * turn, keeping the game lively), one is mildly suppressed so games aren't
+ * dragged out by single-square crawls, and the middle faces are left even/fair.
+ * The old extra penalty on 4 was arbitrary and is gone; the pity-six rule
+ * (shouldGrantPitySix) now backstops the "never roll a six" tail, so 6 doesn't
+ * need an outsized weight. Keep 6 strictly above the rest and 1 strictly below.
  * @type {number[]}
  */
-export const DICE_WEIGHTS = [1, 2, 2, 1, 2, 3];
+export const DICE_WEIGHTS = [1, 2, 2, 2, 2, 3];
 
 /**
  * @param {() => number} [randomFn]  defaults to Math.random; pass a seeded PRNG to make rolls reproducible (e.g. in tests).

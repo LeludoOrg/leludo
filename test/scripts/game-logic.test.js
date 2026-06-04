@@ -93,21 +93,28 @@ describe('generateDiceRoll', () => {
         }
     });
 
-    it('weighted distribution: 1 and 4 rarer than 2,3,5,6', () => {
+    it('weighted distribution: 1 is the rarest face, 2..5 are even', () => {
         const counts = new Array(7).fill(0);
-        for (let i = 0; i < 60000; i++) {
+        const N = 120000;
+        for (let i = 0; i < N; i++) {
             counts[generateDiceRoll()]++;
         }
-        // 1 and 4 have weight 1, others weight >=2. Expect ~5500 vs ~11000.
-        expect(counts[1]).toBeLessThan(counts[2]);
-        expect(counts[1]).toBeLessThan(counts[3]);
-        expect(counts[4]).toBeLessThan(counts[5]);
-        expect(counts[4]).toBeLessThan(counts[6]);
+        // One is suppressed (weight 1) — strictly rarer than every other face.
+        for (let face = 2; face <= 6; face++) {
+            expect(counts[1]).toBeLessThan(counts[face]);
+        }
+        // The middle faces 2..5 share weight 2, so they land statistically even
+        // (each within 6% of their mean — far above sampling noise at this N).
+        const mid = [2, 3, 4, 5].map(f => counts[f]);
+        const mean = mid.reduce((a, b) => a + b, 0) / mid.length;
+        for (const c of mid) {
+            expect(Math.abs(c - mean) / mean).toBeLessThan(0.06);
+        }
     });
 
     // Regression: players could sit in the yard for many turns waiting on a six,
-    // which drains the fun. Six now carries the highest weight (3 vs 2), so it
-    // must be the single most frequent face — strictly above every other.
+    // which drains the fun. Six carries the highest weight (3 vs 2), so it must
+    // be the single most frequent face — strictly above every other.
     it('six is the most frequent face (highest weight)', () => {
         const counts = new Array(7).fill(0);
         for (let i = 0; i < 120000; i++) {
