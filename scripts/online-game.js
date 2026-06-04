@@ -27,7 +27,12 @@ function enqueue(makeStep) {
 
 /** Hand off from the lobby: mount the board from the first started snapshot. */
 export function startOnlineGame({ net, seat, state }) {
-    setOnline(net, seat);
+    // Rank seats among the occupied ones (the turn order), so a 2-player match
+    // on adjacent server seats still seats the opponent diagonally for BOTH
+    // players — not just the host. See online-state.toLocal.
+    const activeSeats = [];
+    for (let s = 0; s < 4; s++) if (state.playerTypes[s] != null) activeSeats.push(s);
+    setOnline(net, seat, activeSeats);
     _started = true;
     _chain = Promise.resolve();
 
@@ -37,7 +42,7 @@ export function startOnlineGame({ net, seat, state }) {
     const playerNames = new Array(4).fill('');
     const positions = new Array(4).fill(undefined);
     const colorMap = [0, 1, 2, 3];
-    for (let s = 0; s < 4; s++) {
+    for (const s of activeSeats) {
         const pos = toLocal(s);
         playerTypes[pos] = state.playerTypes[s];
         playerNames[pos] = state.playerNames[s];

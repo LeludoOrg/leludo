@@ -49,6 +49,36 @@ describe('online-state seat → board-position mapping', () => {
         expect([2, 3, 0, 1].map(toLocal)).toEqual([2, 0, 1, 3]);
     });
 
+    it('seats a 2-player match diagonally for BOTH players, even on adjacent seats', () => {
+        // A public 2-player match lands on server seats 0 and 1. Ranking must be
+        // over the occupied seats, not raw seat numbers: otherwise seat 1's view
+        // of seat 0 ranks 3 → board position 3 (bottom-left) and the opponent
+        // is no longer diagonal. This is the exact bug the screenshot showed.
+        setOnline({}, 0, [0, 1]);
+        expect(toLocal(0)).toBe(2); // host: self bottom-right
+        expect(toLocal(1)).toBe(0); // host: opponent top-left
+
+        setOnline({}, 1, [0, 1]);   // the OTHER player's perspective
+        expect(toLocal(1)).toBe(2); // self bottom-right
+        expect(toLocal(0)).toBe(0); // opponent top-left (was 3/bottom-left before fix)
+    });
+
+    it('ranks over active seats for a 3-player match with a gap', () => {
+        // Seats 0, 1, 3 occupied (seat 2 empty). The active order is [0,1,3];
+        // each player sees self → 2, next active → 0, next → 1.
+        setOnline({}, 3, [0, 1, 3]);
+        expect(toLocal(3)).toBe(2); // self bottom-right
+        expect(toLocal(0)).toBe(0); // next in turn order → top-left
+        expect(toLocal(1)).toBe(1); // then top-right
+    });
+
+    it('toServer inverts toLocal over only the active seats', () => {
+        setOnline({}, 1, [0, 1]);
+        for (const s of [0, 1]) expect(toServer(toLocal(s))).toBe(s);
+        setOnline({}, 3, [0, 1, 3]);
+        for (const s of [0, 1, 3]) expect(toServer(toLocal(s))).toBe(s);
+    });
+
     it('toServer is the exact inverse of toLocal for every seat', () => {
         for (let seat = 0; seat < 4; seat++) {
             setOnline({}, seat);
