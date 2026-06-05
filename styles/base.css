@@ -288,50 +288,33 @@ table td {
     max-width: 260px;
 }
 
-/* Connection-issues overlay (#net-disconnect-overlay): a peer is mid-reconnect
-   (live countdown) or this client lost its own link (spinner only). */
-.net-dc-body {
-    flex: 1;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-3);
+/* A player whose connection dropped is dimmed (corner widget, home quad, pawns)
+   while the game plays on without them. Reconnect or forfeit clears it. */
+.net-dimmed {
+    opacity: 0.32;
+    filter: saturate(0.6);
+    transition: opacity 0.3s ease, filter 0.3s ease;
 }
 
-.net-dc-body .body-helper {
-    font-size: 14px;
-    opacity: 0.7;
-    max-width: 260px;
-}
-
-.net-dc-spinner {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 3px solid color-mix(in srgb, var(--color-fg) 14%, transparent);
-    border-top-color: var(--color-fg);
-    animation: net-dc-spin 0.9s linear infinite;
-}
-
-.net-dc-timer:empty { display: none; }
-
-.net-dc-timer {
-    font-family: var(--font-mono);
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+/* Small non-blocking banner shown only when THIS client is reconnecting. */
+.net-reconnect-banner {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    margin-top: var(--space-2);
+    max-width: calc(100vw - var(--space-6));
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-pill);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
     color: var(--color-fg);
-    font-variant-numeric: tabular-nums;
-}
-
-@keyframes net-dc-spin {
-    to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .net-dc-spinner { animation: none; }
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .top-bar {

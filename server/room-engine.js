@@ -87,16 +87,20 @@ export class RoomEngine {
         this.autoStart = !!opts.autoStart;
 
         // ---- disconnect grace ----
-        // When an in-game human drops, the whole game FREEZES and that seat gets
-        // a reconnect window. Reconnect in time → resume; else the seat forfeits
-        // (pawns removed) and play continues, or the game ends if one human left.
-        // Timers/clock are injectable so unit tests can drive them deterministically
-        // (and a Cloudflare DO can swap setTimeout for alarms).
+        // When an in-game human drops, their turns are SKIPPED so the others keep
+        // playing, and that seat gets a reconnect window. Reconnect in time →
+        // they rejoin the rotation; else the seat forfeits (pawns removed), or
+        // the game ends if one human is left. Timers/clock are injectable so unit
+        // tests can drive them deterministically (and a Cloudflare DO can swap
+        // setTimeout for alarms).
         this.graceMs = opts.graceMs ?? 30_000;
         this.setTimer = opts.setTimer || ((fn, ms) => setTimeout(fn, ms));
         this.clearTimer = opts.clearTimer || ((h) => clearTimeout(h));
         this.now = opts.now || (() => Date.now());
-        this.frozen = false; // true while ≥1 active human seat is mid-reconnect
+        // True only in the rare case where EVERY active player is a disconnected
+        // human, so there's no one to hand the turn to — held until a reconnect
+        // or forfeit. Normal disconnects don't stall the game.
+        this.waiting = false;
 
         // ---- lobby seat model ----
         const size = Math.max(MIN_PLAYERS, Math.min(4, opts.size ?? 2));
@@ -174,11 +178,12 @@ export class RoomEngine {
             roomId: this.roomId,
         });
 
-        // Reconnecting into a live game: cancel the forfeit timer and (if no one
-        // else is still out) thaw the frozen game and hand the turn back.
+        // Reconnecting into a live game: cancel the forfeit timer, un-dim them on
+        // clients, and resume play if the game was held waiting on a disconnect.
         if (this.started && this.phase !== PHASES.ENDED) {
             this._clearGrace(seat);
-            this._maybeResume('reconnect');
+            this._broadcastState('reconnect');
+            if (this.waiting) { this.waiting = false; this._beginTurn(); }
             return { ok: true, seat };
         }
 
@@ -370,11 +375,13 @@ export class RoomEngine {
             return;
         }
 
-        // Active human dropped mid-game: freeze the whole game and start their
-        // reconnect countdown. The forfeit fires when the timer expires.
+        // Active human dropped mid-game: start their reconnect countdown and let
+        // the game flow on. Clients dim them; their turns get skipped until they
+        // reconnect or the timer forfeits them.
         this._startGrace(seat);
-        this._refreshFreeze();
         this._broadcastState('disconnect');
+        // If it was their turn, pass it straight away so nobody waits on them.
+        if (seat === this.currentPlayerIndex) this._advanceTurn();
     }
 
     // ---- disconnect / reconnect plumbing ------------------------------------
@@ -418,29 +425,19 @@ export class RoomEngine {
         s.graceUntil = 0;
     }
 
-    /** Recompute the freeze flag from live connections. Returns true if just thawed. */
-    _refreshFreeze() {
-        const shouldFreeze = this._disconnectedActiveHumans().length > 0;
-        const thawed = this.frozen && !shouldFreeze;
-        this.frozen = shouldFreeze;
-        return thawed;
+    /** A seat whose human is currently disconnected mid-reconnect. */
+    _isDisconnectedHuman(i) {
+        return this.playerTypes[i] === 'PLAYER' && this.positions[i]
+            && !isPlayerFinished(this.positions[i]) && !this.seats[i].connected;
     }
 
-    /** Thaw the game if nobody is still mid-reconnect, then hand the turn back. */
-    _maybeResume(reason) {
-        const thawed = this._refreshFreeze();
-        this._broadcastState(reason);
-        if (thawed) this._kickCurrentActor();
-    }
-
-    /** Re-issue the held turn after a thaw: prompt the human or wake the bot. */
-    _kickCurrentActor() {
-        if (this.phase === PHASES.AWAIT_ROLL) {
-            this._broadcastState('turn');
-            if (this.playerTypes[this.currentPlayerIndex] === 'BOT') this.schedule(() => this._botStep(), this.botDelayMs);
+    /** Is there any active seat that can take a turn right now (bot or live human)? */
+    _anyoneCanAct() {
+        for (let i = 0; i < 4; i++) {
+            if (!this.playerTypes[i] || !this.positions[i] || isPlayerFinished(this.positions[i])) continue;
+            if (this.playerTypes[i] === 'BOT' || this.seats[i].connected) return true;
         }
-        // AWAIT_MOVE: the reconnected human still holds their rolled legal moves;
-        // the 'reconnect' broadcast already re-synced them, nothing to re-issue.
+        return false;
     }
 
     /** Reconnect window elapsed: forfeit the seat (remove pawns) and continue. */
@@ -470,19 +467,9 @@ export class RoomEngine {
             return this._end('opponent-left');
         }
 
-        // This seat no longer blocks the game; someone else still might.
-        const thawed = this._refreshFreeze();
-
-        if (wasCurrent) {
-            // Their turn is over. _beginTurn issues the next turn if thawed, else
-            // holds it until the remaining disconnect resolves.
-            this._advanceTurn();
-        } else if (thawed) {
-            this._broadcastState('drop-resume');
-            this._kickCurrentActor();
-        } else {
-            this._broadcastState('disconnect'); // still frozen on another player
-        }
+        // If the game was held on this seat (everyone was disconnected) or it was
+        // simply their turn, advance — _beginTurn re-evaluates who can act next.
+        if (wasCurrent || this.waiting) this._advanceTurn();
     }
 
     // ---- in-game intents ----------------------------------------------------
@@ -490,7 +477,6 @@ export class RoomEngine {
     handleRoll(sessionId) {
         const seat = this._seatOf(sessionId);
         if (seat === -1) return this._reject(seat, 'NOT_SEATED');
-        if (this.frozen) return this._reject(seat, 'GAME_FROZEN');
         if (this.phase !== PHASES.AWAIT_ROLL) return this._reject(seat, 'NOT_AWAITING_ROLL');
         if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
         if (this.playerTypes[seat] !== 'PLAYER') return this._reject(seat, 'NOT_A_HUMAN_SEAT');
@@ -501,7 +487,6 @@ export class RoomEngine {
     handleMove(sessionId, tokenIndex) {
         const seat = this._seatOf(sessionId);
         if (seat === -1) return this._reject(seat, 'NOT_SEATED');
-        if (this.frozen) return this._reject(seat, 'GAME_FROZEN');
         if (this.phase !== PHASES.AWAIT_MOVE) return this._reject(seat, 'NOT_AWAITING_MOVE');
         if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
         if (!this.legalMoves.includes(tokenIndex)) return this._reject(seat, 'ILLEGAL_MOVE');
@@ -513,12 +498,22 @@ export class RoomEngine {
 
     _beginTurn() {
         if (this.phase === PHASES.ENDED) return;
+        // Skip a disconnected human's turn so the others keep playing. If NOBODY
+        // can act (every active player is a disconnected human), hold the turn
+        // until someone reconnects or forfeits — otherwise we'd loop forever.
+        if (this._isDisconnectedHuman(this.currentPlayerIndex)) {
+            if (this._anyoneCanAct()) return this._advanceTurn();
+            this.waiting = true;
+            this.phase = PHASES.AWAIT_ROLL;
+            this.currentDiceRoll = 0;
+            this.legalMoves = [];
+            this._broadcastState('waiting');
+            return;
+        }
+        this.waiting = false;
         this.phase = PHASES.AWAIT_ROLL;
         this.currentDiceRoll = 0;
         this.legalMoves = [];
-        // Frozen mid-reconnect: stage the turn but hold it — _kickCurrentActor
-        // re-issues it (prompt human / wake bot) once the game thaws.
-        if (this.frozen) { this._broadcastState('turn'); return; }
         this._broadcastState('turn');
         if (this.playerTypes[this.currentPlayerIndex] === 'BOT') {
             this.schedule(() => this._botStep(), this.botDelayMs);
@@ -568,7 +563,7 @@ export class RoomEngine {
     }
 
     _botStep() {
-        if (this.phase === PHASES.ENDED || this.frozen) return;
+        if (this.phase === PHASES.ENDED) return;
         const pi = this.currentPlayerIndex;
         if (this.playerTypes[pi] !== 'BOT') return;
         const movable = this._rollAndResolve();
@@ -637,7 +632,7 @@ export class RoomEngine {
     _end(reason) {
         if (this.phase === PHASES.ENDED) return;
         for (let i = 0; i < 4; i++) this._clearGrace(i);
-        this.frozen = false;
+        this.waiting = false;
         if (this.started) this._rankLeftovers();
         this.phase = PHASES.ENDED;
         this.transport.broadcast({ t: 'ended', reason, ranks: this.ranks.slice(), state: this._publicState() });
@@ -665,9 +660,8 @@ export class RoomEngine {
             roomId: this.roomId,
             phase: this.phase,
             started: this.started,
-            frozen: this.frozen,
-            // Seats mid-reconnect, with their live countdown so clients can render
-            // a "reconnecting… Ns" notice without a server clock (relative ms).
+            // Seats mid-reconnect, with their live countdown — clients dim these
+            // players (and may show the remaining time) without a server clock.
             disconnects: this._disconnectedActiveHumans().map(i => ({
                 index: i,
                 name: this.seats[i].name,

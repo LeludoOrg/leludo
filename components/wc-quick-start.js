@@ -5,7 +5,7 @@ import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
-import {showSelfReconnect, showSelfGaveUp, hideOverlay} from "../scripts/net-overlay.js";
+import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
 import {mintRoomCode} from "../scripts/room-code.js";
 
 // Public match: how long the "Match found!" announcement stays up before the
@@ -701,7 +701,7 @@ class QuickStart extends HTMLElement {
             onMessage: (msg) => this._onNetMessage(msg, client),
             // Self-disconnect notices during a live game (net-client auto-retries).
             onReconnecting: () => { if (this._net === client && isOnlineGameStarted()) showSelfReconnect() },
-            onReconnected: () => { if (this._net === client) hideOverlay() },
+            onReconnected: () => { if (this._net === client) hideSelfBanner() },
             onGiveUp: () => { if (this._net === client && isOnlineGameStarted()) showSelfGaveUp() },
         })
         this._net = client

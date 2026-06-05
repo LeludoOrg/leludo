@@ -17,7 +17,7 @@ import { dispatch, subscribe, EVENTS } from './game-store.js';
 import { COMMANDS } from './command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
 import { fillColorMap } from './game-logic.js';
-import { showPeerReconnect, hideOverlay } from './net-overlay.js';
+import { setDimmedPlayers, clearPresence } from './net-overlay.js';
 
 let _started = false;
 let _chain = Promise.resolve();
@@ -76,10 +76,12 @@ export function startOnlineGame({ net, seat, state }) {
 // screen must be mounted explicitly (handleAfterTokenMove never ran).
 const DISCONNECT_END_REASONS = new Set(['opponent-left', 'abandoned', 'no-active-players']);
 
-/** Show/refresh/clear the opponent-reconnecting overlay from a server snapshot. */
-function updatePeerOverlay(state) {
-    const list = (state.disconnects || []).filter(d => d.index !== onlineSeat());
-    showPeerReconnect(list); // hides itself when the list is empty
+/** Dim the opponents who are mid-reconnect (un-dims the rest) from a snapshot. */
+function updateDimming(state) {
+    const dim = (state.disconnects || [])
+        .filter(d => d.index !== onlineSeat())
+        .map(d => toLocal(d.index));
+    setDimmedPlayers(dim);
 }
 
 /** Map the server's seat-indexed ranks onto local board positions. */
@@ -100,8 +102,8 @@ export function handleOnlineMessage(msg) {
     if (!_started) return;
     if (msg.t === 'state') {
         if (!msg.state.started) return;
-        // Reflect any in-flight reconnect windows on the board overlay.
-        updatePeerOverlay(msg.state);
+        // Dim opponents who are mid-reconnect (the game plays on without them).
+        updateDimming(msg.state);
         // The server is authoritative for whose turn it is. The seat→board
         // mapping is diagonal-first (not a pure rotation), so the local engine's
         // own round-robin can drift from the server's — re-sync currentPlayerIndex
@@ -119,13 +121,13 @@ export function handleOnlineMessage(msg) {
         enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: toLocal(msg.p), tokenIndex: msg.token }));
     } else if (msg.t === 'dropped') {
         // A player's reconnect window elapsed: pull their pawns off the board.
-        if (msg.state) updatePeerOverlay(msg.state);
+        if (msg.state) updateDimming(msg.state);
         enqueue(() => dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) }));
     } else if (msg.t === 'ended') {
         // A finish-driven end already mounted the end screen via the normal move
         // path; only disconnect-driven ends need it mounted here.
         if (DISCONNECT_END_REASONS.has(msg.reason)) {
-            hideOverlay();
+            clearPresence();
             const { local, winnerIndex } = ranksToLocal(msg.ranks);
             enqueue(() => dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex }));
         }
@@ -139,7 +141,7 @@ export function isOnlineGameStarted() {
 function stopOnlineGame() {
     if (!_started) return;
     _started = false;
-    hideOverlay();
+    clearPresence();
     try { onlineNet()?.close(); } catch { /* ignore */ }
     clearOnline();
 }

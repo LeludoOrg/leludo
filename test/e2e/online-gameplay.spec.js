@@ -100,11 +100,11 @@ test.describe('Online gameplay', () => {
     });
 
     // Regression: when a human leaves mid-game their seat wasn't being handled —
-    // the game stalled. Now the survivor sees a "connection issues" overlay with
-    // a reconnect countdown, and once the (test-shortened) grace window elapses
-    // the leaver forfeits and, with one human left, the game ends.
-    test('a leaver triggers a reconnect overlay, then forfeits and ends the game', async ({ browser }) => {
-        const grace = '?grace=1500'; // 1.5s reconnect window for a fast test
+    // the game stalled. Now the leaver is just DIMMED (no blocking overlay) and
+    // the game plays on; once the (test-shortened) grace window elapses they
+    // forfeit and, with one human left, the game ends.
+    test('a leaver is dimmed while the game continues, then forfeits and ends', async ({ browser }) => {
+        const grace = '?grace=6000'; // 6s reconnect window — long enough to observe the dim
         const ctxA = await browser.newContext();
         const ctxB = await browser.newContext();
         const pageA = await ctxA.newPage();
@@ -131,16 +131,16 @@ test.describe('Online gameplay', () => {
         // The guest abandons the game.
         await ctxB.close();
 
-        // The survivor is told there's a connection problem, with a countdown.
-        const overlay = pageA.getByTestId('net-disconnect-overlay');
-        await expect(overlay).toBeVisible();
-        await expect(pageA.getByTestId('net-dc-msg')).toContainText('Bob');
-        await expect(pageA.getByTestId('net-dc-timer')).toContainText('s');
+        // No blocking overlay — the leaver (server seat 1 → board top-left, #b0)
+        // is dimmed, the board stays live, and there's no self-reconnect banner
+        // (this client didn't drop).
+        await expect(pageA.locator('#b0')).toHaveClass(/net-dimmed/);
+        await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
+        await expect(pageA.getByTestId('net-reconnect-banner')).toBeHidden();
 
         // Grace elapses → forfeit → only one human left → the game ends. The
         // recap screen mounts (its .ge-screen is the fixed full-bleed overlay).
-        await expect(pageA.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 10_000 });
-        await expect(overlay).toBeHidden(); // the reconnect overlay gives way to the recap
+        await expect(pageA.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 12_000 });
 
         await ctxA.close();
     });

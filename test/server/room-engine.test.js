@@ -305,36 +305,43 @@ function gameWith(sessions) {
 }
 
 describe('RoomEngine — disconnect grace', () => {
-    it('freezes the game (no stall) when the current player drops, and rejects intents', () => {
+    it('skips the current player when they drop so the others keep playing', () => {
         const { fake, engine } = gameWith(['h', 'g']);
         expect(engine.currentPlayerIndex).toBe(0); // host's turn
 
         engine.handleDisconnect('h'); // current player vanishes
-        expect(engine.frozen).toBe(true);
-        expect(engine.phase).toBe(PHASES.AWAIT_ROLL); // held, not advanced
+        expect(engine.waiting).toBe(false);          // not stalled
+        expect(engine.currentPlayerIndex).toBe(1);   // turn passed to the guest
+        expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
 
         const last = [...fake.broadcasts].reverse().find(b => b.t === 'state');
-        expect(last.state.frozen).toBe(true);
-        expect(last.state.disconnects.map(d => d.index)).toEqual([0]);
+        expect(last.state).not.toHaveProperty('frozen'); // no freeze concept anymore
+        expect(last.state.disconnects.map(d => d.index)).toEqual([0]); // host dimmed
         expect(last.state.disconnects[0].remainingMs).toBe(30_000);
 
-        // The remaining player can't sneak a move while everyone waits.
-        fake.sends.length = 0;
-        engine.handleRoll('g');
-        expect(fake.sends.pop().msg).toEqual({ t: 'rejected', error: 'GAME_FROZEN' });
+        // The connected guest can take their turn right away.
+        expect(engine.handleRoll('g')).toMatchObject({ ok: true });
     });
 
-    it('cancels the forfeit and thaws when the player reconnects in time', () => {
+    it('keeps the game flowing for the current player when a non-current player drops', () => {
+        const { engine } = gameWith(['h', 'g', 'k']);
+        expect(engine.currentPlayerIndex).toBe(0); // host's turn
+
+        engine.handleDisconnect('g'); // seat 1, not the current player
+        expect(engine.currentPlayerIndex).toBe(0); // host's turn untouched
+        expect(engine.waiting).toBe(false);
+        expect(engine.handleRoll('h')).toMatchObject({ ok: true });
+    });
+
+    it('cancels the forfeit and keeps the player in when they reconnect in time', () => {
         const { engine, clock } = gameWith(['h', 'g']);
         engine.handleDisconnect('h');
         expect(clock.pending()).toBe(1); // forfeit timer armed
 
         engine.handleJoin('h', 'Host'); // reconnect
         expect(clock.pending()).toBe(0); // timer cancelled
-        expect(engine.frozen).toBe(false);
         expect(engine.positions[0]).not.toBeNull(); // pawns intact
-        expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
-        engine.handleRoll('h'); // turn handed back — host can play again
+        expect(engine.seats[0].connected).toBe(true);
     });
 
     it('forfeits the seat and ends the game when only one human is left (2P)', () => {
@@ -355,27 +362,25 @@ describe('RoomEngine — disconnect grace', () => {
     it('forfeits a dropped player but keeps a 3-player game running', () => {
         const { engine, clock } = gameWith(['h', 'g', 'k']);
         expect(engine.currentPlayerIndex).toBe(0);
-        engine.handleDisconnect('h'); // current player drops
-        clock.fireAll();
+        engine.handleDisconnect('h'); // current player drops → skipped immediately
+        expect(engine.currentPlayerIndex).not.toBe(0);
+        clock.fireAll();              // grace elapses → forfeit
 
         expect(engine.phase).not.toBe(PHASES.ENDED); // two humans remain
         expect(engine.positions[0]).toBeNull();       // forfeited
-        expect(engine.frozen).toBe(false);            // thawed, turn advanced
-        expect([1, 2]).toContain(engine.currentPlayerIndex);
+        expect(engine.waiting).toBe(false);
     });
 
-    it('stays frozen until every disconnected player resolves', () => {
-        const { engine, clock } = gameWith(['h', 'g', 'k']);
-        engine.handleDisconnect('g');
-        engine.handleDisconnect('k');
-        expect(engine.frozen).toBe(true);
+    it('holds only when every active player is disconnected, then resumes on reconnect', () => {
+        const { engine } = gameWith(['h', 'g']);
+        engine.handleDisconnect('h'); // → turn passes to g
+        engine.handleDisconnect('g'); // now nobody can act
+        expect(engine.waiting).toBe(true);
+        expect(engine.phase).toBe(PHASES.AWAIT_ROLL); // held
 
-        engine.handleJoin('g', 'G'); // one back, one still out
-        expect(engine.frozen).toBe(true);
-
-        clock.fireAll(); // k forfeits -> only h and g left? h + g = 2 humans -> continue
-        expect(engine.frozen).toBe(false);
-        expect(engine.positions[2]).toBeNull();
-        expect(engine.phase).not.toBe(PHASES.ENDED);
+        engine.handleJoin('h', 'Host'); // someone's back
+        expect(engine.waiting).toBe(false);
+        expect(engine.currentPlayerIndex).toBe(0);     // resumes on the live player
+        expect(engine.handleRoll('h')).toMatchObject({ ok: true });
     });
 });
