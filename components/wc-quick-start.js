@@ -8,6 +8,12 @@ import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scri
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
 import {mintRoomCode} from "../scripts/room-code.js";
 
+// Initial release ships private rooms only. The public-matchmaking backend
+// (queue + auto-start) stays wired and tested — this flag just hides the entry
+// UI ("Find a public match"). Flip to true to bring it back; the public e2e
+// suite in test/e2e/online-screens.spec.js is gated on the same switch.
+const PUBLIC_MATCH_ENABLED = false;
+
 // Public match: how long the "Match found!" announcement stays up before the
 // board is revealed. The board mounts and runs underneath immediately — this is
 // a purely cosmetic cover so an auto-started public game doesn't snap straight
@@ -529,11 +535,13 @@ class QuickStart extends HTMLElement {
                     </div>
 
                     <div class="section-group online-options">
+                        ${PUBLIC_MATCH_ENABLED ? /*html*/ `
                         <button class="online-opt cta-primary" data-testid="online-public">${ICON_GLOBE}<span>Find a public match</span></button>
 
                         <div class="online-divider"><span>private room</span></div>
+                        ` : ''}
 
-                        <button class="online-opt cta-secondary" data-testid="online-create">${ICON_PLUS}<span>Create a room</span></button>
+                        <button class="online-opt ${PUBLIC_MATCH_ENABLED ? 'cta-secondary' : 'cta-primary'}" data-testid="online-create">${ICON_PLUS}<span>Create a room</span></button>
 
                         <div class="online-join-row">
                             <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
@@ -569,7 +577,8 @@ class QuickStart extends HTMLElement {
             e.currentTarget.querySelectorAll(".online-seg-btn").forEach(b => b.classList.toggle("is-on", b === btn))
         })
 
-        el.querySelector('[data-testid="online-public"]').addEventListener("click", () => {
+        // Public-match entry is hidden for the initial release (PUBLIC_MATCH_ENABLED).
+        el.querySelector('[data-testid="online-public"]')?.addEventListener("click", () => {
             if (!this._requireName()) return
             playClickSound()
             this._enterMatchmaking(this._onlinePlayers || 2)

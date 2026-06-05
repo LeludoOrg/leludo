@@ -32,10 +32,13 @@ test.describe('Home — offline / online split', () => {
         await expect(page.locator('.seat-row')).toHaveCount(4);
     });
 
-    test('online path offers both public and private options', async ({ page }) => {
+    // Initial release ships private rooms only — the "Find a public match" entry
+    // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The online menu
+    // must offer create + join-by-code (and the room-size picker) but NOT public.
+    test('online path offers the private-room options only', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-public')).toBeEnabled(); // public match
+        await expect(page.getByTestId('online-public')).toHaveCount(0); // public hidden for launch
         await expect(page.getByTestId('online-create')).toBeVisible();  // private: create
         await expect(page.getByTestId('online-join')).toBeVisible();    // private: join by code
         await expect(page.getByTestId('online-players')).toBeVisible();
@@ -163,7 +166,12 @@ test.describe('Online lobby — create + join', () => {
     });
 });
 
-test.describe('Online — public matchmaking', () => {
+// Public matchmaking is hidden for the initial release (PUBLIC_MATCH_ENABLED =
+// false in components/wc-quick-start.js). The queue/auto-start backend stays
+// wired and unit-tested (test/scripts/net-client + online-game); these UI flows
+// are unreachable until the entry button returns, so the suite is skipped.
+// Un-skip together with flipping the flag.
+test.describe.skip('Online — public matchmaking', () => {
     test('cancelling a public search returns to the online menu', async ({ page }) => {
         await openOnline(page, 'Solo');
         await page.getByTestId('online-public').click();
