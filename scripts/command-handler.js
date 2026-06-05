@@ -93,6 +93,11 @@ export const COMMANDS = Object.freeze({
     NET_SYNC_TURN: 'NET_SYNC_TURN',
     NET_APPLY_ROLL: 'NET_APPLY_ROLL',
     NET_APPLY_MOVE: 'NET_APPLY_MOVE',
+    // A peer's reconnect window expired: clear their forfeited pawns. NET_END
+    // mounts the end screen when the game ends on a disconnect (no local move
+    // triggered it).
+    NET_DROP_PLAYER: 'NET_DROP_PLAYER',
+    NET_END: 'NET_END',
 });
 
 // When set, the next rollDice uses this value instead of the local RNG. Used
@@ -289,6 +294,35 @@ function netSyncTurn(playerIndex, emit) {
     if (playerIndex == null || playerIndex === state.currentPlayerIndex) return;
     emit({ type: EVENTS.NET_TURN_SYNCED, playerIndex });
     moveDice(state.currentPlayerIndex);
+}
+
+// Online: a player ran out of reconnect time and forfeited. Pull their pawns
+// off the board and deactivate the seat so the renderer ignores them (the
+// server has already removed them; whose-turn-it-is keeps coming from sync).
+function netDropPlayer(playerIndex, emit) {
+    if (playerIndex == null || !state.playerTypes[playerIndex]) return;
+    const restack = new Set();
+    for (let ti = 0; ti < 4; ti++) {
+        const token = document.getElementById(getTokenElementId(playerIndex, ti));
+        if (!token) continue;
+        const cell = token.parentElement;
+        token.remove();
+        if (cell) restack.add(cell);
+    }
+    restack.forEach(cell => updateCellStacking(cell));
+    emit({ type: EVENTS.NET_PLAYER_DROPPED, playerIndex });
+}
+
+// Online: the server ended the game without a finishing move (an opponent left
+// or the room was abandoned). Apply the server's final ranks and mount the end
+// screen — mirrors the tail of handleAfterTokenMove.
+function netEnd(ranks, winnerIndex, emit) {
+    if (state.phase === PHASES.GAME_ENDED) return;
+    emit({ type: EVENTS.NET_GAME_ENDED, playerRanks: ranks, winnerIndex });
+    document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
+    document.getElementById("game").classList.add("hidden");
+    releaseWakeLock();
+    goTo('game-end');
 }
 
 function resumeSavedGame(emit) {
@@ -737,6 +771,10 @@ export function commandHandler(currentState, command, services, emit) {
             return rollDice(emit);
         case COMMANDS.NET_APPLY_MOVE:
             return selectToken(command.playerIndex, command.tokenIndex, emit);
+        case COMMANDS.NET_DROP_PLAYER:
+            return netDropPlayer(command.playerIndex, emit);
+        case COMMANDS.NET_END:
+            return netEnd(command.playerRanks, command.winnerIndex, emit);
         case COMMANDS.ROLL_DICE:
             return rollDice(emit);
         case COMMANDS.SELECT_TOKEN:

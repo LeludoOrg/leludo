@@ -4,7 +4,8 @@ import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} fro
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
-import {startOnlineGame, handleOnlineMessage} from "../scripts/online-game.js";
+import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
+import {showSelfReconnect, showSelfGaveUp, hideOverlay} from "../scripts/net-overlay.js";
 import {mintRoomCode} from "../scripts/room-code.js";
 
 // Public match: how long the "Match found!" announcement stays up before the
@@ -673,14 +674,25 @@ class QuickStart extends HTMLElement {
     _connect({ room, params }) {
         this._leaveOnline()
         this._mySeat = -1
+        // Test hook: forward a `?grace=` override so e2e can shorten the reconnect
+        // window (the server only honours it under DEV_TEST_HOOKS).
+        const extra = {}
+        try {
+            const g = new URLSearchParams(location.search).get('grace')
+            if (g != null) extra.grace = g
+        } catch { /* non-browser */ }
         const client = new NetClient({
             url: getConfiguredServerUrl(),
             room,
             session: getSessionId(),
             name: this._myName(),
-            params,
-            onClose: () => { if (this._net === client) this._setLobbyStatus('Disconnected from the server.') },
+            params: { ...params, ...extra },
+            onClose: () => { if (this._net === client && !isOnlineGameStarted()) this._setLobbyStatus('Disconnected from the server.') },
             onMessage: (msg) => this._onNetMessage(msg, client),
+            // Self-disconnect notices during a live game (net-client auto-retries).
+            onReconnecting: () => { if (this._net === client && isOnlineGameStarted()) showSelfReconnect() },
+            onReconnected: () => { if (this._net === client) hideOverlay() },
+            onGiveUp: () => { if (this._net === client && isOnlineGameStarted()) showSelfGaveUp() },
         })
         this._net = client
         client.connect()

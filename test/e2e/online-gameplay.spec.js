@@ -11,8 +11,8 @@ import { test, expect } from '@playwright/test';
  * board must mount and the turn must actually progress.
  */
 
-async function openOnline(page, name) {
-    await page.goto('/');
+async function openOnline(page, name, query = '') {
+    await page.goto(`/${query}`);
     await page.getByTestId('home-play-online').click();
     await page.getByTestId('online-name').fill(name);
 }
@@ -97,5 +97,51 @@ test.describe('Online gameplay', () => {
             const txt = (await page.locator('#turn-counter').textContent())?.trim() || 'Turn 0';
             return parseInt(txt.replace(/\D/g, ''), 10) || 0;
         }, { timeout: 30_000, intervals: [400, 400, 400] }).toBeGreaterThan(4);
+    });
+
+    // Regression: when a human leaves mid-game their seat wasn't being handled —
+    // the game stalled. Now the survivor sees a "connection issues" overlay with
+    // a reconnect countdown, and once the (test-shortened) grace window elapses
+    // the leaver forfeits and, with one human left, the game ends.
+    test('a leaver triggers a reconnect overlay, then forfeits and ends the game', async ({ browser }) => {
+        const grace = '?grace=1500'; // 1.5s reconnect window for a fast test
+        const ctxA = await browser.newContext();
+        const ctxB = await browser.newContext();
+        const pageA = await ctxA.newPage();
+        const pageB = await ctxB.newPage();
+
+        // Host creates the room; grab the shared code.
+        await openOnline(pageA, 'Alice', grace);
+        await pageA.getByTestId('online-create').click();
+        const code = (await pageA.getByTestId('online-room-code').textContent())?.trim();
+        expect(code).toBeTruthy();
+
+        // Guest joins by code; host waits until the guest is seated, then starts.
+        await openOnline(pageB, 'Bob', grace);
+        await pageB.getByTestId('online-code-input').fill(code);
+        await pageB.getByTestId('online-join').click();
+        await expect(pageA.getByTestId('online-seat-1')).toContainText('Bob');
+        await pageA.getByTestId('online-start').click();
+
+        // Both boards mount (2 players × 4 tokens).
+        await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
+        await expect(pageB.locator('wc-board .board-grid')).toBeVisible();
+        await expect(pageA.locator('wc-token')).toHaveCount(8);
+
+        // The guest abandons the game.
+        await ctxB.close();
+
+        // The survivor is told there's a connection problem, with a countdown.
+        const overlay = pageA.getByTestId('net-disconnect-overlay');
+        await expect(overlay).toBeVisible();
+        await expect(pageA.getByTestId('net-dc-msg')).toContainText('Bob');
+        await expect(pageA.getByTestId('net-dc-timer')).toContainText('s');
+
+        // Grace elapses → forfeit → only one human left → the game ends. The
+        // recap screen mounts (its .ge-screen is the fixed full-bleed overlay).
+        await expect(pageA.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 10_000 });
+        await expect(overlay).toBeHidden(); // the reconnect overlay gives way to the recap
+
+        await ctxA.close();
     });
 });

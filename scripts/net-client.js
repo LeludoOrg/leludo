@@ -82,31 +82,68 @@ export class NetClient {
         this.opts = opts;
         this.ws = null;
         this.connected = false;
+        // Reconnect target. Public matches start without a room (the matchmaker
+        // assigns one); we capture the assigned code from the 'seated' broadcast
+        // so a dropped socket rejoins the SAME room instead of re-queueing.
+        this._room = opts.room;
+        this._params = { ...(opts.params || {}) };
+        this._closedByUs = false;
+        this._everOpen = false;
+        this._reconnectAttempts = 0;
+        // ~30s of retries to match the server's reconnect grace window.
+        this._maxReconnect = opts.maxReconnect ?? 12;
+        this._reconnectDelayMs = opts.reconnectDelayMs ?? 2500;
     }
 
     connect() {
+        this._open();
+        return this;
+    }
+
+    _open() {
         const base = resolveServerUrl(this.opts.url);
         const q = new URLSearchParams({
             session: this.opts.session,
             name: this.opts.name || '',
-            ...(this.opts.params || {}),
+            ...this._params,
         });
-        if (this.opts.room) q.set('room', this.opts.room); // omitted in public matchmaking
+        if (this._room) q.set('room', this._room); // omitted in public matchmaking
         this.ws = new WebSocket(`${base}/?${q.toString()}`);
         this.ws.addEventListener('open', () => {
             this.connected = true;
-            this.opts.onOpen?.();
+            const wasReconnecting = this._reconnectAttempts > 0;
+            this._reconnectAttempts = 0;
+            this._everOpen = true;
+            if (wasReconnecting) this.opts.onReconnected?.();
+            else this.opts.onOpen?.();
         });
         this.ws.addEventListener('message', (ev) => {
             let msg;
             try { msg = JSON.parse(ev.data); } catch { return; }
+            // Pin the reconnect target to the seated room and stop re-queueing as
+            // a fresh public match on a future drop.
+            if (msg && msg.t === 'seated' && msg.roomId) {
+                this._room = msg.roomId;
+                delete this._params.mode;
+            }
             this.opts.onMessage(msg);
         });
         this.ws.addEventListener('close', (ev) => {
             this.connected = false;
             this.opts.onClose?.(ev);
+            // Auto-reconnect only an unexpected drop of an established session.
+            if (!this._closedByUs && this._everOpen) this._scheduleReconnect();
         });
-        return this;
+    }
+
+    _scheduleReconnect() {
+        if (this._reconnectAttempts >= this._maxReconnect) {
+            this.opts.onGiveUp?.();
+            return;
+        }
+        this._reconnectAttempts++;
+        this.opts.onReconnecting?.(this._reconnectAttempts, this._maxReconnect);
+        setTimeout(() => { if (!this._closedByUs) this._open(); }, this._reconnectDelayMs);
     }
 
     send(obj) {
@@ -124,5 +161,5 @@ export class NetClient {
     kick(seat) { this.send({ t: 'lobby_kick', seat }); }
     start() { this.send({ t: 'lobby_start' }); }
 
-    close() { this.ws?.close(); }
+    close() { this._closedByUs = true; this.ws?.close(); }
 }

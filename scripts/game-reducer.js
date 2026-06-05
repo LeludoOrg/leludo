@@ -37,6 +37,8 @@ export const EVENTS = Object.freeze({
     DICE_ROLL_STARTED: 'DICE_ROLL_STARTED',
     GOD_TELEPORTED: 'GOD_TELEPORTED',
     NET_TURN_SYNCED: 'NET_TURN_SYNCED',
+    NET_PLAYER_DROPPED: 'NET_PLAYER_DROPPED',
+    NET_GAME_ENDED: 'NET_GAME_ENDED',
 });
 
 function resetArraysInPlace(state) {
@@ -269,6 +271,30 @@ export function reducer(state, event) {
             state.consecutiveSixesCount = 0;
             state.phase = PHASES.AWAITING_ROLL;
             state.movableTokenIndexes = [];
+            return state;
+        }
+
+        // Online only: a player forfeited (reconnect window elapsed). Deactivate
+        // their seat so the renderer + any local turn logic skip them; the
+        // server stays authoritative for whose turn it is.
+        case EVENTS.NET_PLAYER_DROPPED: {
+            const i = event.playerIndex;
+            state.playerTypes[i] = undefined;
+            state.playerTokenPositions[i] = undefined;
+            state.botPersonalities[i] = null;
+            state.playerRanks[i] = 0;
+            return state;
+        }
+
+        // Online only: the game ended on a disconnect (no finishing move). Apply
+        // the server's final ranks + winner and flip to the end phase.
+        case EVENTS.NET_GAME_ENDED: {
+            if (Array.isArray(event.playerRanks)) {
+                for (let i = 0; i < 4; i++) state.playerRanks[i] = event.playerRanks[i] ?? 0;
+                state.lastRank = Math.max(0, ...state.playerRanks);
+            }
+            if (event.winnerIndex != null && event.winnerIndex >= 0) state.winnerIndex = event.winnerIndex;
+            state.phase = PHASES.GAME_ENDED;
             return state;
         }
 

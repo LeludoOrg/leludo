@@ -68,6 +68,7 @@ function makeRoom(roomId, cfg) {
         seatPlan: cfg.seatPlan,
         autoStart: cfg.autoStart,
         seed: cfg.seed,
+        graceMs: cfg.graceMs,
         transport,
     });
 
@@ -176,6 +177,7 @@ wss.on('connection', (ws, req) => {
             room = makeRoom(roomId, {
                 size,
                 seed: TEST_HOOKS && q.get('seed') != null ? Number(q.get('seed')) : 1,
+                graceMs: TEST_HOOKS && q.get('grace') != null ? Number(q.get('grace')) : undefined,
             });
         }
         bindConnToRoom(conn, room);
