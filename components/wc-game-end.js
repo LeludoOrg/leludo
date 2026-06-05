@@ -12,6 +12,7 @@ import {
     bestDiceStreak,
     state,
     selectHighlights,
+    selectHighlightsBySeat,
     playClickSound,
     dispatch,
     COMMANDS,
@@ -21,6 +22,7 @@ import {
     openPlayStore,
 } from "../scripts/index.js";
 import {trackEvent} from "../scripts/analytics.js";
+import {isOnlineActive, onlineLocalSelf, toServer} from "../scripts/online-state.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
 const CONFETTI_COUNT = 18;
@@ -134,6 +136,42 @@ function buildStats() {
         pawnsAtBaseAtTurn20: Array.from(pawnsAtBaseAtTurn20),
         turnCount: state.turnCount || 0,
     };
+}
+
+// Online only: a full 0..3 bijection between local board index and server seat.
+// Active players use toServer(); empty chairs fill the leftover slots (their
+// stats are null/default and get skipped during selection). Server seat is the
+// stable identity every client agrees on, so selecting the recap in seat space
+// makes index-tie-broken awards pick the same physical players everywhere.
+function seatBijection() {
+    const localOfSeat = new Array(4).fill(-1);
+    const seatOfLocal = new Array(4).fill(-1);
+    const seatTaken = [false, false, false, false];
+    for (let local = 0; local < 4; local++) {
+        if (!playerTypes[local]) continue;
+        const seat = toServer(local);
+        seatOfLocal[local] = seat;
+        localOfSeat[seat] = local;
+        seatTaken[seat] = true;
+    }
+    const spareSeats = [];
+    for (let seat = 0; seat < 4; seat++) if (!seatTaken[seat]) spareSeats.push(seat);
+    let spi = 0;
+    for (let local = 0; local < 4; local++) {
+        if (seatOfLocal[local] >= 0) continue;
+        const seat = spareSeats[spi++];
+        seatOfLocal[local] = seat;
+        localOfSeat[seat] = local;
+    }
+    return { localOfSeat, seatOfLocal };
+}
+
+function buildHighlights(winnerIndex) {
+    const seats = buildSeats();
+    const stats = buildStats();
+    if (!isOnlineActive()) return selectHighlights({ stats, seats, winnerIndex });
+    const { localOfSeat, seatOfLocal } = seatBijection();
+    return selectHighlightsBySeat({ stats, seats, winnerIndex, localOfSeat, seatOfLocal });
 }
 
 function playerHsl(playerIndex) {
@@ -313,16 +351,19 @@ class GameEnd extends HTMLElement {
             if (playerRanks[pi] === 1) { winnerIndex = pi; break; }
         }
 
-        const isHumanWinner = playerTypes[winnerIndex] === 'PLAYER';
+        // Online every seat is a human, so "winner is a PLAYER" is true on every
+        // client — only the actual winning client should read "You won". Offline,
+        // the local human is whichever seat has type PLAYER.
+        const isSelfWinner = isOnlineActive()
+            ? winnerIndex === onlineLocalSelf()
+            : playerTypes[winnerIndex] === 'PLAYER';
         const winnerName = nameFor(winnerIndex);
-        const eyebrow = isHumanWinner
+        const eyebrow = isSelfWinner
             ? 'Game over · You won'
             : `Game over · ${winnerName} won`;
-        const winText = isHumanWinner ? 'You won.' : `${winnerName} won.`;
+        const winText = isSelfWinner ? 'You won.' : `${winnerName} won.`;
 
-        const seats = buildSeats();
-        const stats = buildStats();
-        const highlights = selectHighlights({ stats, seats, winnerIndex });
+        const highlights = buildHighlights(winnerIndex);
 
         const cardsHTML = highlights.map(h => `
             <div class="ge-card player-border-${h.playerIndex}">

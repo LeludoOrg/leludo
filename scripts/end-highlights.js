@@ -190,6 +190,45 @@ function pickDistanceLeader(stats, seats, skipPi) {
  * @param {number} args.winnerIndex
  * @returns {HighlightCard[]} 3-4 cards
  */
+/**
+ * Online wrapper around selectHighlights. The reducer keys every stat by LOCAL
+ * board index, which each client rotates so it sits bottom-right — so the same
+ * physical player has a different index on every screen. selectHighlights breaks
+ * ties by index, so left as-is each client would pick a different physical
+ * player for tied awards (e.g. two players who both rolled three 6s). Re-key the
+ * stats into a stable, perspective-independent order (server seat) via the
+ * supplied bijection, select there, then map each card's playerIndex back to the
+ * local index for colouring. Same physical picks on every client.
+ *
+ * @param {Object} args
+ * @param {EndStats} args.stats                   local-board-indexed stats
+ * @param {Array} args.seats                      local-board-indexed seats (len 4)
+ * @param {number} args.winnerIndex               local board index of the winner
+ * @param {number[]} args.localOfSeat             localOfSeat[serverSeat] = local index (bijection)
+ * @param {number[]} args.seatOfLocal             seatOfLocal[localIndex] = server seat (inverse)
+ * @returns {HighlightCard[]}
+ */
+export function selectHighlightsBySeat({ stats, seats, winnerIndex, localOfSeat, seatOfLocal }) {
+    const reorder = (arr) => localOfSeat.map((local) => arr[local]);
+    const seatStats = {
+        playerCaptures: reorder(stats.playerCaptures),
+        sentHomeCount: reorder(stats.sentHomeCount),
+        bestDiceStreak: reorder(stats.bestDiceStreak),
+        firstFinishTurn: reorder(stats.firstFinishTurn),
+        firstHomeStretchTurn: reorder(stats.firstHomeStretchTurn),
+        distanceTraveled: reorder(stats.distanceTraveled),
+        pawnsAtBaseAtTurn20: reorder(stats.pawnsAtBaseAtTurn20),
+        turnCount: stats.turnCount,
+    };
+    const seatSeats = localOfSeat.map((local) => seats[local]);
+    const cards = selectHighlights({
+        stats: seatStats,
+        seats: seatSeats,
+        winnerIndex: seatOfLocal[winnerIndex],
+    });
+    return cards.map((c) => ({ ...c, playerIndex: localOfSeat[c.playerIndex] }));
+}
+
 export function selectHighlights({ stats, seats, winnerIndex }) {
     const candidates = [];
     const ko = pickKnockoutKing(stats, seats, winnerIndex);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectHighlights } from '../../scripts/end-highlights.js';
+import { selectHighlights, selectHighlightsBySeat } from '../../scripts/end-highlights.js';
 
 const seats4 = (names = ['You', 'Bot 1', 'Bot 2', 'Bot 3']) => [
     { name: names[0], type: 'PLAYER' },
@@ -209,5 +209,97 @@ describe('selectHighlights', () => {
             expect(c.title.length).toBeGreaterThan(0);
             expect(typeof c.type).toBe('string');
         }
+    });
+});
+
+// Regression: the recap is computed locally on each client from stats keyed by
+// LOCAL board index, which is rotated per-perspective (every client sits
+// bottom-right). selectHighlights breaks ties by index, so two clients picked
+// DIFFERENT physical players for tied awards — the screenshot showed "Hot dice"
+// crediting T3 (turn 44) on one screen but T1 (turn 87) on another, for the same
+// game. selectHighlightsBySeat re-keys into stable server-seat order so every
+// client selects the same physical player. Cards carry a LOCAL playerIndex for
+// colouring, but the BODY text (physical name + turn) must match across clients.
+describe('selectHighlightsBySeat — identical recap on every client', () => {
+    // Physical game, indexed by SERVER SEAT: two players tied on a three-six
+    // streak at different turns. Plain index tie-breaking is perspective-
+    // dependent; the stable wrapper must resolve it the same way everywhere.
+    const seatNames = ['P0', 'P1', 'P2', 'P3'];
+    const seatStreak = [null,
+        { value: 6, length: 3, atTurn: 87 },
+        null,
+        { value: 6, length: 3, atTurn: 44 }];
+    const winnerSeat = 0;
+
+    const invert = (localOfSeat) => {
+        const seatOfLocal = new Array(4).fill(-1);
+        localOfSeat.forEach((local, seat) => { seatOfLocal[local] = seat; });
+        return seatOfLocal;
+    };
+
+    // Render the SAME physical game from a client whose local board indexes are
+    // `localOfSeat` (localOfSeat[serverSeat] = local index). Stats/seats get
+    // placed at this client's local slots, exactly like the live reducer.
+    const clientRecap = (localOfSeat) => {
+        const seatOfLocal = invert(localOfSeat);
+        const place = (bySeat) => {
+            const out = new Array(4);
+            for (let seat = 0; seat < 4; seat++) out[localOfSeat[seat]] = bySeat[seat];
+            return out;
+        };
+        const stats = emptyStats({
+            bestDiceStreak: place(seatStreak),
+            turnCount: 90,
+        });
+        const seats = place(seatNames.map((name) => ({ name, type: 'PLAYER' })));
+        return selectHighlightsBySeat({
+            stats,
+            seats,
+            winnerIndex: localOfSeat[winnerSeat],
+            localOfSeat,
+            seatOfLocal,
+        });
+    };
+
+    const hotDiceBody = (cards) => cards.find((c) => c.title === 'Hot dice')?.body;
+
+    it('credits the same physical player on clients with different seatings', () => {
+        // Two clients, two different local↔seat rotations of the same game.
+        const clientA = clientRecap([0, 1, 2, 3]);       // identity
+        const clientB = clientRecap([2, 3, 0, 1]);       // rotated (different self)
+        const bodyA = hotDiceBody(clientA);
+        const bodyB = hotDiceBody(clientB);
+        expect(bodyA).toBeTruthy();
+        expect(bodyB).toBe(bodyA); // identical text → same physical player + turn
+        expect(bodyA).toContain('P1');     // lowest server seat wins the tie
+        expect(bodyA).toContain('turn 87');
+    });
+
+    it('the card colour index is mapped back to each client\'s LOCAL index', () => {
+        // P1 sits at local 1 for the identity client, local 3 for the rotated one.
+        const a = clientRecap([0, 1, 2, 3]).find((c) => c.title === 'Hot dice');
+        const b = clientRecap([2, 3, 0, 1]).find((c) => c.title === 'Hot dice');
+        expect(a.playerIndex).toBe(1); // localOfSeat[1] for identity
+        expect(b.playerIndex).toBe(3); // localOfSeat[1] for the rotation
+    });
+
+    it('plain selectHighlights would DIVERGE on the same two clients (the bug)', () => {
+        // Proof the wrapper is load-bearing: feeding each client's local stats
+        // straight to selectHighlights picks different physical players.
+        const localStats = (localOfSeat) => {
+            const place = (bySeat) => {
+                const out = new Array(4);
+                for (let s = 0; s < 4; s++) out[localOfSeat[s]] = bySeat[s];
+                return out;
+            };
+            return {
+                stats: emptyStats({ bestDiceStreak: place(seatStreak), turnCount: 90 }),
+                seats: place(seatNames.map((name) => ({ name, type: 'PLAYER' }))),
+                winnerIndex: localOfSeat[winnerSeat],
+            };
+        };
+        const a = hotDiceBody(selectHighlights(localStats([0, 1, 2, 3])));
+        const b = hotDiceBody(selectHighlights(localStats([2, 3, 0, 1])));
+        expect(a).not.toBe(b); // diverges without the seat-space wrapper
     });
 });
