@@ -6,11 +6,17 @@ import {
 import { HUMAN_PREFERRED_POSITIONS } from '../../scripts/game-logic.js';
 
 /**
- * The online seat→board mapping mirrors offline play (HUMAN_PREFERRED_POSITIONS):
- * the local player always renders bottom-right (board position 2), the next
- * player diagonally opposite top-left (0), then 1 and 3. These guard that the
- * local user is always bottom-right in their own colour and the second player
- * sits top-left — the requested layout — for every seat the server might assign.
+ * The online seat→board mapping always renders the local player bottom-right
+ * (board position 2) in their own colour. The four server chairs form a ring
+ * (turn order 0→1→2→3); each client rotates the whole ring so its chair sits
+ * bottom-right, so EVERY chair — player OR empty — keeps its true cyclic slot
+ * and every screen shows the identical seating, just rotated. For 3-4 players
+ * that's a clockwise walk from self (BR → BL → TL → TR) over all four chairs,
+ * matching the track's play order. 1-2 players are the exception: the two
+ * occupied chairs spread to a diagonal head-to-head (opponent top-left) even
+ * when the server seated them adjacently. These guard that the relative
+ * "who's to my left / across" arrangement — empty seats included — is identical
+ * on every screen. Board positions: 0=TL, 1=TR, 2=BR, 3=BL.
  */
 describe('online-state seat → board-position mapping', () => {
     beforeEach(() => clearOnline());
@@ -32,21 +38,44 @@ describe('online-state seat → board-position mapping', () => {
         expect(HUMAN_PREFERRED_POSITIONS[0]).toBe(2); // shared source of truth
     });
 
-    it('seats the second player (next in turn order) top-left (position 0)', () => {
+    it('seats the next player clockwise (bottom-left) in a 4-player game', () => {
+        // With four players the layout is a true board rotation: the player after
+        // me in the turn order sits one corner clockwise — bottom-left (3), NOT
+        // top-left. (Top-left is the 2-player diagonal case, covered below.)
         for (let seat = 0; seat < 4; seat++) {
-            setOnline({}, seat);
-            expect(toLocal((seat + 1) % 4)).toBe(0); // the player after me → top-left
+            setOnline({}, seat); // default activeSeats = all four
+            expect(toLocal((seat + 1) % 4)).toBe(3); // next player → bottom-left
         }
     });
 
-    it('lays the remaining players out diagonal-first, matching offline', () => {
+    it('lays four players out clockwise from self (BR → BL → TL → TR)', () => {
         setOnline({}, 0); // local is server seat 0
-        // seats 0,1,2,3 → board positions 2,0,1,3 (HUMAN_PREFERRED_POSITIONS)
-        expect([0, 1, 2, 3].map(toLocal)).toEqual([2, 0, 1, 3]);
+        // ranks 0,1,2,3 → board positions 2,3,0,1 (clockwise from bottom-right)
+        expect([0, 1, 2, 3].map(toLocal)).toEqual([2, 3, 0, 1]);
 
         setOnline({}, 2); // local is server seat 2 — layout rotates with the seat
         // ranks from self: seat2→0th, seat3→1st, seat0→2nd, seat1→3rd
-        expect([2, 3, 0, 1].map(toLocal)).toEqual([2, 0, 1, 3]);
+        expect([2, 3, 0, 1].map(toLocal)).toEqual([2, 3, 0, 1]);
+    });
+
+    it('renders the SAME cyclic neighbour order on every client (4-player)', () => {
+        // Regression: [2,0,1,3] was not a board rotation, so when self changed
+        // each client computed a different relative seating — seat 0's clockwise
+        // neighbour was seat 3 on one screen but seat 1 on another (the bug the
+        // two-screenshot report showed). Read the clockwise board order of seats
+        // (TL→TR→BR→BL = positions 0,1,2,3) from each perspective; normalised so
+        // seat 0 leads, they must ALL be the identical cycle.
+        const cycleFrom = (selfSeat) => {
+            setOnline({}, selfSeat, [0, 1, 2, 3]);
+            const clockwise = [0, 1, 2, 3].map(toServer); // seat at each board pos
+            const zero = clockwise.indexOf(0);
+            return [0, 1, 2, 3].map((k) => clockwise[(zero + k) % 4]);
+        };
+        const reference = cycleFrom(0);
+        expect(reference).toEqual([0, 1, 2, 3]); // clockwise = turn order
+        for (let seat = 1; seat < 4; seat++) {
+            expect(cycleFrom(seat)).toEqual(reference);
+        }
     });
 
     it('seats a 2-player match diagonally for BOTH players, even on adjacent seats', () => {
@@ -63,13 +92,38 @@ describe('online-state seat → board-position mapping', () => {
         expect(toLocal(0)).toBe(0); // opponent top-left (was 3/bottom-left before fix)
     });
 
-    it('ranks over active seats for a 3-player match with a gap', () => {
-        // Seats 0, 1, 3 occupied (seat 2 empty). The active order is [0,1,3];
-        // each player sees self → 2, next active → 0, next → 1.
+    it('rotates the full four-chair ring for a 3-player match with a gap', () => {
+        // Seats 0, 1, 3 occupied (seat 2 empty). The chairs are rotated as a ring
+        // over ALL FOUR positions so the empty chair keeps its true slot, not
+        // collapsed away. Self (3) bottom-right, then clockwise by raw distance.
         setOnline({}, 3, [0, 1, 3]);
-        expect(toLocal(3)).toBe(2); // self bottom-right
-        expect(toLocal(0)).toBe(0); // next in turn order → top-left
-        expect(toLocal(1)).toBe(1); // then top-right
+        expect(toLocal(3)).toBe(2); // self bottom-right (distance 0)
+        expect(toLocal(0)).toBe(3); // distance 1 → bottom-left
+        expect(toLocal(1)).toBe(0); // distance 2 → top-left
+        // The empty chair (seat 2) would land at distance 3 → top-right (1) —
+        // its real rotational slot, NOT always bottom-left.
+    });
+
+    it('places an EMPTY chair consistently (same neighbours on every client)', () => {
+        // Regression: a 3-player game leaves one chair empty (e.g. the screenshot:
+        // red/green/yellow play, blue's chair is empty). Ranking only the occupied
+        // chairs dumped the empty quad to a fixed corner, so which players flanked
+        // it drifted from screen to screen. Rotating the whole ring fixes it: read
+        // the clockwise board order of ALL four chairs (TL→TR→BR→BL = positions
+        // 0,1,2,3) from each player's perspective; normalised so chair 0 leads,
+        // they must be the identical cycle — empty chair included.
+        const active = [0, 1, 2]; // chair 3 (blue) is the empty one
+        const cycleFrom = (selfSeat) => {
+            setOnline({}, selfSeat, active);
+            const clockwise = [0, 1, 2, 3].map(toServer); // chair at each board pos
+            const zero = clockwise.indexOf(0);
+            return [0, 1, 2, 3].map((k) => clockwise[(zero + k) % 4]);
+        };
+        const reference = cycleFrom(0);
+        expect(reference).toEqual([0, 1, 2, 3]); // chair 3 (empty) sits between 2 and 0
+        for (const seat of active.slice(1)) {
+            expect(cycleFrom(seat)).toEqual(reference);
+        }
     });
 
     it('toServer inverts toLocal over only the active seats', () => {

@@ -12,6 +12,7 @@ import {
     resumeGameLogic,
     _resetSchedulerForTest,
 } from '../../../scripts/scheduler.js';
+import { setOnline, clearOnline, onlineLocalSelf } from '../../../scripts/online-state.js';
 
 // Fake command handler that records dispatched commands and mirrors the real
 // handler's *synchronous* phase transition: ROLL_DICE emits DICE_ROLL_STARTED
@@ -39,6 +40,7 @@ const selects = () => dispatched.filter(c => c.type === COMMANDS.SELECT_TOKEN);
 
 beforeEach(() => {
     _resetSchedulerForTest();
+    clearOnline(); // default every test to local mode; online tests opt in
     dispatched = [];
     setCommandHandler(recordingHandler);
 
@@ -141,6 +143,96 @@ describe('bot-listener resume recovery', () => {
             emit({ type: EVENTS.GAME_RESUMED_FROM_PAUSE });
             vi.advanceTimersByTime(2000);
             expect(rolls()).toHaveLength(0);
+            expect(selects()).toHaveLength(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+// Regression: in online mode the assist toggles (auto-roll / auto-move) did
+// nothing — maybeAutoRoll/maybeAutoSelect blanket-returned on isOnlineActive(),
+// so a player with "Auto-roll dice" on still had to tap the dice every turn.
+// Online the server drives bots and remote players, but the LOCAL player's own
+// assists must still fire: dispatching ROLL_DICE / SELECT_TOKEN becomes a server
+// intent (gated to self by the command-handler), exactly like a manual tap.
+describe('bot-listener online assists (own turn only)', () => {
+    const SELF = onlineLocalSelf(); // this client's board position (bottom-right)
+
+    beforeEach(() => {
+        setOnline({}, 2, [0, 1, 2, 3]); // server seat 2, four-player game
+        // Online there are no local bots to drive; every seat is server-authored.
+        for (let i = 0; i < 4; i++) state.playerTypes[i] = 'HUMAN';
+        state.playerTokenPositions[SELF] = [-1, -1, -1, -1];
+    });
+
+    it('auto-rolls on our OWN turn when the flag is on', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            state.currentPlayerIndex = SELF;
+            state.phase = PHASES.AWAITING_ROLL;
+            emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: SELF });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(1); // sent a roll intent for us
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does NOT auto-roll on another seat\'s turn (server drives them)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            state.currentPlayerIndex = 0; // a remote/bot seat, not us
+            state.phase = PHASES.AWAITING_ROLL;
+            emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 0 });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does NOT auto-roll on our turn when the flag is off', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = false;
+            state.currentPlayerIndex = SELF;
+            state.phase = PHASES.AWAITING_ROLL;
+            emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: SELF });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('auto-moves out of home on our OWN turn (all home + a six)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoMoveOutOfHome = true;
+            state.assistFlags.autoMoveSingleOption = false;
+            state.currentPlayerIndex = SELF;
+            state.currentDiceRoll = 6;
+            state.playerTokenPositions[SELF] = [-1, -1, -1, -1];
+            emit({ type: EVENTS.MOVABLE_TOKENS_DETERMINED, playerIndex: SELF, tokenIndexes: [0, 1, 2, 3] });
+            vi.advanceTimersByTime(2000);
+            expect(selects()).toHaveLength(1); // sent a move intent for us
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does NOT auto-move on another seat\'s turn', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoMoveOutOfHome = true;
+            state.currentPlayerIndex = 0; // not us
+            state.currentDiceRoll = 6;
+            state.playerTokenPositions[0] = [-1, -1, -1, -1];
+            emit({ type: EVENTS.MOVABLE_TOKENS_DETERMINED, playerIndex: 0, tokenIndexes: [0, 1, 2, 3] });
+            vi.advanceTimersByTime(2000);
             expect(selects()).toHaveLength(0);
         } finally {
             vi.useRealTimers();

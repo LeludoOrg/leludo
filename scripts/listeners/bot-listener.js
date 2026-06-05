@@ -16,7 +16,7 @@ import { state, PHASES } from '../game-state.js';
 import { scheduleTurn, isGameLogicPaused } from '../scheduler.js';
 import { pickBestMove, PERSONALITIES } from '../bot-ai.js';
 import { allTokensInHome, getUniqueTokenPositions } from '../index.js';
-import { isOnlineActive } from '../online-state.js';
+import { isOnlineActive, onlineLocalSelf } from '../online-state.js';
 
 const DICE_ROLL_DELAY = 600;
 const BOT_TOKEN_SELECT_DELAY = 400;
@@ -30,9 +30,23 @@ function isAutoplay() {
     return state.assistFlags.autoRollDice || isCurrentPlayerBot();
 }
 
+// Online the server rolls/moves for bots and remote players, so assists only
+// ever apply to THIS client's own turn (board position = onlineLocalSelf()).
+function isMyOnlineTurn() {
+    return state.currentPlayerIndex === onlineLocalSelf();
+}
+
 function maybeAutoRoll() {
-    if (isOnlineActive()) return; // bots + rolls are server-driven online
     if (isGameLogicPaused()) return;
+    if (isOnlineActive()) {
+        // Auto-roll on our own turn: dispatching ROLL_DICE sends a roll intent
+        // (the command-handler gates it to self + AWAITING_ROLL), same as tapping
+        // the dice. Other seats' rolls come from server broadcasts, never here.
+        if (state.assistFlags.autoRollDice && isMyOnlineTurn()) {
+            scheduleTurn(() => dispatch({ type: COMMANDS.ROLL_DICE }), DICE_ROLL_DELAY);
+        }
+        return;
+    }
     if (!isAutoplay()) return;
     scheduleTurn(() => dispatch({ type: COMMANDS.ROLL_DICE }), DICE_ROLL_DELAY);
 }
@@ -56,21 +70,9 @@ function pickBotToken(movableTokenIndexes) {
     return bestIndex >= 0 ? bestIndex : movableTokenIndexes[0];
 }
 
-function maybeAutoSelect(movableTokenIndexes) {
-    if (isOnlineActive()) return; // moves are server-driven online
-    if (isGameLogicPaused()) return;
-    if (isCurrentPlayerBot()) {
-        scheduleTurn(() => {
-            const tokenIndex = pickBotToken(movableTokenIndexes);
-            dispatch({
-                type: COMMANDS.SELECT_TOKEN,
-                playerIndex: state.currentPlayerIndex,
-                tokenIndex,
-            });
-        }, BOT_TOKEN_SELECT_DELAY);
-        return;
-    }
-    // Human with assist flags on.
+// Human assist auto-move: fire SELECT_TOKEN when the flags say so. Online this
+// becomes a move intent (command-handler gates it to self + a movable token).
+function maybeAssistSelect(movableTokenIndexes) {
     const unique = getUniqueTokenPositions(
         state.currentPlayerIndex,
         movableTokenIndexes,
@@ -87,6 +89,27 @@ function maybeAutoSelect(movableTokenIndexes) {
             tokenIndex: movableTokenIndexes[0],
         }), ASSIST_TOKEN_SELECT_DELAY);
     }
+}
+
+function maybeAutoSelect(movableTokenIndexes) {
+    if (isGameLogicPaused()) return;
+    if (isOnlineActive()) {
+        // Only our own turn — bots'/remotes' moves arrive via server broadcasts.
+        if (isMyOnlineTurn()) maybeAssistSelect(movableTokenIndexes);
+        return;
+    }
+    if (isCurrentPlayerBot()) {
+        scheduleTurn(() => {
+            const tokenIndex = pickBotToken(movableTokenIndexes);
+            dispatch({
+                type: COMMANDS.SELECT_TOKEN,
+                playerIndex: state.currentPlayerIndex,
+                tokenIndex,
+            });
+        }, BOT_TOKEN_SELECT_DELAY);
+        return;
+    }
+    maybeAssistSelect(movableTokenIndexes);
 }
 
 // Re-derive the pending bot/assist action from the current phase. Dice and
