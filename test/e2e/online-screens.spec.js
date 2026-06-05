@@ -48,6 +48,25 @@ test.describe('Home — offline / online split', () => {
         await page.goBack();
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
     });
+
+    // Regression: the room-size selector's click handler queried the `el`
+    // returned by htmlToElement, which is a DocumentFragment that appendChild
+    // empties — so at click time it found zero buttons and the highlight never
+    // moved (the size silently changed with no visible feedback). The handler
+    // must query the live seg (e.currentTarget) instead.
+    test('the room-size selector moves its highlight to the chosen size', async ({ page }) => {
+        await page.goto('/');
+        await page.getByTestId('home-play-online').click();
+        await expect(page.getByTestId('online-players-2')).toHaveClass(/is-on/); // default
+
+        await page.getByTestId('online-players-4').click();
+        await expect(page.getByTestId('online-players-4')).toHaveClass(/is-on/);
+        await expect(page.getByTestId('online-players-2')).not.toHaveClass(/is-on/);
+
+        await page.getByTestId('online-players-3').click();
+        await expect(page.getByTestId('online-players-3')).toHaveClass(/is-on/);
+        await expect(page.getByTestId('online-players-4')).not.toHaveClass(/is-on/);
+    });
 });
 
 test.describe('Online — username', () => {

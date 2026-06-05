@@ -562,7 +562,11 @@ class QuickStart extends HTMLElement {
             if (!btn) return
             playClickSound()
             this._onlinePlayers = Number(btn.dataset.n)
-            el.querySelectorAll(".online-seg-btn").forEach(b => b.classList.toggle("is-on", b === btn))
+            // Query the live seg (e.currentTarget), NOT the `el` fragment —
+            // htmlToElement returns a DocumentFragment that appendChild empties,
+            // so `el.querySelectorAll` finds nothing at click time and the
+            // highlight never moves.
+            e.currentTarget.querySelectorAll(".online-seg-btn").forEach(b => b.classList.toggle("is-on", b === btn))
         })
 
         el.querySelector('[data-testid="online-public"]').addEventListener("click", () => {
