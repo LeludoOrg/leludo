@@ -210,4 +210,29 @@ test.describe('Online — public matchmaking', () => {
         await ctxA.close();
         await ctxB.close();
     });
+
+    // Regression: "stuck on 3 player joining" — three seekers who pick a 3-player
+    // public match must all be matched into one started game (not left spinning
+    // on "Finding players…"). Guards both the size-3 queue threshold and the
+    // size picker that selects it.
+    test('three public seekers fill a 3-player match', async ({ browser }) => {
+        const ctxs = await Promise.all([0, 1, 2].map(() => browser.newContext()));
+        const [a, b, c] = await Promise.all(ctxs.map(ctx => ctx.newPage()));
+
+        for (const [page, name] of [[a, 'Ann'], [b, 'Bo'], [c, 'Cy']]) {
+            await openOnline(page, name);
+            await page.getByTestId('online-players-3').click(); // pick a 3-player match
+            await page.getByTestId('online-public').click();
+        }
+
+        // The third seeker completes the queue → all three land in one room and
+        // the public game auto-starts.
+        for (const page of [a, b, c]) {
+            await expect(page.getByTestId('online-started')).toHaveText('true', { timeout: 15_000 });
+        }
+        const codes = await Promise.all([a, b, c].map(p => p.getByTestId('online-room-code').textContent()));
+        expect(new Set(codes.map(s => s?.trim())).size).toBe(1); // one shared room
+
+        await Promise.all(ctxs.map(ctx => ctx.close()));
+    });
 });

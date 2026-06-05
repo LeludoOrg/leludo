@@ -691,7 +691,13 @@ class QuickStart extends HTMLElement {
             session: getSessionId(),
             name: this._myName(),
             params: { ...params, ...extra },
-            onClose: () => { if (this._net === client && !isOnlineGameStarted()) this._setLobbyStatus('Disconnected from the server.') },
+            onClose: () => {
+                if (this._net !== client || isOnlineGameStarted()) return
+                // Surface a dead/unreachable server instead of spinning forever
+                // on "Finding players…". Both setters no-op off their screen.
+                this._setLobbyStatus('Disconnected from the server.')
+                this._setSearchStatus('Couldn’t reach the server. Check your connection and try again.')
+            },
             onMessage: (msg) => this._onNetMessage(msg, client),
             // Self-disconnect notices during a live game (net-client auto-retries).
             onReconnecting: () => { if (this._net === client && isOnlineGameStarted()) showSelfReconnect() },
