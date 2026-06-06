@@ -507,6 +507,15 @@ class QuickStart extends HTMLElement {
         this._isPublic = false
         this._pendingBotSeats = null
         this._leaveOnline()
+        this._buildOnlineScreen()
+    }
+
+    // Builds the unified online screen. Opens in "setup" mode (seat 0 = YOU with
+    // a name input, seats 1..3 Open/Bot toggles, join-by-code, "Create room").
+    // Creating or joining flips THIS SAME screen into "room" mode via
+    // _showRoomMode — the room code banner + live seats appear inline and the
+    // footer swaps to Start/Leave. The old standalone "Game room" lobby is gone.
+    _buildOnlineScreen() {
         this.innerHTML = ""
         // Online private room reuses the offline "who's playing?" seat setup.
         // Seat 0 is always YOU (the host). Seats 1..3 are each an Open seat (a
@@ -529,8 +538,12 @@ class QuickStart extends HTMLElement {
                 </div>
 
                 <div class="frame-body setup-body online-setup-body">
-                    <h2 class="display-title">Play online</h2>
-                    <p class="setup-helper">You host the room. Friends join with the code; fill the rest with bots.</p>
+                    <div class="online-room-slot"></div>
+
+                    <div class="online-intro">
+                        <h2 class="display-title">Play online</h2>
+                        <p class="setup-helper">You host the room. Friends join with the code; fill the rest with bots.</p>
+                    </div>
 
                     <div class="seat-list">
                         <div class="seat-row" data-testid="online-setup-seat-0">
@@ -557,10 +570,14 @@ class QuickStart extends HTMLElement {
                     </div>
 
                     <p class="online-status" data-testid="online-status"></p>
+                    <span data-testid="online-started" hidden>false</span>
+                    <span data-testid="online-is-host" hidden>false</span>
                 </div>
 
                 <div class="frame-footer">
                     <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
+                    <button class="online-start-btn cta-primary" data-testid="online-start" hidden>${PLAY_ICON_SVG(13)}<span>Start game</span></button>
+                    <button class="online-leave-btn cta-secondary" data-testid="online-leave" hidden>Leave room</button>
                 </div>
             </div>
         `
@@ -593,7 +610,7 @@ class QuickStart extends HTMLElement {
             if (!this._requireName()) return
             playClickSound()
             // Always a 4-seat room; bot seats (indices 1..3 with type BOT) are
-            // applied in the lobby right after we're seated as host.
+            // applied in room mode right after we're seated as host.
             this._onlinePlayers = seats.length
             this._pendingBotSeats = seats.map((s, i) => (i > 0 && s.type === 'BOT' ? i : -1)).filter(i => i > 0)
             this._enterLobby(mintRoomCode(), { create: true })
@@ -614,8 +631,46 @@ class QuickStart extends HTMLElement {
         el.querySelector(".online-join-btn").addEventListener("click", doJoin)
         codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
 
+        // Room-mode controls. Start/Leave stay hidden until _showRoomMode reveals
+        // them; the per-seat host controls (kick/bot/open) are delegated on the
+        // body so they survive _renderLobby rewriting the seat list.
+        el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._net?.start() })
+        el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); navBack() })
+        el.querySelector(".frame-body").addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-action]")
+            if (!btn || !this._net) return
+            const action = btn.dataset.action
+            const seat = Number(btn.dataset.seat)
+            playClickSound()
+            if (action === "kick") this._net.kick(seat)
+            else if (action === "bot") this._net.setSeat(seat, "BOT")
+            else if (action === "open") this._net.setSeat(seat, "PLAYER")
+        })
+
         this.appendChild(el)
         this._renderOnlineSeats()
+    }
+
+    // Flip the current online screen from setup mode into room mode: reveal the
+    // room code, hide the intro + join-by-code, and swap "Create room" for
+    // Start/Leave. Seats are filled by _renderLobby as server state arrives.
+    _showRoomMode(code) {
+        this._roomCode = code
+        const setHidden = (sel, hidden) => { const e = this.querySelector(sel); if (e) e.hidden = hidden }
+        const slot = this.querySelector(".online-room-slot")
+        // Inject the code banner only in room mode, so the setup screen has no
+        // online-room-code element (the "no room until you create one" guard).
+        if (slot) slot.innerHTML = /*html*/ `
+            <div class="online-room-banner">
+                <span class="section-label">Room code</span>
+                <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
+                <p class="online-room-share" data-testid="online-lobby-hint">Share this code with friends to let them join.</p>
+            </div>`
+        setHidden(".online-intro", true)
+        setHidden(".online-join-section", true)
+        setHidden('[data-testid="online-create"]', true)
+        setHidden('[data-testid="online-leave"]', false)
+        this._setLobbyStatus("Connecting…")
     }
 
     /** Render the three other seats (everyone but you), each an Open/Bot toggle. */
@@ -768,7 +823,10 @@ class QuickStart extends HTMLElement {
         this._isPublic = false
         this._roomCode = code
         const players = create ? (this._onlinePlayers || 2) : 2
-        this.showOnlineLobby(code)
+        // Flip the current setup screen into room mode in place — no separate
+        // "Game room" screen. (Public matchmaking arrives from the search screen
+        // instead and uses showOnlineLobby to build the room screen fresh.)
+        this._showRoomMode(code)
         goTo('online-lobby')
         this._connect({ room: code, params: { size: String(players) } })
     }
@@ -812,73 +870,35 @@ class QuickStart extends HTMLElement {
         if (el) el.textContent = text
     }
 
+    // Build the online screen straight into room mode. Used by the public-match
+    // path (PUBLIC_MATCH_ENABLED), which arrives already connected from the
+    // search screen; private create/join flip in place via _showRoomMode.
     showOnlineLobby(code) {
-        this.innerHTML = ""
-        const html = /*html*/ `
-            <div class="frame">
-                <div class="top-bar">
-                    <button class="back-btn icon-btn">${ICON_BACK}</button>
-                    <div class="top-bar-title">Game room</div>
-                    <wc-settings></wc-settings>
-                </div>
-
-                <div class="frame-body online-lobby-body">
-                    <span class="section-label">Room code</span>
-                    <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
-                    <p class="body-helper online-lobby-hint" data-testid="online-lobby-hint">Share this code with your friends.</p>
-
-                    <div class="online-seats" data-testid="online-seats"></div>
-
-                    <p class="online-lobby-status" data-testid="online-lobby-status">Connecting…</p>
-                    <span data-testid="online-started" hidden>false</span>
-                    <span data-testid="online-is-host" hidden>false</span>
-                </div>
-
-                <div class="frame-footer">
-                    <button class="online-start-btn cta-primary" data-testid="online-start" hidden>${PLAY_ICON_SVG(13)}<span>Start game</span></button>
-                    <button class="online-leave-btn cta-secondary" data-testid="online-leave">Leave room</button>
-                </div>
-            </div>
-        `
-        const el = htmlToElement(html)
-        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
-        el.querySelector(".online-leave-btn").addEventListener("click", () => { playClickSound(); navBack() })
-        el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._net?.start() })
-
-        // Delegated host controls: size selector + per-seat actions.
-        el.querySelector(".frame-body").addEventListener("click", (e) => {
-            const btn = e.target.closest("[data-action]")
-            if (!btn || !this._net) return
-            const action = btn.dataset.action
-            const seat = Number(btn.dataset.seat)
-            playClickSound()
-            if (action === "kick") this._net.kick(seat)
-            else if (action === "bot") this._net.setSeat(seat, "BOT")
-            else if (action === "open") this._net.setSeat(seat, "PLAYER")
-        })
-        this.appendChild(el)
+        this._buildOnlineScreen()
+        this._showRoomMode(code)
     }
 
     _setLobbyStatus(text) {
-        const el = this.querySelector('[data-testid="online-lobby-status"]')
+        const el = this.querySelector('[data-testid="online-status"]')
         if (el) el.textContent = text
     }
 
+    // Render the live room into the shared seat-list, reusing the offline seat-row
+    // look (pawn + name + status). Replaces the setup rows (seat-0 input + Open/Bot
+    // toggles) the moment the first server state arrives.
     _renderLobby(state) {
         const isHost = state.hostSeat === this._mySeat && this._mySeat !== -1
         this._isHost = isHost
-        const setHidden = (testid, hidden) => {
-            const el = this.querySelector(`[data-testid="${testid}"]`)
-            if (el) el.hidden = hidden
-        }
-        setHidden('online-start', !isHost || state.started)
+        const startBtn = this.querySelector('[data-testid="online-start"]')
+        if (startBtn) startBtn.hidden = !isHost || state.started
         const isHostEl = this.querySelector('[data-testid="online-is-host"]')
         if (isHostEl) isHostEl.textContent = String(isHost)
 
         const activeSeats = (state.seats || []).filter(s => s.type) // PLAYER or BOT
-        const seatsEl = this.querySelector('.online-seats')
-        if (seatsEl) {
-            seatsEl.innerHTML = activeSeats.map(s => {
+        const seatList = this.querySelector('.seat-list')
+        if (seatList) {
+            const rows = [...activeSeats].sort((a, b) => a.index - b.index)
+            seatList.innerHTML = rows.map(s => {
                 const me = s.index === this._mySeat
                 const isBot = s.type === 'BOT'
                 let label, status
@@ -898,10 +918,12 @@ class QuickStart extends HTMLElement {
                         controls = `<button class="online-seat-btn" data-action="bot" data-seat="${s.index}" data-testid="online-seat-${s.index}-bot">Add bot</button>`
                     }
                 }
-                const dim = (!isBot && !s.connected) ? 0.35 : 1
+                const dim = (!isBot && !s.connected) ? 0.4 : 1
                 return /*html*/ `
-                    <div class="online-seat ${s.connected || isBot ? 'is-filled' : ''}" data-testid="online-seat-${s.index}">
-                        <span class="online-seat-dot" style="background:hsl(var(--player-${s.index}));opacity:${dim};"></span>
+                    <div class="seat-row" data-testid="online-seat-${s.index}">
+                        <div class="seat-color-cycle" style="background:hsl(var(--player-${s.index}));opacity:${dim};">
+                            <div class="seat-pawn">${PAWN_SVG(s.index)}</div>
+                        </div>
                         <span class="online-seat-name">${escapeHtml(label)}${tags}</span>
                         <span class="online-seat-status">${status}</span>
                         ${controls}

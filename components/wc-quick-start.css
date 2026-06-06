@@ -282,13 +282,21 @@ wc-quick-start .online-status {
     color: var(--color-fg);
 }
 
-/* ----- Online lobby (room) ----- */
+/* ----- Online (room mode: code banner + live seats) -----
+   The room is the same screen as setup, flipped: this banner replaces the
+   intro, and live seats render into the shared .seat-list (offline seat-row
+   look). Only the room-specific extras live here. */
 
-wc-quick-start .online-lobby-body {
+wc-quick-start .online-room-slot:empty {
+    display: none;
+}
+
+wc-quick-start .online-room-banner {
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
+    margin-bottom: var(--space-6);
 }
 
 wc-quick-start .online-code-display {
@@ -300,36 +308,13 @@ wc-quick-start .online-code-display {
     padding-left: 0.18em;
 }
 
-wc-quick-start .online-seats {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin: var(--space-5) 0 var(--space-3);
+wc-quick-start .online-room-share {
+    font-size: 13px;
+    opacity: 0.6;
+    max-width: 280px;
 }
 
-wc-quick-start .online-seat {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    background: color-mix(in srgb, var(--color-surface) 50%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
-    border-radius: var(--radius-xl);
-    padding: 12px 16px;
-    text-align: left;
-}
-
-wc-quick-start .online-seat.is-filled {
-    background: var(--color-surface);
-}
-
-wc-quick-start .online-seat-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 6px;
-    flex-shrink: 0;
-}
-
+/* Live-seat label/status sit inside a shared .seat-row (with a pawn chip). */
 wc-quick-start .online-seat-name {
     flex: 1;
     min-width: 0;
@@ -384,12 +369,6 @@ wc-quick-start .online-create-btn {
     align-items: center;
     justify-content: center;
     gap: 9px;
-}
-
-wc-quick-start .online-lobby-status {
-    font-size: 14px;
-    opacity: 0.7;
-    margin-top: var(--space-2);
 }
 
 /* ----- Online (public match search) ----- */

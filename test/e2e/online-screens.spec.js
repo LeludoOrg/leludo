@@ -90,6 +90,34 @@ test.describe('Home — offline / online split', () => {
         await expect(page.getByTestId('online-seat-1')).toContainText('Bot');
         await expect(page.getByTestId('online-started')).toHaveText('false'); // host still presses Start
     });
+
+    // The lobby is no longer a separate "Game room" screen. Creating a room flips
+    // the SAME "Play online" screen into room mode in place: the room-code banner
+    // appears, the join-by-code row goes away, and "Create room" is replaced by
+    // Start + Leave. Guards against reintroducing a standalone lobby screen.
+    test('creating a room flips the play-online screen into room mode in place', async ({ page }) => {
+        await page.goto('/');
+        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('online-name').fill('Hosty');
+
+        // Setup mode: join-by-code present, no room code yet, Create shown.
+        await expect(page.getByTestId('online-join')).toBeVisible();
+        await expect(page.getByTestId('online-room-code')).toHaveCount(0);
+
+        await page.getByTestId('online-create').click();
+
+        // Room mode on the same screen: code in, join + create out, Start/Leave in.
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+        await expect(page.getByTestId('online-create')).toBeHidden();
+        await expect(page.getByTestId('online-join')).toBeHidden();
+        await expect(page.getByTestId('online-leave')).toBeVisible();
+        await expect(page.getByTestId('online-start')).toBeVisible(); // host sees Start
+
+        // Back from the room returns to setup mode (not all the way home).
+        await page.goBack();
+        await expect(page.getByTestId('online-create')).toBeVisible();
+        await expect(page.getByTestId('online-room-code')).toHaveCount(0);
+    });
 });
 
 test.describe('Online — username', () => {
