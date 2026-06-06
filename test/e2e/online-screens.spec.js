@@ -34,17 +34,16 @@ test.describe('Home — offline / online split', () => {
 
     // Initial release ships private rooms only — the "Find a public match" entry
     // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The online menu
-    // is now the offline-style seat setup: your seat (name) + Open/Bot seats +
+    // is the offline-style seat setup: your seat (name) + a fixed four seats +
     // create, plus join-by-code. It must NOT show the public entry.
     test('online path offers the private-room seat setup only', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-public')).toHaveCount(0);     // public hidden for launch
-        await expect(page.getByTestId('online-setup-seat-0')).toBeVisible(); // your seat (name)
+        await expect(page.getByTestId('online-public')).toHaveCount(0);      // public hidden for launch
+        await expect(page.getByTestId('online-setup-seat-0')).toBeVisible();  // your seat (name)
         await expect(page.getByTestId('online-name')).toBeVisible();
-        await expect(page.getByTestId('online-setup-seat-1')).toBeVisible(); // one other seat (size 2)
-        await expect(page.getByTestId('online-create')).toBeVisible();       // create room
-        await expect(page.getByTestId('online-join')).toBeVisible();         // join by code
+        await expect(page.getByTestId('online-create')).toBeVisible();        // create room
+        await expect(page.getByTestId('online-join')).toBeVisible();          // join by code
     });
 
     test('back from the online menu returns home', async ({ page }) => {
@@ -55,27 +54,27 @@ test.describe('Home — offline / online split', () => {
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
     });
 
-    // The room size is the seat count now: "Add a player" grows the room (up to
-    // 4) and the last seat's remove shrinks it (down to 2). Guards the add/remove
-    // wiring and the min-2 / max-4 bounds.
-    test('adding and removing seats grows and shrinks the room', async ({ page }) => {
+    // The room always shows four fixed seats (you + three) — no add row, no
+    // remove cross. Each of the three other seats just toggles Open / Bot.
+    test('the room shows four fixed seats with an Open/Bot toggle and no add/remove', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        // Default: you + one Open seat (size 2). No 3rd seat yet.
-        await expect(page.getByTestId('online-setup-seat-1')).toBeVisible();
-        await expect(page.getByTestId('online-setup-seat-2')).toHaveCount(0);
 
-        // Add up to the 4-seat cap; the add row disappears once full.
-        await page.getByTestId('online-setup-add-open').click();
-        await expect(page.getByTestId('online-setup-seat-2')).toBeVisible();
-        await page.getByTestId('online-setup-add-open').click();
-        await expect(page.getByTestId('online-setup-seat-3')).toBeVisible();
-        await expect(page.getByTestId('online-setup-add')).toHaveCount(0); // capped at 4
+        // All four seats present; default all Open.
+        for (const i of [0, 1, 2, 3]) {
+            await expect(page.getByTestId(`online-setup-seat-${i}`)).toBeVisible();
+        }
+        await expect(page.getByTestId('online-setup-seat-1-open')).toHaveClass(/seat-half/);
+        await expect(page.getByTestId('online-setup-seat-1-open')).not.toHaveClass(/seat-half--inactive/);
 
-        // Remove the last seat to shrink back down.
-        await page.getByTestId('online-setup-seat-3-remove').click();
-        await expect(page.getByTestId('online-setup-seat-3')).toHaveCount(0);
-        await expect(page.getByTestId('online-setup-add')).toBeVisible(); // room to add again
+        // No add row and no per-seat remove cross.
+        await expect(page.getByTestId('online-setup-add')).toHaveCount(0);
+        await expect(page.getByTestId('online-setup-seat-3-remove')).toHaveCount(0);
+
+        // Toggle seat 2 to Bot.
+        await page.getByTestId('online-setup-seat-2-bot').click();
+        await expect(page.getByTestId('online-setup-seat-2-bot')).not.toHaveClass(/seat-half--inactive/);
+        await expect(page.getByTestId('online-setup-seat-2-open')).toHaveClass(/seat-half--inactive/);
     });
 
     // A seat toggled to Bot on the setup screen turns into a bot the moment the

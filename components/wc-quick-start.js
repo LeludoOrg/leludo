@@ -509,10 +509,13 @@ class QuickStart extends HTMLElement {
         this._leaveOnline()
         this.innerHTML = ""
         // Online private room reuses the offline "who's playing?" seat setup.
-        // Seat 0 is always YOU (the host). Seats 1..n are each an Open seat (a
-        // friend joins with the code) or a Bot. The active seat count IS the room
-        // size (2..4). Persisted across visits so choices stick.
-        if (!this._onlineSeats) this._onlineSeats = [{ type: 'YOU' }, { type: 'PLAYER' }]
+        // Seat 0 is always YOU (the host). Seats 1..3 are each an Open seat (a
+        // friend joins with the code) or a Bot. Always four seats — the room is
+        // 4-handed; any Open seat nobody claims becomes a bot when the host
+        // starts. Persisted across visits so choices stick.
+        if (!this._onlineSeats || this._onlineSeats.length !== 4) {
+            this._onlineSeats = [{ type: 'YOU' }, { type: 'PLAYER' }, { type: 'PLAYER' }, { type: 'PLAYER' }]
+        }
 
         // Remembered username; fall back to the offline seat name as a suggestion.
         const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
@@ -574,34 +577,23 @@ class QuickStart extends HTMLElement {
         })
         nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); nameInput.blur() } })
 
-        // Delegated seat controls on the dynamic "other seats" block (seat 0 with
-        // the name input stays outside it, so re-rendering never clobbers typing).
+        // Delegated Open/Bot toggle on the "other seats" block (seat 0 with the
+        // name input stays outside it, so re-rendering never clobbers typing).
         const seats = this._onlineSeats
         el.querySelector("#online-seat-list").addEventListener("click", (e) => {
             const toggle = e.target.closest('.seat-half[data-otype]')
-            const add = e.target.closest('[data-add]')
-            const remove = e.target.closest('.seat-remove')
-            const emptyRow = e.target.closest('.seat-row-empty')
-            if (toggle) {
-                const i = Number(toggle.closest('[data-oseat]').dataset.oseat)
-                if (seats[i] && seats[i].type !== toggle.dataset.otype) {
-                    playClickSound(); seats[i].type = toggle.dataset.otype; this._renderOnlineSeats()
-                }
-            } else if (add) {
-                e.stopPropagation()
-                if (seats.length < 4) { playClickSound(); seats.push({ type: add.dataset.add }); this._renderOnlineSeats() }
-            } else if (remove) {
-                if (seats.length > 2) { playClickSound(); seats.pop(); this._renderOnlineSeats() }
-            } else if (emptyRow) {
-                if (seats.length < 4) { playClickSound(); seats.push({ type: 'PLAYER' }); this._renderOnlineSeats() }
+            if (!toggle) return
+            const i = Number(toggle.closest('[data-oseat]').dataset.oseat)
+            if (seats[i] && seats[i].type !== toggle.dataset.otype) {
+                playClickSound(); seats[i].type = toggle.dataset.otype; this._renderOnlineSeats()
             }
         })
 
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
             if (!this._requireName()) return
             playClickSound()
-            // Room size is the seat count; bot seats (indices 1..n with type BOT)
-            // are applied in the lobby right after we're seated as host.
+            // Always a 4-seat room; bot seats (indices 1..3 with type BOT) are
+            // applied in the lobby right after we're seated as host.
             this._onlinePlayers = seats.length
             this._pendingBotSeats = seats.map((s, i) => (i > 0 && s.type === 'BOT' ? i : -1)).filter(i => i > 0)
             this._enterLobby(mintRoomCode(), { create: true })
@@ -626,19 +618,17 @@ class QuickStart extends HTMLElement {
         this._renderOnlineSeats()
     }
 
-    /** Render the dynamic online seats (everyone but you) + the add row. */
+    /** Render the three other seats (everyone but you), each an Open/Bot toggle. */
     _renderOnlineSeats() {
         const list = this.querySelector("#online-seat-list")
         if (!list) return
         const seats = this._onlineSeats
-        const len = seats.length
 
         let html = ""
-        for (let i = 1; i < len; i++) {
-            const isBot = seats[i].type === 'BOT'
+        for (let i = 1; i <= 3; i++) {
+            const isBot = seats[i]?.type === 'BOT'
             const colorVar = `hsl(var(--player-${i}))`
             const activeStyle = `style="background:${colorVar};color:#fff;"`
-            const removable = i === len - 1 && len > 2
             html += /*html*/ `
                 <div class="seat-row" data-oseat="${i}" data-testid="online-setup-seat-${i}">
                     <div class="seat-color-cycle" style="background:${colorVar};">
@@ -651,25 +641,6 @@ class QuickStart extends HTMLElement {
                     <div class="seat-pill">
                         <button data-otype="PLAYER" class="seat-half ${isBot ? 'seat-half--inactive' : ''}" data-testid="online-setup-seat-${i}-open" ${isBot ? '' : activeStyle}>${ICON_USER}<span>Open</span></button>
                         <button data-otype="BOT" class="seat-half ${isBot ? '' : 'seat-half--inactive'}" data-testid="online-setup-seat-${i}-bot" ${isBot ? activeStyle : ''}>${ICON_BOT}<span>Bot</span></button>
-                    </div>
-                    ${removable ? `<button class="remove-seat seat-remove" data-testid="online-setup-seat-${i}-remove">${ICON_CLOSE}</button>` : ''}
-                </div>`
-        }
-
-        if (len < 4) {
-            const ghostVar = `hsl(var(--player-${len}))`
-            html += /*html*/ `
-                <div class="seat-row-empty" data-testid="online-setup-add">
-                    <div class="seat-empty-color" style="border-color:color-mix(in srgb, ${ghostVar} 55%, transparent);background:color-mix(in srgb, ${ghostVar} 14%, transparent);">
-                        <div class="seat-pawn seat-pawn-ghost">${PAWN_SVG(len)}</div>
-                    </div>
-                    <div class="seat-body">
-                        <div class="seat-empty-title">Add a player</div>
-                        <div class="seat-empty-sub">Open seat or bot</div>
-                    </div>
-                    <div class="seat-pill">
-                        <button data-add="PLAYER" class="seat-add" data-testid="online-setup-add-open">${ICON_USER}<span>Open</span></button>
-                        <button data-add="BOT" class="seat-add" data-testid="online-setup-add-bot">${ICON_BOT}<span>Bot</span></button>
                     </div>
                 </div>`
         }
