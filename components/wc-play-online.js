@@ -145,6 +145,17 @@ class PlayOnline extends HTMLElement {
         const el = this.querySelector('[data-testid="online-status"]')
         if (el) el.textContent = text
     }
+
+    /** Arrived via a shared invite link without a saved name: drop the code into
+     *  the join field and prompt for a name so one tap joins the room. */
+    prefillJoin(code) {
+        const c = (code || '').trim().toUpperCase()
+        const codeInput = this.querySelector('.online-code-input')
+        if (codeInput) codeInput.value = c
+        this.setStatus(`Enter your name to join room ${c}.`)
+        const name = this.querySelector('[data-testid="online-name"]')
+        if (name) name.focus()
+    }
 }
 
 customElements.define('wc-play-online', PlayOnline)

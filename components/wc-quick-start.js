@@ -6,7 +6,7 @@ import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../script
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
-import {mintRoomCode} from "../scripts/room-code.js";
+import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/room-code.js";
 import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
 // The online flow lives in two sibling components this controller mounts and
 // drives: <wc-play-online> (setup) and <wc-game-room> (lobby). Importing for
@@ -74,12 +74,19 @@ class QuickStart extends HTMLElement {
     }
 
     connectedCallback() {
-        this.showHomeScreen()
         document.addEventListener("bot-name-pool-changed", () => this._reshuffleBotNames())
+        // Register screen closers before any first navigation so back works even
+        // when we boot straight into the online flow via a shared invite link.
         registerScreenHandler('setup', () => this.showHomeScreen())
         registerScreenHandler('online', () => { this._leaveOnline(); this.showHomeScreen() })
         registerScreenHandler('online-search', () => { this._leaveOnline(); this.showOnlineScreen() })
         registerScreenHandler('online-lobby', () => { this._leaveOnline(); this.showOnlineScreen() })
+
+        // Deep link: opened via a shared "?join=CODE" invite → go straight into
+        // the online flow; otherwise the normal home screen.
+        const joinCode = this._readJoinLink()
+        if (joinCode) this._enterFromLink(joinCode)
+        else this.showHomeScreen()
     }
 
     _reshuffleBotNames() {
@@ -494,11 +501,80 @@ class QuickStart extends HTMLElement {
     _onRoomIntent({ kind, action, seat }) {
         if (kind === 'back' || kind === 'leave') { navBack(); return }
         if (kind === 'start') { this._net?.start(); return }
+        if (kind === 'share') { this._shareRoom(); return }
         if (kind === 'seat') {
             if (!this._net) return
             if (action === 'kick') this._net.kick(seat)
             else if (action === 'bot') this._net.setSeat(seat, 'BOT')
             else if (action === 'open') this._net.setSeat(seat, 'PLAYER')
+        }
+    }
+
+    // ----- Shared invite links (deep link in / OS share out) -----
+
+    // Read a "?join=CODE" deep link. Returns the sanitized room code, or null
+    // when absent/malformed (only the room-code alphabet, exact length).
+    _readJoinLink() {
+        try {
+            const raw = new URLSearchParams(location.search).get('join')
+            if (!raw) return null
+            const code = raw.trim().toUpperCase()
+            const valid = code.length === ROOM_CODE_LENGTH &&
+                [...code].every(c => ROOM_CODE_CHARS.includes(c))
+            return valid ? code : null
+        } catch { return null }
+    }
+
+    // Boot straight into the online flow from a shared invite. Establish the
+    // online setup screen as the back target, then: if we already know the
+    // player's name, join straight into the game room; otherwise show setup with
+    // the code pre-filled so they enter a name and tap Join.
+    _enterFromLink(code) {
+        // Consume the param so a later refresh / Back doesn't silently re-join.
+        try {
+            const url = new URL(location.href)
+            url.searchParams.delete('join')
+            history.replaceState(history.state, '', url.pathname + url.search + url.hash)
+        } catch { /* non-browser */ }
+
+        this.showOnlineScreen()
+        goTo('online')
+        if (getUsername()) this._enterLobby(code, { create: false })
+        else this._playOnline?.prefillJoin(code)
+    }
+
+    // Base URL a shared invite points back to. On the real web we reuse the
+    // current origin; inside the Capacitor app (capacitor:// or https://localhost
+    // shells) we can't link to a custom scheme, so point friends at the public
+    // site instead.
+    _shareBaseUrl() {
+        const { origin, pathname, protocol, hostname } = location
+        const realWeb = (protocol === 'https:' || protocol === 'http:') &&
+            hostname !== 'localhost' && hostname !== '127.0.0.1'
+        return realWeb ? `${origin}${pathname}` : 'https://leludo.org/'
+    }
+
+    // Open the OS share sheet with a join message + deep link. Falls back to
+    // copying the link when the Web Share API is unavailable (e.g. desktop).
+    async _shareRoom() {
+        const code = this._roomCode
+        if (!code) return
+        const url = `${this._shareBaseUrl()}?join=${code}`
+        const text = `Join my leludo game — room code ${code}.`
+        try {
+            if (navigator.share) {
+                await navigator.share({ title: 'leludo', text, url })
+                return
+            }
+            await navigator.clipboard?.writeText(url)
+            this._setLobbyStatus('Invite link copied — paste it to a friend.')
+        } catch (e) {
+            // User dismissed the share sheet: leave the lobby as-is.
+            if (e?.name === 'AbortError') return
+            try {
+                await navigator.clipboard?.writeText(url)
+                this._setLobbyStatus('Invite link copied — paste it to a friend.')
+            } catch { /* nothing more we can do */ }
         }
     }
 

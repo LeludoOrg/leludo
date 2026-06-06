@@ -257,6 +257,66 @@ test.describe('Online lobby — create + join', () => {
     });
 });
 
+test.describe('Online — invite links', () => {
+    // The game room's Share button fires the OS share sheet with a join message
+    // and a deep link back to this room. Headless Chromium has no share sheet, so
+    // stub navigator.share and assert what we hand it (link carries ?join=CODE).
+    test('Share invite opens the OS share sheet with a join link', async ({ page }) => {
+        await page.addInitScript(() => {
+            window.__shared = null;
+            navigator.share = (data) => { window.__shared = data; return Promise.resolve(); };
+        });
+
+        await openOnline(page, 'Hosty');
+        await page.getByTestId('online-create').click();
+        const code = (await page.getByTestId('online-room-code').textContent())?.trim();
+
+        await expect(page.getByTestId('online-share')).toBeVisible();
+        await page.getByTestId('online-share').click();
+
+        const shared = await page.evaluate(() => window.__shared);
+        expect(shared).toBeTruthy();
+        expect(shared.url).toContain(`?join=${code}`); // deep link back to this room
+        expect(shared.text).toContain(code);            // message names the code too
+    });
+
+    // Opening a shared "?join=CODE" link with a remembered name joins straight
+    // into that room's lobby — no menu, no typing the code by hand.
+    test('a shared invite link drops a known player straight into the room lobby', async ({ browser }) => {
+        const ctxHost = await browser.newContext();
+        const ctxGuest = await browser.newContext();
+        const host = await ctxHost.newPage();
+        const guest = await ctxGuest.newPage();
+
+        await openOnline(host, 'Hosty');
+        await host.getByTestId('online-create').click();
+        const code = (await host.getByTestId('online-room-code').textContent())?.trim();
+
+        // Give the guest a remembered name, then open the invite link.
+        await openOnline(guest, 'Linky');
+        await guest.goto(`/?join=${code}`);
+
+        // Lands in the game room (not the setup screen), seated in the host's room.
+        await expect(guest.locator('wc-game-room')).toHaveCount(1);
+        await expect(guest.locator('wc-play-online')).toHaveCount(0);
+        await expect(guest.getByTestId('online-room-code')).toHaveText(code);
+        await expect(host.getByTestId('online-seat-1')).toContainText('Linky');
+
+        await ctxHost.close();
+        await ctxGuest.close();
+    });
+
+    // A brand-new visitor (no remembered name) opening an invite link lands on
+    // the setup screen with the code pre-filled, prompting for a name — one tap
+    // away from joining, without losing the link.
+    test('a shared invite link with no saved name prefills the code and asks for a name', async ({ page }) => {
+        await page.goto('/?join=ABCD'); // ABCD is a valid room-code-alphabet code
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+        await expect(page.getByTestId('online-code-input')).toHaveValue('ABCD');
+        await expect(page.getByTestId('online-status')).toContainText(/name/i);
+    });
+});
+
 // Public matchmaking is hidden for the initial release (PUBLIC_MATCH_ENABLED =
 // false in components/wc-quick-start.js). The queue/auto-start backend stays
 // wired and unit-tested (test/scripts/net-client + online-game); these UI flows

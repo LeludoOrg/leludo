@@ -1,12 +1,12 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
-import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG } from "./wc-icons.js";
+import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE } from "./wc-icons.js";
 
 // The "Game room" lobby: the room code to share, the live seat list, and (for
 // the host) Start + per-seat controls. It renders server state pushed in via
-// renderLobby() and emits a `room-intent` ({kind:'start'|'leave'|'back'|'seat',
-// action?, seat?}) for wc-quick-start (the net controller) to act on — the
-// component never touches the socket itself.
+// renderLobby() and emits a `room-intent` ({kind:'start'|'leave'|'back'|'seat'|
+// 'share', action?, seat?}) for wc-quick-start (the net controller) to act on —
+// the component never touches the socket (or the OS share sheet) itself.
 class GameRoom extends HTMLElement {
     connectedCallback() {
         const html = /*html*/ `
@@ -21,7 +21,8 @@ class GameRoom extends HTMLElement {
                     <div class="online-room-banner">
                         <span class="section-label">Room code</span>
                         <div class="online-code-display" data-testid="online-room-code"></div>
-                        <p class="online-room-share" data-testid="online-lobby-hint">Share this code with friends to let them join.</p>
+                        <p class="online-room-share" data-testid="online-lobby-hint">Share the invite so friends can tap to join.</p>
+                        <button class="online-share-btn cta-secondary" data-testid="online-share">${ICON_SHARE}<span>Share invite</span></button>
                     </div>
 
                     <div class="seat-list"></div>
@@ -42,6 +43,7 @@ class GameRoom extends HTMLElement {
 
         el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); this._emit('back') })
         el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._emit('start') })
+        el.querySelector('[data-testid="online-share"]').addEventListener("click", () => { playClickSound(); this._emit('share') })
         el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); this._emit('leave') })
 
         // Host per-seat controls (kick / add-bot / open) are delegated on the
