@@ -30,6 +30,7 @@ import {
 } from '../scripts/turn-rules.js';
 import { makeRng } from '../scripts/game-driver.js';
 import { randomBotName } from '../scripts/bot-names.js';
+import { spreadPick } from '../scripts/seat-allocation.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',
@@ -187,22 +188,35 @@ export class RoomEngine {
 
     // ---- lobby intents ------------------------------------------------------
 
-    /** Lowest open human seat, or -1 if none. */
-    _firstOpenSeat() {
-        return this.seats.findIndex(s => s.type === 'PLAYER' && s.sessionId === null);
+    /** Open human seat that sits furthest from the humans already seated, or -1 if
+     *  none. This is what keeps two players diagonally opposite (and bots on the
+     *  other diagonal), mirroring the offline seat-allocation order. */
+    _spreadOpenSeat() {
+        const taken = [], open = [];
+        for (let i = 0; i < 4; i++) {
+            const s = this.seats[i];
+            if (s.type !== 'PLAYER') continue;
+            (s.sessionId === null ? open : taken).push(i);
+        }
+        return spreadPick(taken, open);
     }
 
     /** Choose a seat for a NEW joiner: honour the requested colour seat when it's
-     *  a free human seat, otherwise fall back to the lowest open one. The seat
-     *  index doubles as the player's colour, so this is how a player picks their
-     *  in-game colour at join time. */
+     *  a free human seat, otherwise pick the open seat furthest from the players
+     *  already in. The seat index doubles as the player's colour, so this is how a
+     *  player picks their in-game colour at join time. */
     _pickSeat(preferred) {
-        const i = Number(preferred);
-        if (Number.isInteger(i) && i >= 0 && i < 4
-            && this.seats[i].type === 'PLAYER' && this.seats[i].sessionId === null) {
-            return i;
+        // No colour requested (null/''): Number('') and Number(null) both coerce to
+        // 0, so guard explicitly — otherwise every preference-less joiner would
+        // "prefer" seat 0 and skip the spread.
+        if (preferred != null && preferred !== '') {
+            const i = Number(preferred);
+            if (Number.isInteger(i) && i >= 0 && i < 4
+                && this.seats[i].type === 'PLAYER' && this.seats[i].sessionId === null) {
+                return i;
+            }
         }
-        return this._firstOpenSeat();
+        return this._spreadOpenSeat();
     }
 
     /** Seat a (re)connecting human. First to join becomes host. Reconnect = same

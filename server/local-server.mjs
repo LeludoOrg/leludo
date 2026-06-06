@@ -26,6 +26,7 @@ import { Admission } from './admission.js';
 import { RoomEngine } from './room-engine.js';
 import { Matchmaker } from './matchmaker.js';
 import { mintRoomCode } from '../scripts/room-code.js';
+import { spreadSeatPlan } from '../scripts/seat-allocation.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
 const TEST_HOOKS = process.env.DEV_TEST_HOOKS === '1';
@@ -103,13 +104,11 @@ const matchmaker = new Matchmaker({
             return;
         }
         const humans = entries.length;
-        // Seat plan: matched humans take PLAYER seats (the first becomes host),
-        // remaining seats are bots when bot-filling, else open human seats.
-        const seatPlan = [0, 1, 2, 3].map(i => {
-            if (i >= size) return null;
-            if (i < humans) return 'PLAYER';
-            return withBots ? 'BOT' : 'PLAYER';
-        });
+        // Seat plan: matched humans take PLAYER seats SPREAD around the ring (so a
+        // 2-human bot-filled match seats the humans diagonally opposite, like
+        // offline + private rooms), remaining seats are bots when bot-filling, else
+        // open human seats. The first human to join becomes host.
+        const seatPlan = spreadSeatPlan(size, humans, withBots);
         // Public matches auto-start once everyone is seated (no host wait).
         const room = makeRoom(code, { size, seatPlan, autoStart: true });
         for (const e of entries) {

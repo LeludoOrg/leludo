@@ -83,10 +83,31 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.handleJoin('b', 'B', 3)).toEqual({ ok: true, seat: 3 });
     });
 
-    it('falls back to the lowest open seat when the requested colour is taken', () => {
+    it('falls back to the seat furthest from those taken when the requested colour is taken', () => {
         const { engine } = room(4);
         engine.handleJoin('a', 'A', 2);                                  // takes seat 2
+        // Seat 0 is the chair diagonally opposite seat 2 (furthest away).
         expect(engine.handleJoin('b', 'B', 2)).toEqual({ ok: true, seat: 0 });
+    });
+
+    // Regression: an online "you vs a friend" game (2 humans + 2 auto-bots in a
+    // 4-seat room) used to seat the joiner on the chair ADJACENT to the host
+    // (lowest open), so the two humans never rendered diagonally opposite. They
+    // must land on a diagonal, with the bots filling the other diagonal.
+    it('seats two humans diagonally opposite in a 4-seat room, bots on the other diagonal', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({ roomId: 'r', size: 4, transport: fake.transport, schedule: fake.schedule });
+        expect(engine.handleJoin('h', 'Host')).toEqual({ ok: true, seat: 0 }); // host, no colour pick -> seat 0
+        expect(engine.handleJoin('g', 'Guest')).toEqual({ ok: true, seat: 2 }); // joiner -> diagonal, not adjacent
+        engine.handleStart('h');
+        expect(engine.seats.map(s => s.type)).toEqual(['PLAYER', 'BOT', 'PLAYER', 'BOT']);
+    });
+
+    it('respects the host colour pick and still seats the joiner diagonally opposite', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({ roomId: 'r', size: 4, transport: fake.transport, schedule: fake.schedule });
+        expect(engine.handleJoin('h', 'Host', 3)).toEqual({ ok: true, seat: 3 }); // host picks blue (seat 3)
+        expect(engine.handleJoin('g', 'Guest')).toEqual({ ok: true, seat: 1 });   // diagonal to 3
     });
 
     it('ignores an out-of-range or closed preferred seat', () => {
