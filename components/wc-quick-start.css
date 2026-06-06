@@ -189,50 +189,39 @@ wc-quick-start .home-online-cta {
     font-weight: 600;
 }
 
-/* ----- Online (lobby) ----- */
+/* ----- Online (private-room setup) -----
+   Reuses the offline seat-list look (.seat-row / .seat-pill / .seat-name).
+   Only the online-specific extras live here. */
 
-wc-quick-start .online-body {
-    text-align: center;
-}
-
-wc-quick-start .online-body .display-title {
-    text-align: center;
-}
-
-wc-quick-start .online-body .body-helper {
-    margin: 0 auto;
-    text-align: center;
-}
-
-wc-quick-start .online-field {
+/* Seat 0 = YOU; the rest sit in this re-rendered block (seat 0 stays outside it
+   so live name typing is never clobbered by a re-render). */
+wc-quick-start .online-others {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    margin: var(--space-3) 0;
+    gap: 10px;
 }
 
-wc-quick-start .online-field .section-label {
-    align-self: center;
-}
-
-wc-quick-start .online-name {
-    width: 100%;
-    max-width: 220px;
-    text-align: center;
-    background: var(--color-surface);
+/* The "You" tag where the offline seat-0 row would show a Human/Bot pill. */
+wc-quick-start .online-you-tag {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    padding: 5px 11px;
     border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
-    border-radius: var(--radius-lg);
-    color: var(--color-fg);
-    font-size: 16px;
-    font-weight: 500;
-    padding: 10px 14px;
-    outline: 0;
+    border-radius: var(--radius-pill);
 }
 
-wc-quick-start .online-name:focus {
-    border-color: color-mix(in srgb, var(--color-fg) 35%, transparent);
+wc-quick-start .online-join-section {
+    margin-top: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
 }
+
+/* ----- Online (lobby) ----- */
 
 wc-quick-start .online-seg {
     display: inline-flex;
@@ -261,23 +250,6 @@ wc-quick-start .online-seg-btn.is-on {
     background: var(--cta-bg);
     color: var(--cta-fg);
     opacity: 1;
-}
-
-wc-quick-start .online-options {
-    margin-top: var(--space-5);
-    gap: var(--space-3);
-}
-
-wc-quick-start .online-opt {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 9px;
-}
-
-wc-quick-start .online-public:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
 }
 
 wc-quick-start .online-divider {
@@ -443,7 +415,8 @@ wc-quick-start .online-seat-btn--danger {
     color: hsl(0 70% 60%);
 }
 
-wc-quick-start .online-start-btn {
+wc-quick-start .online-start-btn,
+wc-quick-start .online-create-btn {
     display: flex;
     align-items: center;
     justify-content: center;

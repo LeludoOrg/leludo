@@ -34,14 +34,17 @@ test.describe('Home — offline / online split', () => {
 
     // Initial release ships private rooms only — the "Find a public match" entry
     // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The online menu
-    // must offer create + join-by-code (and the room-size picker) but NOT public.
-    test('online path offers the private-room options only', async ({ page }) => {
+    // is now the offline-style seat setup: your seat (name) + Open/Bot seats +
+    // create, plus join-by-code. It must NOT show the public entry.
+    test('online path offers the private-room seat setup only', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-public')).toHaveCount(0); // public hidden for launch
-        await expect(page.getByTestId('online-create')).toBeVisible();  // private: create
-        await expect(page.getByTestId('online-join')).toBeVisible();    // private: join by code
-        await expect(page.getByTestId('online-players')).toBeVisible();
+        await expect(page.getByTestId('online-public')).toHaveCount(0);     // public hidden for launch
+        await expect(page.getByTestId('online-setup-seat-0')).toBeVisible(); // your seat (name)
+        await expect(page.getByTestId('online-name')).toBeVisible();
+        await expect(page.getByTestId('online-setup-seat-1')).toBeVisible(); // one other seat (size 2)
+        await expect(page.getByTestId('online-create')).toBeVisible();       // create room
+        await expect(page.getByTestId('online-join')).toBeVisible();         // join by code
     });
 
     test('back from the online menu returns home', async ({ page }) => {
@@ -52,23 +55,41 @@ test.describe('Home — offline / online split', () => {
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
     });
 
-    // Regression: the room-size selector's click handler queried the `el`
-    // returned by htmlToElement, which is a DocumentFragment that appendChild
-    // empties — so at click time it found zero buttons and the highlight never
-    // moved (the size silently changed with no visible feedback). The handler
-    // must query the live seg (e.currentTarget) instead.
-    test('the room-size selector moves its highlight to the chosen size', async ({ page }) => {
+    // The room size is the seat count now: "Add a player" grows the room (up to
+    // 4) and the last seat's remove shrinks it (down to 2). Guards the add/remove
+    // wiring and the min-2 / max-4 bounds.
+    test('adding and removing seats grows and shrinks the room', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-players-2')).toHaveClass(/is-on/); // default
+        // Default: you + one Open seat (size 2). No 3rd seat yet.
+        await expect(page.getByTestId('online-setup-seat-1')).toBeVisible();
+        await expect(page.getByTestId('online-setup-seat-2')).toHaveCount(0);
 
-        await page.getByTestId('online-players-4').click();
-        await expect(page.getByTestId('online-players-4')).toHaveClass(/is-on/);
-        await expect(page.getByTestId('online-players-2')).not.toHaveClass(/is-on/);
+        // Add up to the 4-seat cap; the add row disappears once full.
+        await page.getByTestId('online-setup-add-open').click();
+        await expect(page.getByTestId('online-setup-seat-2')).toBeVisible();
+        await page.getByTestId('online-setup-add-open').click();
+        await expect(page.getByTestId('online-setup-seat-3')).toBeVisible();
+        await expect(page.getByTestId('online-setup-add')).toHaveCount(0); // capped at 4
 
-        await page.getByTestId('online-players-3').click();
-        await expect(page.getByTestId('online-players-3')).toHaveClass(/is-on/);
-        await expect(page.getByTestId('online-players-4')).not.toHaveClass(/is-on/);
+        // Remove the last seat to shrink back down.
+        await page.getByTestId('online-setup-seat-3-remove').click();
+        await expect(page.getByTestId('online-setup-seat-3')).toHaveCount(0);
+        await expect(page.getByTestId('online-setup-add')).toBeVisible(); // room to add again
+    });
+
+    // A seat toggled to Bot on the setup screen turns into a bot the moment the
+    // room is created — guards the _pendingBotSeats → setSeat(i,'BOT') handoff.
+    test('a seat set to Bot on the setup screen is a bot in the created room', async ({ page }) => {
+        await page.goto('/');
+        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('online-name').fill('Hosty');
+        await page.getByTestId('online-setup-seat-1-bot').click(); // seat 1 → Bot
+        await page.getByTestId('online-create').click();
+
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+        await expect(page.getByTestId('online-seat-1')).toContainText('Bot');
+        await expect(page.getByTestId('online-started')).toHaveText('false'); // host still presses Start
     });
 });
 
@@ -170,7 +191,9 @@ test.describe('Online lobby — create + join', () => {
 // false in components/wc-quick-start.js). The queue/auto-start backend stays
 // wired and unit-tested (test/scripts/net-client + online-game); these UI flows
 // are unreachable until the entry button returns, so the suite is skipped.
-// Un-skip together with flipping the flag.
+// NOTE: the old room-size segmented control (online-players-*) was replaced by
+// the seat-setup add/remove rows — re-enabling public also needs a size source
+// (e.g. reuse the seat count) and these tests updated. Un-skip with the flag.
 test.describe.skip('Online — public matchmaking', () => {
     test('cancelling a public search returns to the online menu', async ({ page }) => {
         await openOnline(page, 'Solo');

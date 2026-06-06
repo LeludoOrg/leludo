@@ -156,6 +156,7 @@ class QuickStart extends HTMLElement {
         // closed the socket): drop any stale online references.
         this._inGame = false
         this._isPublic = false
+        this._pendingBotSeats = null
         this._hideMatchStarting()
         this._net = null
         this.innerHTML = ""
@@ -504,13 +505,17 @@ class QuickStart extends HTMLElement {
     showOnlineScreen() {
         this._stopHomeDieCycle()
         this._isPublic = false
+        this._pendingBotSeats = null
         this._leaveOnline()
         this.innerHTML = ""
-        if (!this._onlinePlayers) this._onlinePlayers = 2
+        // Online private room reuses the offline "who's playing?" seat setup.
+        // Seat 0 is always YOU (the host). Seats 1..n are each an Open seat (a
+        // friend joins with the code) or a Bot. The active seat count IS the room
+        // size (2..4). Persisted across visits so choices stick.
+        if (!this._onlineSeats) this._onlineSeats = [{ type: 'YOU' }, { type: 'PLAYER' }]
 
         // Remembered username; fall back to the offline seat name as a suggestion.
         const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
-        const seg = (n) => `<button class="online-seg-btn ${this._onlinePlayers === n ? 'is-on' : ''}" data-n="${n}" data-testid="online-players-${n}">${n}</button>`
 
         const html = /*html*/ `
             <div class="frame">
@@ -520,29 +525,28 @@ class QuickStart extends HTMLElement {
                     <wc-settings></wc-settings>
                 </div>
 
-                <div class="frame-body online-body">
+                <div class="frame-body setup-body online-setup-body">
                     <h2 class="display-title">Play online</h2>
-                    <p class="body-helper">Live games against people on other devices. The server runs every roll and move — no cheating.</p>
+                    <p class="setup-helper">You host the room. Friends join with the code; fill the rest with bots.</p>
 
-                    <label class="online-field">
-                        <span class="section-label">Your name</span>
-                        <input class="online-name" data-testid="online-name" type="text" maxlength="12" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Enter your name" value="${escapeHtml(savedName)}" />
-                    </label>
-
-                    <div class="online-field">
-                        <span class="section-label">Room size</span>
-                        <div class="online-seg" data-testid="online-players">${seg(2)}${seg(3)}${seg(4)}</div>
+                    <div class="seat-list">
+                        <div class="seat-row" data-testid="online-setup-seat-0">
+                            <div class="seat-color-cycle" style="background:hsl(var(--player-0));">
+                                <div class="seat-pawn">${PAWN_SVG(0)}</div>
+                            </div>
+                            <div class="seat-body">
+                                <label class="seat-name-wrap">
+                                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-0));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
+                                    <span class="seat-name-pencil">${ICON_PENCIL}</span>
+                                </label>
+                            </div>
+                            <span class="online-you-tag">You</span>
+                        </div>
+                        <div id="online-seat-list" class="online-others"></div>
                     </div>
 
-                    <div class="section-group online-options">
-                        ${PUBLIC_MATCH_ENABLED ? /*html*/ `
-                        <button class="online-opt cta-primary" data-testid="online-public">${ICON_GLOBE}<span>Find a public match</span></button>
-
-                        <div class="online-divider"><span>private room</span></div>
-                        ` : ''}
-
-                        <button class="online-opt ${PUBLIC_MATCH_ENABLED ? 'cta-secondary' : 'cta-primary'}" data-testid="online-create">${ICON_PLUS}<span>Create a room</span></button>
-
+                    <div class="online-join-section">
+                        <div class="online-divider"><span>or join a friend</span></div>
                         <div class="online-join-row">
                             <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
                             <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
@@ -551,6 +555,10 @@ class QuickStart extends HTMLElement {
 
                     <p class="online-status" data-testid="online-status"></p>
                 </div>
+
+                <div class="frame-footer">
+                    <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
+                </div>
             </div>
         `
 
@@ -558,35 +566,44 @@ class QuickStart extends HTMLElement {
 
         el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
 
-        const nameInput = el.querySelector(".online-name")
+        const nameInput = el.querySelector('[data-testid="online-name"]')
         // Remember the name as it's typed and clear any "enter a name" prompt.
         nameInput.addEventListener("input", () => {
             const v = (nameInput.value || '').trim()
             if (v) { setUsername(v); this._setOnlineStatus("") }
         })
+        nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); nameInput.blur() } })
 
-        el.querySelector(".online-seg").addEventListener("click", (e) => {
-            const btn = e.target.closest(".online-seg-btn")
-            if (!btn) return
-            playClickSound()
-            this._onlinePlayers = Number(btn.dataset.n)
-            // Query the live seg (e.currentTarget), NOT the `el` fragment —
-            // htmlToElement returns a DocumentFragment that appendChild empties,
-            // so `el.querySelectorAll` finds nothing at click time and the
-            // highlight never moves.
-            e.currentTarget.querySelectorAll(".online-seg-btn").forEach(b => b.classList.toggle("is-on", b === btn))
-        })
-
-        // Public-match entry is hidden for the initial release (PUBLIC_MATCH_ENABLED).
-        el.querySelector('[data-testid="online-public"]')?.addEventListener("click", () => {
-            if (!this._requireName()) return
-            playClickSound()
-            this._enterMatchmaking(this._onlinePlayers || 2)
+        // Delegated seat controls on the dynamic "other seats" block (seat 0 with
+        // the name input stays outside it, so re-rendering never clobbers typing).
+        const seats = this._onlineSeats
+        el.querySelector("#online-seat-list").addEventListener("click", (e) => {
+            const toggle = e.target.closest('.seat-half[data-otype]')
+            const add = e.target.closest('[data-add]')
+            const remove = e.target.closest('.seat-remove')
+            const emptyRow = e.target.closest('.seat-row-empty')
+            if (toggle) {
+                const i = Number(toggle.closest('[data-oseat]').dataset.oseat)
+                if (seats[i] && seats[i].type !== toggle.dataset.otype) {
+                    playClickSound(); seats[i].type = toggle.dataset.otype; this._renderOnlineSeats()
+                }
+            } else if (add) {
+                e.stopPropagation()
+                if (seats.length < 4) { playClickSound(); seats.push({ type: add.dataset.add }); this._renderOnlineSeats() }
+            } else if (remove) {
+                if (seats.length > 2) { playClickSound(); seats.pop(); this._renderOnlineSeats() }
+            } else if (emptyRow) {
+                if (seats.length < 4) { playClickSound(); seats.push({ type: 'PLAYER' }); this._renderOnlineSeats() }
+            }
         })
 
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
             if (!this._requireName()) return
             playClickSound()
+            // Room size is the seat count; bot seats (indices 1..n with type BOT)
+            // are applied in the lobby right after we're seated as host.
+            this._onlinePlayers = seats.length
+            this._pendingBotSeats = seats.map((s, i) => (i > 0 && s.type === 'BOT' ? i : -1)).filter(i => i > 0)
             this._enterLobby(mintRoomCode(), { create: true })
         })
 
@@ -606,12 +623,64 @@ class QuickStart extends HTMLElement {
         codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
 
         this.appendChild(el)
+        this._renderOnlineSeats()
+    }
+
+    /** Render the dynamic online seats (everyone but you) + the add row. */
+    _renderOnlineSeats() {
+        const list = this.querySelector("#online-seat-list")
+        if (!list) return
+        const seats = this._onlineSeats
+        const len = seats.length
+
+        let html = ""
+        for (let i = 1; i < len; i++) {
+            const isBot = seats[i].type === 'BOT'
+            const colorVar = `hsl(var(--player-${i}))`
+            const activeStyle = `style="background:${colorVar};color:#fff;"`
+            const removable = i === len - 1 && len > 2
+            html += /*html*/ `
+                <div class="seat-row" data-oseat="${i}" data-testid="online-setup-seat-${i}">
+                    <div class="seat-color-cycle" style="background:${colorVar};">
+                        <div class="seat-pawn">${PAWN_SVG(i)}</div>
+                    </div>
+                    <div class="seat-body">
+                        <div class="seat-empty-title" style="opacity:0.85;">${isBot ? 'Bot' : 'Open seat'}</div>
+                        <div class="seat-empty-sub">${isBot ? 'Plays automatically' : 'A friend joins with the code'}</div>
+                    </div>
+                    <div class="seat-pill">
+                        <button data-otype="PLAYER" class="seat-half ${isBot ? 'seat-half--inactive' : ''}" data-testid="online-setup-seat-${i}-open" ${isBot ? '' : activeStyle}>${ICON_USER}<span>Open</span></button>
+                        <button data-otype="BOT" class="seat-half ${isBot ? '' : 'seat-half--inactive'}" data-testid="online-setup-seat-${i}-bot" ${isBot ? activeStyle : ''}>${ICON_BOT}<span>Bot</span></button>
+                    </div>
+                    ${removable ? `<button class="remove-seat seat-remove" data-testid="online-setup-seat-${i}-remove">${ICON_CLOSE}</button>` : ''}
+                </div>`
+        }
+
+        if (len < 4) {
+            const ghostVar = `hsl(var(--player-${len}))`
+            html += /*html*/ `
+                <div class="seat-row-empty" data-testid="online-setup-add">
+                    <div class="seat-empty-color" style="border-color:color-mix(in srgb, ${ghostVar} 55%, transparent);background:color-mix(in srgb, ${ghostVar} 14%, transparent);">
+                        <div class="seat-pawn seat-pawn-ghost">${PAWN_SVG(len)}</div>
+                    </div>
+                    <div class="seat-body">
+                        <div class="seat-empty-title">Add a player</div>
+                        <div class="seat-empty-sub">Open seat or bot</div>
+                    </div>
+                    <div class="seat-pill">
+                        <button data-add="PLAYER" class="seat-add" data-testid="online-setup-add-open">${ICON_USER}<span>Open</span></button>
+                        <button data-add="BOT" class="seat-add" data-testid="online-setup-add-bot">${ICON_BOT}<span>Bot</span></button>
+                    </div>
+                </div>`
+        }
+
+        list.innerHTML = html
     }
 
     /** Require a non-empty name before going online; remember it. Returns the
      *  trimmed name, or null (and prompts) when empty. */
     _requireName() {
-        const input = this.querySelector('.online-name')
+        const input = this.querySelector('[data-testid="online-name"]')
         const name = (input?.value || '').trim()
         if (!name) {
             this._setOnlineStatus('Enter a name to play online.')
@@ -651,6 +720,12 @@ class QuickStart extends HTMLElement {
             case 'seated':
                 this._mySeat = msg.playerIndex
                 this._isHost = !!msg.isHost
+                // Apply the bot seats chosen on the create screen. Host-only +
+                // lobby-phase, both true right after we're seated as the creator.
+                if (this._isHost && this._pendingBotSeats?.length) {
+                    this._pendingBotSeats.forEach(i => this._net?.setSeat(i, 'BOT'))
+                    this._pendingBotSeats = null
+                }
                 break
             case 'state':
                 this._renderLobby(msg.state)
