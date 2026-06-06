@@ -83,6 +83,7 @@ export const COMMANDS = Object.freeze({
     PAUSE: 'PAUSE',
     RESUME: 'RESUME',
     RESTART_GAME: 'RESTART_GAME',
+    ONLINE_NEW_GAME: 'ONLINE_NEW_GAME',
     EXIT_TO_HOME: 'EXIT_TO_HOME',
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
     GOD_TELEPORT: 'GOD_TELEPORT',
@@ -601,6 +602,20 @@ function exitToHome(emit) {
     resumeGameLogic();
 }
 
+// Online "new game": there's no local lineup to replay (quickStartId is null
+// online, so RESTART_GAME is a no-op), and a rematch needs a brand-new server
+// room. Tear the game down to home — which closes the socket via GAME_RESTARTED
+// — then push the online create/join screen, mirroring the home "Play online"
+// path so Back from there returns home rather than the game-end recap.
+function onlineNewGame(emit) {
+    exitToHome(emit);
+    const quickStart = document.querySelector('wc-quick-start');
+    if (quickStart && typeof quickStart.showOnlineScreen === 'function') {
+        quickStart.showOnlineScreen();
+        goTo('online');
+    }
+}
+
 async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
     const token = getTokenElement(playerIndex, tokenIndex);
     if (!token) return;
@@ -787,6 +802,8 @@ export function commandHandler(currentState, command, services, emit) {
             return;
         case COMMANDS.RESTART_GAME:
             return restartGame(emit);
+        case COMMANDS.ONLINE_NEW_GAME:
+            return onlineNewGame(emit);
         case COMMANDS.EXIT_TO_HOME:
             return exitToHome(emit);
         case COMMANDS.SET_ASSIST_FLAG:

@@ -144,6 +144,18 @@ test.describe('Online gameplay', () => {
         // game ends. The recap screen mounts (.ge-screen is the full-bleed overlay).
         await expect(pageA.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 12_000 });
 
+        // Regression: online has no local lineup to replay (server-driven), so
+        // the recap CTA must offer a NEW game — not the offline "Play again"
+        // local restart, which is a no-op online and left the player stranded on
+        // the recap. The button reads "New game" and routes to the online
+        // create/join screen so a fresh room can be spun up.
+        const newGame = pageA.locator('#ge-play-again');
+        await expect(newGame).toHaveText('New game');
+        await newGame.click();
+        await expect(pageA.locator('wc-play-online')).toHaveCount(1);   // online create/join screen
+        await expect(pageA.getByTestId('online-create')).toBeVisible(); // can create a new room
+        await expect(pageA.locator('wc-game-end .ge-screen')).toHaveCount(0); // recap dismissed
+
         await ctxA.close();
     });
 });

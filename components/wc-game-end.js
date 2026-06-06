@@ -351,10 +351,12 @@ class GameEnd extends HTMLElement {
             if (playerRanks[pi] === 1) { winnerIndex = pi; break; }
         }
 
+        const online = isOnlineActive();
+
         // Online every seat is a human, so "winner is a PLAYER" is true on every
         // client — only the actual winning client should read "You won". Offline,
         // the local human is whichever seat has type PLAYER.
-        const isSelfWinner = isOnlineActive()
+        const isSelfWinner = online
             ? winnerIndex === onlineLocalSelf()
             : playerTypes[winnerIndex] === 'PLAYER';
         const winnerName = nameFor(winnerIndex);
@@ -411,7 +413,7 @@ class GameEnd extends HTMLElement {
                     <div class="ge-spacer"></div>
 
                     <div class="ge-footer">
-                        <button id="ge-play-again" class="ge-cta">Play again</button>
+                        <button id="ge-play-again" class="ge-cta">${online ? 'New game' : 'Play again'}</button>
                     </div>
                 </div>
             </div>`;
@@ -425,7 +427,10 @@ class GameEnd extends HTMLElement {
 
         el.querySelector('#ge-play-again').addEventListener('click', () => {
             playClickSound();
-            dispatch({ type: COMMANDS.RESTART_GAME });
+            // Offline replays the same lineup locally; online has no local
+            // lineup to replay (server-driven) so a rematch means a new room —
+            // route to the online create/join screen instead.
+            dispatch({ type: online ? COMMANDS.ONLINE_NEW_GAME : COMMANDS.RESTART_GAME });
         });
 
         const storeBtn = el.querySelector('#ge-store');
