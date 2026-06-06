@@ -65,6 +65,23 @@ export function updateDiceFace(lastDiceRoll, diceRoll) {
     document.getElementById(`d${diceRoll}`).classList.remove("hidden")
 }
 
+// requestAnimationFrame is PAUSED while the tab/window is hidden. Online play
+// (scripts/online-game.js) replays server broadcasts through a serial promise
+// queue that awaits these animation promises, so a pure-rAF loop would never
+// resolve on a backgrounded client — the queue wedges on the first roll/move it
+// must replay while hidden and the client desyncs from the server permanently.
+// nextFrame drives the loop with rAF when visible (timestamp + cadence intact)
+// and falls back to a timer when rAF is stalled, so the loop always advances.
+function nextFrame(cb) {
+    let fired = false;
+    const run = (t) => { if (fired) return; fired = true; cb(t == null ? (typeof performance !== 'undefined' ? performance.now() : Date.now()) : t); };
+    requestAnimationFrame(run);
+    // Longer than any real frame, so visible playback always uses rAF; short
+    // enough that a hidden client (rAF paused, timers merely throttled) keeps
+    // draining its replay queue instead of stalling forever.
+    setTimeout(() => run(), 250);
+}
+
 /**
  * @param {number} currentDiceRoll
  * @returns {Promise<void>}
@@ -85,10 +102,17 @@ export function animateDiceRoll(currentDiceRoll) {
         let lastTime = 0;
 
         function tick(timestamp) {
+            // Hidden tab: nothing to animate and rAF is paused — snap to the
+            // final face and let the replay queue move on (see nextFrame).
+            if (typeof document !== 'undefined' && document.hidden) {
+                updateDiceFace(diceRoll, currentDiceRoll);
+                resolve();
+                return;
+            }
             if (!lastTime) lastTime = timestamp;
 
             if (timestamp - lastTime < delays[counter]) {
-                requestAnimationFrame(tick);
+                nextFrame(tick);
                 return;
             }
             lastTime = timestamp;
@@ -104,10 +128,17 @@ export function animateDiceRoll(currentDiceRoll) {
             diceRoll = (diceRoll % 6) + 1;
             updateDiceFace(lastDiceRoll, diceRoll);
             counter++;
-            requestAnimationFrame(tick);
+            nextFrame(tick);
         }
 
-        requestAnimationFrame(tick);
+        // Snap straight to the result when the tab is already hidden — no rAF
+        // will fire to run the spin, so don't wait on it.
+        if (typeof document !== 'undefined' && document.hidden) {
+            updateDiceFace(currentDiceRoll, currentDiceRoll);
+            resolve();
+            return;
+        }
+        nextFrame(tick);
     });
 }
 
@@ -329,6 +360,13 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
     if (sourceCell && sourceCell !== homeCell) updateCellStacking(sourceCell);
     updateCellStacking(homeCell);
 
+    // Hidden tab: the victim is already settled into its home seat above — skip
+    // the KO overlay so the online replay queue doesn't stall on its timers.
+    if (typeof document !== 'undefined' && document.hidden) {
+        element.style.visibility = prevVisibility;
+        return Promise.resolve();
+    }
+
     const homeRect = element.getBoundingClientRect();
     const homeBasePx = rectCenter(homeRect, containerRect);
     const endScale = startSize ? homeRect.width / startSize : 1;
@@ -360,6 +398,10 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
     if (!element) return Promise.resolve();
     const boardWrap = element.closest('.board-wrap');
     if (!boardWrap) return Promise.resolve();
+
+    // Hidden tab: the token is already parented into the finish cell — skip the
+    // cosmetic arrival overlay so the online replay queue doesn't stall on it.
+    if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
 
     const finalRect = element.getBoundingClientRect();
     const containerRect = boardWrap.getBoundingClientRect();
@@ -415,6 +457,20 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     if (!boardWrap) return Promise.resolve();
 
     const sourceCell = element.parentElement;
+
+    // Hidden tab: rAF/overlay timers are paused or throttled, which would stall
+    // the online replay queue. Land the pawn in its entry cell immediately and
+    // skip the leap flourish (the client catches up visually when shown again).
+    if (typeof document !== 'undefined' && document.hidden) {
+        clearStackStyles(element);
+        delete element.dataset.moving;
+        finalContainer.appendChild(element);
+        if (sourceCell && sourceCell !== finalContainer) updateCellStacking(sourceCell);
+        updateCellStacking(finalContainer);
+        element.style.visibility = '';
+        return Promise.resolve();
+    }
+
     const containerRect = boardWrap.getBoundingClientRect();
     const yardRect = element.getBoundingClientRect();
     const entryRect = finalContainer.getBoundingClientRect();
@@ -480,6 +536,20 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         const finalContainer = document.getElementById(path[path.length - 1]);
         const sourceCell = element.parentElement;
 
+        // Hidden tab: rAF is paused, so the per-cell glide below would never run
+        // and the online replay queue (which awaits this promise) would wedge —
+        // the client desyncs from the server. Land the token in its final cell
+        // immediately; it catches up visually when the tab is shown again.
+        if (typeof document !== 'undefined' && document.hidden) {
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            finalContainer.appendChild(element);
+            if (sourceCell && sourceCell !== finalContainer) updateCellStacking(sourceCell);
+            updateCellStacking(finalContainer);
+            resolve();
+            return;
+        }
+
         element.dataset.moving = 'true';
         // Snapshot visual position before clearStackStyles snaps the element
         // back to its flow position. Stacked tokens (n>=2) sit at absolute
@@ -508,6 +578,11 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         let stepIndex = 0;
 
         function step() {
+            // Tab went hidden mid-glide: fast-forward to the final cell so the
+            // replay queue keeps draining (rAF is paused while hidden).
+            if (typeof document !== 'undefined' && document.hidden && stepIndex < path.length) {
+                stepIndex = path.length;
+            }
             if (stepIndex >= path.length) {
                 element.style.willChange = '';
                 element.style.position = '';
@@ -552,11 +627,11 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
 
             waitForTransitionEnd(element, () => {
                 stepIndex++;
-                requestAnimationFrame(step);
+                nextFrame(step);
             }, fallbackMs);
         }
 
-        requestAnimationFrame(step);
+        nextFrame(step);
     });
 }
 
