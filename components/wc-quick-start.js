@@ -1,6 +1,6 @@
 import {htmlToElement} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
-import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
+import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net-client.js";
@@ -679,7 +679,12 @@ class QuickStart extends HTMLElement {
         // The colour picker is the HOST's colour: only the room creator forwards
         // a preferred seat. A joiner takes whatever seat the server assigns.
         const params = { size: String(players) }
-        if (create) params.color = String(getOnlineColor())
+        // Only the creator seeds the room: their colour pick + bot-name pool so the
+        // room's auto-filled bots get cheeky names in the host's chosen language.
+        if (create) {
+            params.color = String(getOnlineColor())
+            params.pool = getActivePoolKey()
+        }
         // Navigate setup → room: mount <wc-game-room>, then wire the socket. The
         // 'online-lobby' history entry means back returns to <wc-play-online>.
         this._mountGameRoom(code)

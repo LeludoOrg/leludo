@@ -19,8 +19,8 @@ export const PERSONALITIES = {
 
 const PERSONALITY_KEYS = Object.keys(PERSONALITIES);
 
-export function randomPersonality() {
-    return PERSONALITY_KEYS[Math.floor(Math.random() * PERSONALITY_KEYS.length)];
+export function randomPersonality(rng = Math.random) {
+    return PERSONALITY_KEYS[Math.floor(rng() * PERSONALITY_KEYS.length)];
 }
 
 function countAt(arr, pos) {

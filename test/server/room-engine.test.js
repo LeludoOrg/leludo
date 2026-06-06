@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { RoomEngine, PHASES } from '../../server/room-engine.js';
 import { PITY_SIX_CEIL } from '../../scripts/game-logic.js';
+import { BOT_NAME_POOLS } from '../../scripts/bot-names.js';
+import { PERSONALITIES } from '../../scripts/bot-ai.js';
 
 /**
  * Authority + host-lobby tests. A fake transport collects every broadcast /
@@ -126,6 +128,41 @@ describe('RoomEngine — host lobby', () => {
         engine.handleSetSeat('h', 1, 'BOT');
         expect(engine.seats[1].type).toBe('BOT');
         expect(engine.seats[1].sessionId).toBe(null);
+    });
+
+    // Online bots used to get placeholder "Bot N" names + a hard-coded "balanced"
+    // personality. These guard that the server now populates bot seats the same
+    // way the offline setup does: a cheeky pool name + a random AI personality.
+    it('a host-added bot gets a cheeky pool name and a random personality, not "Bot N"', () => {
+        const { engine } = room(2);
+        engine.handleJoin('h', 'Host');
+        engine.handleSetSeat('h', 1, 'BOT');
+        const seat = engine.seats[1];
+        expect(seat.name).not.toMatch(/^Bot \d+$/);
+        expect(BOT_NAME_POOLS[engine.botNamePool]).toContain(seat.name);
+        expect(Object.keys(PERSONALITIES)).toContain(seat.personality);
+    });
+
+    it('honours the host bot-name pool ("hindi") for auto-filled bots', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({
+            roomId: 'r', size: 4, botNamePool: 'hindi',
+            transport: fake.transport, schedule: fake.schedule,
+        });
+        engine.handleJoin('h', 'Host');
+        engine.handleStart('h'); // 3 open seats become bots
+        const botNames = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
+        expect(botNames).toHaveLength(3);
+        for (const n of botNames) expect(BOT_NAME_POOLS.hindi).toContain(n);
+    });
+
+    it('gives every auto-filled bot a unique name within the room', () => {
+        const fake = makeFake();
+        const engine = new RoomEngine({ roomId: 'r', size: 4, transport: fake.transport, schedule: fake.schedule });
+        engine.handleJoin('h', 'Host');
+        engine.handleStart('h'); // seats 1..3 fill with bots
+        const names = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
+        expect(new Set(names).size).toBe(names.length);
     });
 
     it('host can kick a player, reopening the seat and notifying them', () => {

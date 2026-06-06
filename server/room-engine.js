@@ -21,7 +21,7 @@ import {
     isTripComplete,
     rollDiceWithPity,
 } from '../scripts/game-logic.js';
-import { pickBestMove, PERSONALITIES } from '../scripts/bot-ai.js';
+import { pickBestMove, PERSONALITIES, randomPersonality } from '../scripts/bot-ai.js';
 import {
     isPlayerFinished,
     getNextPlayerIndex,
@@ -29,6 +29,7 @@ import {
     computeLeftoverRankOrder,
 } from '../scripts/turn-rules.js';
 import { makeRng } from '../scripts/game-driver.js';
+import { randomBotName } from '../scripts/bot-names.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',
@@ -79,6 +80,13 @@ export class RoomEngine {
     constructor(opts) {
         this.roomId = opts.roomId;
         this.rng = makeRng(opts.seed ?? 1);
+        // Bot naming/personality uses its OWN seeded stream so it never disturbs
+        // the dice rng — keeps seeded games byte-identical regardless of how many
+        // bots a room ends up with. Mirrors the offline setup (cheeky pool name +
+        // varied AI personality); the pool defaults to English, overridable by the
+        // host's preference forwarded at room creation.
+        this.botNamePool = opts.botNamePool || 'english';
+        this.botRng = makeRng((opts.seed ?? 1) ^ 0x5bd1e995);
         this.transport = opts.transport;
         this.schedule = opts.schedule || ((fn, ms) => setTimeout(fn, ms));
         this.botDelayMs = opts.botDelayMs ?? 600;
@@ -108,12 +116,14 @@ export class RoomEngine {
         this.seats = [0, 1, 2, 3].map(i => ({
             type: plan[i] || null,       // 'PLAYER' | 'BOT' | null(closed)
             sessionId: null,             // null = open (PLAYER) or n/a (BOT/closed)
-            name: plan[i] === 'BOT' ? `Bot ${i + 1}` : '',
-            personality: plan[i] === 'BOT' ? 'balanced' : null,
+            name: '',
+            personality: null,
             connected: false,
             graceTimer: null,  // pending forfeit timer while disconnected mid-game
             graceUntil: 0,      // wall-clock deadline for the reconnect window
         }));
+        // Name + personalise any bots baked into the initial plan.
+        this.seats.forEach((s, i) => { if (s.type === 'BOT') this._fillBot(i); });
         this.hostSession = null;
 
         // ---- in-game state (materialised on start) ----
@@ -155,6 +165,24 @@ export class RoomEngine {
 
     _firstActive() {
         return this.playerTypes.findIndex(t => t !== undefined);
+    }
+
+    /** Names already taken by other seats (humans or bots) so a fresh bot name
+     *  won't collide with anyone in the room. */
+    _usedNames(exceptIndex) {
+        return this.seats.filter((s, i) => i !== exceptIndex && s.name).map(s => s.name);
+    }
+
+    /** Turn seat `i` into a freshly-populated bot — a cheeky pool name (unique in
+     *  the room) plus a random AI personality, exactly like the offline setup
+     *  populates its bot seats. */
+    _fillBot(i) {
+        const s = this.seats[i];
+        s.type = 'BOT';
+        s.sessionId = null;
+        s.connected = false;
+        s.name = randomBotName(this._usedNames(i), { poolKey: this.botNamePool, rng: this.botRng });
+        s.personality = randomPersonality(this.botRng);
     }
 
     // ---- lobby intents ------------------------------------------------------
@@ -251,11 +279,7 @@ export class RoomEngine {
 
         if (type === 'BOT') {
             this._bootIfHuman(i);
-            seat.type = 'BOT';
-            seat.sessionId = null;
-            seat.connected = false;
-            seat.name = `Bot ${i + 1}`;
-            seat.personality = 'balanced';
+            this._fillBot(i);
         } else if (type === 'PLAYER') {
             this._openSeat(i);
         } else if (type === 'CLOSED') {
@@ -341,14 +365,11 @@ export class RoomEngine {
     }
 
     _startGame() {
-        // Open human seats with nobody in them become bots.
+        // Open human seats with nobody in them become bots; any bot missing a
+        // name/personality (shouldn't happen, but be defensive) gets filled too.
         this.seats.forEach((s, i) => {
-            if (s.type === 'PLAYER' && s.sessionId === null) {
-                s.type = 'BOT';
-                s.name = `Bot ${i + 1}`;
-                s.personality = 'balanced';
-            }
-            if (s.type === 'BOT' && !s.personality) s.personality = 'balanced';
+            if (s.type === 'PLAYER' && s.sessionId === null) this._fillBot(i);
+            else if (s.type === 'BOT' && (!s.name || !s.personality)) this._fillBot(i);
         });
 
         this.playerTypes = this.seats.map(s => s.type || undefined);

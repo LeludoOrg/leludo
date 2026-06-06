@@ -46,11 +46,22 @@ export function setActivePoolKey(key) {
     document.dispatchEvent(new CustomEvent("bot-name-pool-changed", { detail: { key } }));
 }
 
-export function randomBotName(used = []) {
-    const pool = BOT_NAME_POOLS[getActivePoolKey()];
+/**
+ * Pick a random bot name not already in `used`.
+ * @param {string[]} used  names already taken (avoid collisions).
+ * @param {object} [opts]
+ * @param {string} [opts.poolKey]  force a pool ("english"|"hindi"); defaults to the
+ *   localStorage-stored active pool. The server passes this explicitly because it
+ *   has no localStorage.
+ * @param {()=>number} [opts.rng]  RNG returning 0..1; defaults to Math.random. The
+ *   server passes a seeded RNG so bot naming stays deterministic.
+ */
+export function randomBotName(used = [], { poolKey, rng = Math.random } = {}) {
+    const key = poolKey && BOT_NAME_POOLS[poolKey] ? poolKey : getActivePoolKey();
+    const pool = BOT_NAME_POOLS[key];
     const available = pool.filter(n => !used.includes(n));
     const source = available.length ? available : pool;
-    return source[Math.floor(Math.random() * source.length)];
+    return source[Math.floor(rng() * source.length)];
 }
 
 export function isDefaultBotName(name) {

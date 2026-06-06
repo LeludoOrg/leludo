@@ -17,6 +17,7 @@
  *   - room    : room code (private). Created on first connect, joined after.
  *   - session : reconnect key. Same session → same seat on refresh/drop.
  *   - name    : display name.
+ *   - pool    : host's bot-name pool (e.g. english/hindi), read on room create.
  *   - humans/bots/seed/persona : room config, read only when the room is created.
  */
 import { createServer } from 'node:http';
@@ -69,6 +70,7 @@ function makeRoom(roomId, cfg) {
         autoStart: cfg.autoStart,
         seed: cfg.seed,
         graceMs: cfg.graceMs,
+        botNamePool: cfg.botNamePool,
         transport,
     });
 
@@ -144,6 +146,9 @@ wss.on('connection', (ws, req) => {
     // Preferred seat colour (0..3); the engine honours it when that seat is free.
     const colorRaw = q.get('color');
     const color = colorRaw == null || colorRaw === '' ? null : Number(colorRaw);
+    // Host's bot-name pool preference (e.g. "english"/"hindi"); read only when the
+    // room is created so its bots get cheeky names like the offline game.
+    const pool = q.get('pool') || undefined;
 
     // Per-connection state. `room` is null until bound (immediately for private
     // rooms, on match-form for public matchmaking).
@@ -179,6 +184,7 @@ wss.on('connection', (ws, req) => {
             const size = Math.max(2, clampSeats(q.get('size') ?? q.get('humans'), 2));
             room = makeRoom(roomId, {
                 size,
+                botNamePool: pool,
                 seed: TEST_HOOKS && q.get('seed') != null ? Number(q.get('seed')) : 1,
                 graceMs: TEST_HOOKS && q.get('grace') != null ? Number(q.get('grace')) : undefined,
             });
