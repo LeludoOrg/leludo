@@ -131,6 +131,11 @@ class GameRoom extends HTMLElement {
             `<button class="seat-half ${active ? '' : 'seat-half--inactive'}" ${active ? `style="background:${colorVar};color:#fff;"` : ''} data-action="${action}" data-seat="${i}" data-testid="online-seat-${i}-${action}">${icon}<span>${txt}</span></button>`
         const removeBtn = (action, title) =>
             `<button class="seat-remove" data-action="${action}" data-seat="${i}" data-testid="online-seat-${i}-${action}" title="${title}">${ICON_CLOSE}</button>`
+        // A joined player is a real person — kicking them is a distinct, labelled
+        // action, not the bare × used to empty a bot/open chair (which reads as
+        // "remove this slot", not "remove this human").
+        const kickBtn = () =>
+            `<button class="online-seat-btn online-seat-btn--danger" data-action="kick" data-seat="${i}" data-testid="online-seat-${i}-kick" title="Remove player">Kick</button>`
 
         // ---- Empty chair: tap a side to fill (host only). ----
         if (!s.type) {
@@ -162,7 +167,7 @@ class GameRoom extends HTMLElement {
             name = (s.name || `Player ${i + 1}`) + (i === mySeat ? ' (you)' : '')
             status = s.isHost ? 'Host' : 'Ready'
             // A live player can't be silently retyped — kick them first (reopens the chair).
-            if (editable) controls = removeBtn('kick', 'Remove player')
+            if (editable) controls = kickBtn()
         } else {
             name = 'Open seat'
             status = 'Waiting for a player'

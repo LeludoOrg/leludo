@@ -241,7 +241,12 @@ test.describe('Online lobby — create + join', () => {
         await openOnline(guest, 'Guesty');
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
+        // Kicking a joined human is a distinct, *labelled* control — not the bare
+        // × used to empty a bot/open chair. Regression: a refactor once collapsed
+        // it to a tooltip-only × that read as "remove slot", so the host had no
+        // visible "kick this person" affordance. Assert the label is present.
         await expect(host.getByTestId('online-seat-2-kick')).toBeVisible();
+        await expect(host.getByTestId('online-seat-2-kick')).toHaveText(/kick/i);
 
         // Host kicks the guest → guest is bounced back to the online menu.
         await host.getByTestId('online-seat-2-kick').click();

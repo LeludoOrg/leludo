@@ -14,8 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
 const procs = [];
-function run(label, cmd, args) {
-  const p = spawn(cmd, args, { cwd: root, stdio: 'inherit' });
+function run(label, cmd, args, env) {
+  const p = spawn(cmd, args, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } });
   p.on('error', (err) => {
     console.error(`[dev] failed to start ${label}:`, err.message);
     shutdown();
@@ -25,8 +25,13 @@ function run(label, cmd, args) {
 }
 
 // Static site (port 8888) + multiplayer ws server (port 8890).
+// The mp-server runs with DEV_TEST_HOOKS so the LOCAL dev backend honours the
+// same deterministic hooks (seed / grace override / __busy__ room) the Playwright
+// e2e suite relies on. Playwright reuses an already-running dev server locally
+// (reuseExistingServer), so without this the reused server silently ignores
+// ?grace=/seed=/__busy__ and those e2e specs fail only on dev machines, never CI.
 run('static-server', 'npx', ['five-server', '--port=8888', '--open=/']);
-run('mp-server', 'node', [resolve(root, 'server/local-server.mjs'), '8890']);
+run('mp-server', 'node', [resolve(root, 'server/local-server.mjs'), '8890'], { DEV_TEST_HOOKS: '1' });
 
 let down = false;
 const shutdown = () => {
