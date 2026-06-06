@@ -223,35 +223,6 @@ wc-quick-start .online-join-section {
 
 /* ----- Online (lobby) ----- */
 
-wc-quick-start .online-seg {
-    display: inline-flex;
-    gap: 4px;
-    background: color-mix(in srgb, var(--color-fg) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg) 8%, transparent);
-    border-radius: var(--radius-pill);
-    padding: 4px;
-}
-
-wc-quick-start .online-seg-btn {
-    min-width: 44px;
-    padding: 6px 14px;
-    border: 0;
-    border-radius: var(--radius-pill);
-    background: transparent;
-    color: var(--color-fg);
-    font: inherit;
-    font-weight: 600;
-    opacity: 0.5;
-    cursor: pointer;
-    transition: background-color 150ms ease, opacity 150ms ease;
-}
-
-wc-quick-start .online-seg-btn.is-on {
-    background: var(--cta-bg);
-    color: var(--cta-fg);
-    opacity: 1;
-}
-
 wc-quick-start .online-divider {
     display: flex;
     align-items: center;
@@ -383,15 +354,7 @@ wc-quick-start [hidden] {
     display: none !important;
 }
 
-/* Host lobby controls */
-wc-quick-start .online-host-tools {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    margin: var(--space-3) 0 var(--space-1);
-}
-
+/* Host lobby controls (per-seat add-bot / kick / open) */
 wc-quick-start .online-seat-btn {
     flex-shrink: 0;
     border: 1px solid color-mix(in srgb, var(--color-fg) 20%, transparent);

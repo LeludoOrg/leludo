@@ -21,24 +21,24 @@ test.describe('Online gameplay', () => {
     test('host + bot game mounts the real board and the turn progresses', async ({ page }) => {
         await openOnline(page, 'Hosty');
         await page.getByTestId('online-create').click();
-        // Add a bot to seat 1 and start.
+        // Add a bot to seat 1 and start. Seats 2 & 3 stay open and fill with bots
+        // on start, so every online room is a full four-handed table.
         await page.getByTestId('online-seat-1-bot').click();
         await expect(page.getByTestId('online-seat-1')).toContainText('Bot');
         await page.getByTestId('online-start').click();
 
         // The lobby hands off to the real board.
         await expect(page.locator('wc-board .board-grid')).toBeVisible();
-        await expect(page.locator('wc-token')).toHaveCount(8); // 2 players × 4 tokens
+        await expect(page.locator('wc-token')).toHaveCount(16); // 4 players × 4 tokens
         await expect(page.locator('#main-menu')).toBeHidden();
 
         // Perspective mirrors offline play (HUMAN_PREFERRED_POSITIONS): this
-        // client (server seat 0) renders at board position 2 (bottom-right), the
-        // second player (seat 1) diagonally opposite at position 0 (top-left).
-        // The other corners stay empty in a 2-player game.
+        // client (server seat 0) renders at board position 2 (bottom-right). All
+        // four corners are filled.
         await expect(page.locator('#p-2-0')).toBeVisible(); // me, bottom-right
-        await expect(page.locator('#p-0-0')).toBeVisible(); // bot, top-left
-        await expect(page.locator('#p-1-0')).toHaveCount(0);
-        await expect(page.locator('#p-3-0')).toHaveCount(0);
+        await expect(page.locator('#p-0-0')).toBeVisible();
+        await expect(page.locator('#p-1-0')).toBeVisible();
+        await expect(page.locator('#p-3-0')).toBeVisible();
         // …in my own colour: board position 2 uses seat 0's base colour.
         const sameColour = await page.evaluate(() => {
             const cs = getComputedStyle(document.documentElement);
@@ -70,8 +70,7 @@ test.describe('Online gameplay', () => {
         await openOnline(page, 'Quad');
         await page.getByTestId('online-create').click();
 
-        // Grow the room to 4 and fill the three open seats with bots.
-        await page.getByTestId('online-lobby-size-4').click();
+        // Room is four seats by default — fill the three open seats with bots.
         for (const i of [1, 2, 3]) {
             await page.getByTestId(`online-seat-${i}-bot`).click();
             await expect(page.getByTestId(`online-seat-${i}`)).toContainText('Bot');
@@ -123,23 +122,25 @@ test.describe('Online gameplay', () => {
         await expect(pageA.getByTestId('online-seat-1')).toContainText('Bob');
         await pageA.getByTestId('online-start').click();
 
-        // Both boards mount (2 players × 4 tokens).
+        // Both boards mount. Alice + Bob are humans; seats 2 & 3 fill with bots,
+        // so it's a full four-handed table (4 players × 4 tokens).
         await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
         await expect(pageB.locator('wc-board .board-grid')).toBeVisible();
-        await expect(pageA.locator('wc-token')).toHaveCount(8);
+        await expect(pageA.locator('wc-token')).toHaveCount(16);
 
         // The guest abandons the game.
         await ctxB.close();
 
-        // No blocking overlay — the leaver (server seat 1 → board top-left, #b0)
-        // is dimmed, the board stays live, and there's no self-reconnect banner
-        // (this client didn't drop).
-        await expect(pageA.locator('#b0')).toHaveClass(/net-dimmed/);
+        // No blocking overlay — the leaver is dimmed, the board stays live, and
+        // there's no self-reconnect banner (this client didn't drop). In a 4-seat
+        // ring from Alice's view (self seat 0 → board 2), Bob (seat 1) maps to
+        // board position 3 = (2 + (1 - 0)) % 4.
+        await expect(pageA.locator('#b3')).toHaveClass(/net-dimmed/);
         await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
         await expect(pageA.getByTestId('net-reconnect-banner')).toBeHidden();
 
-        // Grace elapses → forfeit → only one human left → the game ends. The
-        // recap screen mounts (its .ge-screen is the fixed full-bleed overlay).
+        // Grace elapses → forfeit → only one human left (bots don't count) → the
+        // game ends. The recap screen mounts (.ge-screen is the full-bleed overlay).
         await expect(pageA.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 12_000 });
 
         await ctxA.close();

@@ -814,7 +814,6 @@ class QuickStart extends HTMLElement {
 
     showOnlineLobby(code) {
         this.innerHTML = ""
-        const seg = (n) => `<button class="online-seg-btn" data-action="size" data-n="${n}" data-testid="online-lobby-size-${n}">${n}</button>`
         const html = /*html*/ `
             <div class="frame">
                 <div class="top-bar">
@@ -827,11 +826,6 @@ class QuickStart extends HTMLElement {
                     <span class="section-label">Room code</span>
                     <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
                     <p class="body-helper online-lobby-hint" data-testid="online-lobby-hint">Share this code with your friends.</p>
-
-                    <div class="online-host-tools" data-testid="online-host-tools" hidden>
-                        <span class="section-label">Room size</span>
-                        <div class="online-seg" data-testid="online-lobby-size">${seg(2)}${seg(3)}${seg(4)}</div>
-                    </div>
 
                     <div class="online-seats" data-testid="online-seats"></div>
 
@@ -858,8 +852,7 @@ class QuickStart extends HTMLElement {
             const action = btn.dataset.action
             const seat = Number(btn.dataset.seat)
             playClickSound()
-            if (action === "size") this._net.setSize(Number(btn.dataset.n))
-            else if (action === "kick") this._net.kick(seat)
+            if (action === "kick") this._net.kick(seat)
             else if (action === "bot") this._net.setSeat(seat, "BOT")
             else if (action === "open") this._net.setSeat(seat, "PLAYER")
         })
@@ -878,14 +871,9 @@ class QuickStart extends HTMLElement {
             const el = this.querySelector(`[data-testid="${testid}"]`)
             if (el) el.hidden = hidden
         }
-        setHidden('online-host-tools', !isHost || state.started)
         setHidden('online-start', !isHost || state.started)
         const isHostEl = this.querySelector('[data-testid="online-is-host"]')
         if (isHostEl) isHostEl.textContent = String(isHost)
-
-        // Reflect current size on the host's segmented control.
-        this.querySelectorAll('[data-testid="online-lobby-size"] .online-seg-btn')
-            .forEach(b => b.classList.toggle('is-on', Number(b.dataset.n) === state.size))
 
         const activeSeats = (state.seats || []).filter(s => s.type) // PLAYER or BOT
         const seatsEl = this.querySelector('.online-seats')
