@@ -23,40 +23,30 @@ class PlayOnline extends HTMLElement {
                     <wc-settings></wc-settings>
                 </div>
 
-                <div class="frame-body setup-body online-setup-body">
-                    <div class="online-intro">
-                        <h2 class="display-title">Play online</h2>
-                        <p class="setup-helper">Join a friend's room with their code, or start your own.</p>
-                    </div>
-
-                    <div class="online-join-section">
-                        <div class="online-join-row">
-                            <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
-                            <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
+                <div class="frame-body online-setup-body">
+                    <!-- Identity hero: your name, centered — mirrors the home
+                         screen's centered die + title so the transition feels
+                         continuous. The actions sit at the bottom like home's CTAs. -->
+                    <div class="online-identity" data-testid="online-setup-seat-0">
+                        <div class="online-identity-pawn" style="background:hsl(var(--player-0));">
+                            <div class="seat-pawn">${PAWN_SVG(0)}</div>
                         </div>
-                    </div>
-
-                    <div class="online-divider online-new-room-divider"><span>or start a new room</span></div>
-
-                    <div class="seat-list">
-                        <div class="seat-row" data-testid="online-setup-seat-0">
-                            <div class="seat-color-cycle" style="background:hsl(var(--player-0));">
-                                <div class="seat-pawn">${PAWN_SVG(0)}</div>
-                            </div>
-                            <div class="seat-body">
-                                <label class="seat-name-wrap">
-                                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-0));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
-                                    <span class="seat-name-pencil">${ICON_PENCIL}</span>
-                                </label>
-                            </div>
-                            <span class="online-you-tag">You</span>
-                        </div>
+                        <label class="seat-name-wrap online-identity-name">
+                            <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-0));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
+                            <span class="seat-name-pencil">${ICON_PENCIL}</span>
+                        </label>
+                        <p class="online-identity-hint">This is you. Tap to rename.</p>
                     </div>
 
                     <p class="online-status" data-testid="online-status"></p>
                 </div>
 
-                <div class="frame-footer">
+                <div class="frame-footer online-actions">
+                    <div class="online-join-row">
+                        <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
+                        <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
+                    </div>
+                    <div class="online-divider online-new-room-divider"><span>or</span></div>
                     <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
                 </div>
             </div>

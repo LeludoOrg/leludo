@@ -2,51 +2,70 @@
    wc-play-online — online setup screen (name + join / create)
    ============================================================ */
 
-/* Reuses the shared seat-list look (components/seat-list.css) for the host's
-   name row and the shared .online-status line. Only the setup-specific extras
-   live here. */
+/* Layout mirrors the home screen for a continuous transition: a centered
+   identity hero (your name) fills the body, and the actions (join + create,
+   split by a separator) sit at the bottom like home's CTA stack. */
 
-/* The "You" tag where the offline seat-0 row would show a Human/Bot pill. */
-wc-play-online .online-you-tag {
-    flex-shrink: 0;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    opacity: 0.5;
-    padding: 5px 11px;
-    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
-    border-radius: var(--radius-pill);
+wc-play-online .online-setup-body {
+    display: flex;
+    flex-direction: column;
 }
 
-wc-play-online .online-join-section {
-    margin-top: var(--space-5);
+/* ----- Identity hero (centered, fills the body like home's hero) ----- */
+
+wc-play-online .online-identity {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-4);
+}
+
+wc-play-online .online-identity-pawn {
+    width: 72px;
+    height: 72px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+wc-play-online .online-identity-pawn .seat-pawn {
+    width: 68%;
+    height: 68%;
+}
+
+/* Centered, underlined name input (shares the shared .seat-name look). */
+wc-play-online .online-identity-name {
+    width: auto;
+    max-width: 240px;
+    justify-content: center;
+}
+
+wc-play-online .online-identity-name .seat-name {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+wc-play-online .online-identity-hint {
+    font-size: 13px;
+    opacity: 0.5;
+}
+
+wc-play-online .online-status {
+    text-align: center;
+}
+
+/* ----- Bottom actions (join + separator + create) ----- */
+
+wc-play-online .online-actions {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-}
-
-/* Separator between "join a friend" (top) and "start a new room" (the name
-   input below). */
-wc-play-online .online-new-room-divider {
-    margin: var(--space-5) 0;
-}
-
-wc-play-online .online-divider {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    color: var(--color-fg);
-    opacity: 0.4;
-    font-size: 12px;
-}
-
-wc-play-online .online-divider::before,
-wc-play-online .online-divider::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: color-mix(in srgb, var(--color-fg) 15%, transparent);
 }
 
 wc-play-online .online-join-row {
@@ -81,6 +100,24 @@ wc-play-online .online-join-btn {
     height: auto;
     padding: 0 22px;
     border-radius: var(--radius-lg);
+}
+
+wc-play-online .online-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--color-fg);
+    opacity: 0.4;
+    font-size: 12px;
+    margin: 0;
+}
+
+wc-play-online .online-divider::before,
+wc-play-online .online-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-fg) 15%, transparent);
 }
 
 wc-play-online .online-create-btn {

@@ -34,9 +34,9 @@ test.describe('Home — offline / online split', () => {
 
     // Initial release ships private rooms only — the "Find a public match" entry
     // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The online menu
-    // is an identity + an entry point: join by code (first), then a "start a new
-    // room" divider, then just your name + Create. The Open/Bot seats live later
-    // in room mode, NOT here. It must NOT show the public entry.
+    // is an identity + an entry point: your name centered as the hero, then the
+    // actions (join by code + Create) at the bottom. The Open/Bot seats live
+    // later in room mode, NOT here. It must NOT show the public entry.
     test('online path offers the private-room seat setup only', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
@@ -52,18 +52,21 @@ test.describe('Home — offline / online split', () => {
         await expect(page.getByTestId('online-setup-seat-1-bot')).toHaveCount(0);
     });
 
-    // Join is offered before "start a new room": the join-by-code row sits above
-    // the new-room divider, which sits above the host's name input. Guards the
-    // requested ordering (join first, create second).
-    test('the setup screen lists join before the new-room form', async ({ page }) => {
+    // Layout mirrors home: the name is the centered hero up top, and the actions
+    // sit at the bottom — join-by-code, then a separator, then Create room.
+    // Guards the requested structure (name centered above; join + create with a
+    // divider between, bottom-aligned).
+    test('the setup screen centers the name above the join / create actions', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
 
-        const joinTop = await page.getByTestId('online-code-input').boundingBox();
-        const dividerTop = await page.locator('.online-new-room-divider').boundingBox();
-        const nameTop = await page.getByTestId('online-name').boundingBox();
-        expect(joinTop.y).toBeLessThan(dividerTop.y);   // join above the divider
-        expect(dividerTop.y).toBeLessThan(nameTop.y);   // divider above the name input
+        const name = await page.getByTestId('online-name').boundingBox();
+        const join = await page.getByTestId('online-code-input').boundingBox();
+        const divider = await page.locator('.online-new-room-divider').boundingBox();
+        const create = await page.getByTestId('online-create').boundingBox();
+        expect(name.y).toBeLessThan(join.y);       // name (hero) above the actions
+        expect(join.y).toBeLessThan(divider.y);    // join above the separator
+        expect(divider.y).toBeLessThan(create.y);  // separator above Create room
     });
 
     test('back from the online menu returns home', async ({ page }) => {
