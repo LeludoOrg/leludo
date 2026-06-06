@@ -54,12 +54,12 @@ class PlayOnline extends HTMLElement {
                 </div>
 
                 <div class="frame-footer online-actions">
+                    <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
+                    <div class="online-divider online-new-room-divider"><span>or</span></div>
                     <div class="online-join-row">
                         <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
                         <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
                     </div>
-                    <div class="online-divider online-new-room-divider"><span>or</span></div>
-                    <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
                 </div>
             </div>
         `

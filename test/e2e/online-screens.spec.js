@@ -41,7 +41,8 @@ test.describe('Home — offline / online split', () => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
         await expect(page.getByTestId('online-public')).toHaveCount(0);      // public hidden for launch
-        await expect(page.getByTestId('online-join')).toBeVisible();          // join by code (offered first)
+        await expect(page.getByTestId('online-create')).toBeVisible();        // create room (offered first)
+        await expect(page.getByTestId('online-join')).toBeVisible();          // join by code
         await expect(page.getByTestId('online-setup-seat-0')).toBeVisible();  // your seat (name)
         await expect(page.getByTestId('online-name')).toBeVisible();
         await expect(page.getByTestId('online-create')).toBeVisible();        // create room
@@ -53,20 +54,20 @@ test.describe('Home — offline / online split', () => {
     });
 
     // Layout mirrors home: the name is the centered hero up top, and the actions
-    // sit at the bottom — join-by-code, then a separator, then Create room.
-    // Guards the requested structure (name centered above; join + create with a
+    // sit at the bottom — Create room, then a separator, then join-by-code.
+    // Guards the requested structure (name centered above; create + join with a
     // divider between, bottom-aligned).
-    test('the setup screen centers the name above the join / create actions', async ({ page }) => {
+    test('the setup screen centers the name above the create / join actions', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
 
         const name = await page.getByTestId('online-name').boundingBox();
-        const join = await page.getByTestId('online-code-input').boundingBox();
-        const divider = await page.locator('.online-new-room-divider').boundingBox();
         const create = await page.getByTestId('online-create').boundingBox();
-        expect(name.y).toBeLessThan(join.y);       // name (hero) above the actions
-        expect(join.y).toBeLessThan(divider.y);    // join above the separator
-        expect(divider.y).toBeLessThan(create.y);  // separator above Create room
+        const divider = await page.locator('.online-new-room-divider').boundingBox();
+        const join = await page.getByTestId('online-code-input').boundingBox();
+        expect(name.y).toBeLessThan(create.y);     // name (hero) above the actions
+        expect(create.y).toBeLessThan(divider.y);  // Create room above the separator
+        expect(divider.y).toBeLessThan(join.y);    // separator above join
     });
 
     // The colour picker requests a seat: the seat index doubles as the colour,

@@ -3,7 +3,7 @@
    ============================================================ */
 
 /* Layout mirrors the home screen for a continuous transition: a centered
-   identity hero (your name) fills the body, and the actions (join + create,
+   identity hero (your name) fills the body, and the actions (create + join,
    split by a separator) sit at the bottom like home's CTA stack. */
 
 wc-play-online .online-setup-body {
