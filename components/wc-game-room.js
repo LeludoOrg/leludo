@@ -1,12 +1,19 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
-import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE } from "./wc-icons.js";
+import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE, ICON_USER, ICON_BOT, ICON_CLOSE } from "./wc-icons.js";
 
 // The "Game room" lobby: the room code to share, the live seat list, and (for
 // the host) Start + per-seat controls. It renders server state pushed in via
 // renderLobby() and emits a `room-intent` ({kind:'start'|'leave'|'back'|'seat'|
 // 'share', action?, seat?}) for wc-quick-start (the net controller) to act on —
 // the component never touches the socket (or the OS share sheet) itself.
+//
+// Seats mirror the OFFLINE setup (components/seat-list.css): every chair is
+// Empty, a Human, or a Bot. The host configures each chair exactly like offline
+// — tap Human/Bot to fill an empty chair, toggle Human↔Bot, or × to empty it —
+// the only online extra is Kick (remove a player who has already joined). A
+// Human chair nobody joined becomes a bot when the game starts (server side).
+//   action → net intent: 'human'→PLAYER  'bot'→BOT  'empty'→CLOSED  'kick'→kick
 class GameRoom extends HTMLElement {
     connectedCallback() {
         const html = /*html*/ `
@@ -46,8 +53,8 @@ class GameRoom extends HTMLElement {
         el.querySelector('[data-testid="online-share"]').addEventListener("click", () => { playClickSound(); this._emit('share') })
         el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); this._emit('leave') })
 
-        // Host per-seat controls (kick / add-bot / open) are delegated on the
-        // body so they survive renderLobby rewriting the seat list.
+        // Host per-seat controls (human / bot / empty / kick) are delegated on
+        // the body so they survive renderLobby rewriting the seat list.
         el.querySelector(".frame-body").addEventListener("click", (e) => {
             const btn = e.target.closest("[data-action]")
             if (!btn) return
@@ -79,9 +86,10 @@ class GameRoom extends HTMLElement {
         if (startedEl) startedEl.textContent = 'false'
     }
 
-    // Render the live room into the seat-list, reusing the shared seat-row look
-    // (pawn + name + status). `mySeat` is this client's server seat index (-1
-    // until seated). Mirrors the old in-place lobby render, now owned here.
+    // Render the live room into the seat-list, reusing the shared offline seat
+    // look (components/seat-list.css). All four chairs render (Empty / Human /
+    // Bot) so the host can configure each one. `mySeat` is this client's server
+    // seat index (-1 until seated).
     renderLobby(state, mySeat) {
         const isHost = state.hostSeat === mySeat && mySeat !== -1
         const startBtn = this.querySelector('[data-testid="online-start"]')
@@ -89,48 +97,17 @@ class GameRoom extends HTMLElement {
         const isHostEl = this.querySelector('[data-testid="online-is-host"]')
         if (isHostEl) isHostEl.textContent = String(isHost)
 
-        const activeSeats = (state.seats || []).filter(s => s.type) // PLAYER or BOT
+        const canEdit = isHost && !state.started
+        const seats = (state.seats || []).slice().sort((a, b) => a.index - b.index)
         const seatList = this.querySelector('.seat-list')
         if (seatList) {
-            const rows = [...activeSeats].sort((a, b) => a.index - b.index)
-            seatList.innerHTML = rows.map(s => {
-                const me = s.index === mySeat
-                const isBot = s.type === 'BOT'
-                let label, status
-                if (isBot) { label = s.name || `Bot ${s.index + 1}`; status = 'Bot' }
-                else if (s.connected) { label = s.name || `Player ${s.index + 1}`; status = s.isHost ? 'Host' : 'Ready' }
-                else { label = 'Open seat'; status = 'Open' }
-                const tags = me ? ' (you)' : ''
-
-                // Host-only per-seat controls (never on the host's own seat).
-                let controls = ''
-                if (isHost && !state.started && !s.isHost) {
-                    if (isBot) {
-                        controls = `<button class="online-seat-btn" data-action="open" data-seat="${s.index}" data-testid="online-seat-${s.index}-open">Open</button>`
-                    } else if (s.connected) {
-                        controls = `<button class="online-seat-btn online-seat-btn--danger" data-action="kick" data-seat="${s.index}" data-testid="online-seat-${s.index}-kick">Kick</button>`
-                    } else {
-                        controls = `<button class="online-seat-btn" data-action="bot" data-seat="${s.index}" data-testid="online-seat-${s.index}-bot">Add bot</button>`
-                    }
-                }
-                const dim = (!isBot && !s.connected) ? 0.4 : 1
-                return /*html*/ `
-                    <div class="seat-row" data-testid="online-seat-${s.index}">
-                        <div class="seat-color-cycle" style="background:hsl(var(--player-${s.index}));opacity:${dim};">
-                            <div class="seat-pawn">${PAWN_SVG(s.index)}</div>
-                        </div>
-                        <span class="online-seat-name">${escapeHtml(label)}${tags}</span>
-                        <span class="online-seat-status">${status}</span>
-                        ${controls}
-                    </div>`
-            }).join('')
+            seatList.innerHTML = seats.map(s => this._seatRowHtml(s, mySeat, canEdit)).join('')
         }
 
         const startedEl = this.querySelector('[data-testid="online-started"]')
         if (startedEl) startedEl.textContent = String(!!state.started)
 
-        const humans = activeSeats.filter(s => s.type === 'PLAYER')
-        const joined = humans.filter(s => s.connected).length
+        const joined = seats.filter(s => s.type === 'PLAYER' && s.connected).length
         if (state.started) {
             this.setStatus('Game starting…')
         } else if (isHost) {
@@ -138,6 +115,71 @@ class GameRoom extends HTMLElement {
         } else {
             this.setStatus('Waiting for the host to start…')
         }
+    }
+
+    // One seat row. Three states mirror offline: Empty (tap Human/Bot to fill),
+    // Human (joined → name + Kick; open → "waiting" + Human|Bot toggle + ×), Bot
+    // (name + Human|Bot toggle + ×). Controls render for the host only, and never
+    // on the host's own chair. The Human|Bot pill + × match the offline setup.
+    _seatRowHtml(s, mySeat, canEdit) {
+        const i = s.index
+        const colorVar = `hsl(var(--player-${i}))`
+        const editable = canEdit && !s.isHost          // can't retype the host's own chair
+        const fillBtn = (action, icon, txt) =>
+            `<button class="seat-add" data-action="${action}" data-seat="${i}" data-testid="online-seat-${i}-${action}">${icon}<span>${txt}</span></button>`
+        const half = (action, icon, txt, active) =>
+            `<button class="seat-half ${active ? '' : 'seat-half--inactive'}" ${active ? `style="background:${colorVar};color:#fff;"` : ''} data-action="${action}" data-seat="${i}" data-testid="online-seat-${i}-${action}">${icon}<span>${txt}</span></button>`
+        const removeBtn = (action, title) =>
+            `<button class="seat-remove" data-action="${action}" data-seat="${i}" data-testid="online-seat-${i}-${action}" title="${title}">${ICON_CLOSE}</button>`
+
+        // ---- Empty chair: tap a side to fill (host only). ----
+        if (!s.type) {
+            const fill = editable
+                ? `<div class="seat-pill">${fillBtn('human', ICON_USER, 'Human')}${fillBtn('bot', ICON_BOT, 'Bot')}</div>`
+                : ''
+            return /*html*/ `
+                <div class="seat-row-empty" data-testid="online-seat-${i}">
+                    <div class="seat-empty-color">
+                        <div class="seat-pawn seat-pawn-ghost">${PAWN_SVG(i)}</div>
+                    </div>
+                    <div class="seat-body">
+                        <div class="seat-empty-title">Empty seat</div>
+                        ${editable ? '<div class="seat-empty-sub">Tap a side to fill</div>' : ''}
+                    </div>
+                    ${fill}
+                </div>`
+        }
+
+        // ---- Filled chair: Human (joined / open) or Bot. ----
+        const isBot = s.type === 'BOT'
+        const joined = s.claimed
+        let name, status, controls = ''
+        if (isBot) {
+            name = s.name || `Bot ${i + 1}`
+            status = 'Bot'
+            if (editable) controls = `<div class="seat-pill">${half('human', ICON_USER, 'Human', false)}${half('bot', ICON_BOT, 'Bot', true)}</div>${removeBtn('empty', 'Empty seat')}`
+        } else if (joined) {
+            name = (s.name || `Player ${i + 1}`) + (i === mySeat ? ' (you)' : '')
+            status = s.isHost ? 'Host' : 'Ready'
+            // A live player can't be silently retyped — kick them first (reopens the chair).
+            if (editable) controls = removeBtn('kick', 'Remove player')
+        } else {
+            name = 'Open seat'
+            status = 'Waiting for a player'
+            if (editable) controls = `<div class="seat-pill">${half('human', ICON_USER, 'Human', true)}${half('bot', ICON_BOT, 'Bot', false)}</div>${removeBtn('empty', 'Empty seat')}`
+        }
+        const pawnDim = !isBot && !joined ? 'opacity:0.5;' : ''
+        return /*html*/ `
+            <div class="seat-row" data-testid="online-seat-${i}">
+                <div class="seat-color-cycle" style="background:${colorVar};${pawnDim}">
+                    <div class="seat-pawn">${PAWN_SVG(i)}</div>
+                </div>
+                <div class="seat-body">
+                    <div class="online-seat-name">${escapeHtml(name)}</div>
+                    <div class="seat-empty-sub">${status}</div>
+                </div>
+                ${controls}
+            </div>`
     }
 }
 

@@ -119,7 +119,8 @@ test.describe('Online gameplay', () => {
         await openOnline(pageB, 'Bob', grace);
         await pageB.getByTestId('online-code-input').fill(code);
         await pageB.getByTestId('online-join').click();
-        await expect(pageA.getByTestId('online-seat-1')).toContainText('Bob');
+        // Two humans seat diagonally opposite: host at seat 0, Bob at seat 2.
+        await expect(pageA.getByTestId('online-seat-2')).toContainText('Bob');
         await pageA.getByTestId('online-start').click();
 
         // Both boards mount. Alice + Bob are humans; seats 2 & 3 fill with bots,
@@ -133,9 +134,9 @@ test.describe('Online gameplay', () => {
 
         // No blocking overlay — the leaver is dimmed, the board stays live, and
         // there's no self-reconnect banner (this client didn't drop). In a 4-seat
-        // ring from Alice's view (self seat 0 → board 2), Bob (seat 1) maps to
-        // board position 3 = (2 + (1 - 0)) % 4.
-        await expect(pageA.locator('#b3')).toHaveClass(/net-dimmed/);
+        // ring from Alice's view (self seat 0 → board 2), Bob (seat 2) maps to
+        // board position 0 = (2 + (2 - 0)) % 4.
+        await expect(pageA.locator('#b0')).toHaveClass(/net-dimmed/);
         await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
         await expect(pageA.getByTestId('net-reconnect-banner')).toBeHidden();
 

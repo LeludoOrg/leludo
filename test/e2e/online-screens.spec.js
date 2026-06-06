@@ -177,10 +177,11 @@ test.describe('Online lobby — create + join', () => {
         await guest.getByTestId('online-join').click();
 
         // The guest is seated but is NOT the host and waits for the host to start.
+        // Two humans sit diagonally opposite: host at seat 0, guest at seat 2.
         await expect(guest.getByTestId('online-is-host')).toHaveText('false');
         await expect(guest.getByTestId('online-start')).toBeHidden();
-        await expect(host.getByTestId('online-seat-1')).toContainText('Ready');
-        await expect(host.getByTestId('online-seat-1')).toContainText('Guesty'); // remembered name shows
+        await expect(host.getByTestId('online-seat-2')).toContainText('Ready');
+        await expect(host.getByTestId('online-seat-2')).toContainText('Guesty'); // remembered name shows
 
         // Host starts the game; both transition together.
         await host.getByTestId('online-start').click();
@@ -236,24 +237,46 @@ test.describe('Online lobby — create + join', () => {
         await host.getByTestId('online-create').click();
         const code = (await host.getByTestId('online-room-code').textContent())?.trim();
 
-        // Guest joins, host sees the Kick control on seat 1.
+        // Guest joins → seated diagonally opposite at seat 2; host sees its Kick.
         await openOnline(guest, 'Guesty');
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
-        await expect(host.getByTestId('online-seat-1-kick')).toBeVisible();
+        await expect(host.getByTestId('online-seat-2-kick')).toBeVisible();
 
         // Host kicks the guest → guest is bounced back to the online menu.
-        await host.getByTestId('online-seat-1-kick').click();
+        await host.getByTestId('online-seat-2-kick').click();
         await expect(guest.getByTestId('online-create')).toBeVisible();
         await expect(guest.getByTestId('online-status')).toContainText(/removed/i);
 
-        // Seat 1 reopens; host fills it with a bot and seat 1 reads "Bot".
-        await expect(host.getByTestId('online-seat-1-bot')).toBeVisible();
-        await host.getByTestId('online-seat-1-bot').click();
-        await expect(host.getByTestId('online-seat-1')).toContainText('Bot');
+        // Seat 2 reopens; host taps Bot to drop a bot in, and seat 2 reads "Bot".
+        await expect(host.getByTestId('online-seat-2-bot')).toBeVisible();
+        await host.getByTestId('online-seat-2-bot').click();
+        await expect(host.getByTestId('online-seat-2')).toContainText('Bot');
 
         await ctxHost.close();
         await ctxGuest.close();
+    });
+
+    // Offline-parity seat controls: the host configures each chair as Empty,
+    // Human, or Bot — tap × to empty an open chair, then a side to refill it.
+    // Guards the new online lobby matching the offline "who's playing?" setup.
+    test('host can empty a seat and refill it (Human / Bot / Empty like offline)', async ({ page }) => {
+        await openOnline(page, 'Hosty');
+        await page.getByTestId('online-create').click();
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+
+        // A fresh room is four open Human chairs; the host holds one. Seat 1 is an
+        // open chair the host can reconfigure (× to empty, then Human / Bot to fill).
+        await expect(page.getByTestId('online-seat-1')).toContainText('Open seat');
+
+        await page.getByTestId('online-seat-1-empty').click();          // × → empty
+        await expect(page.getByTestId('online-seat-1')).toContainText('Empty seat');
+
+        await page.getByTestId('online-seat-1-human').click();          // fill → Human (open)
+        await expect(page.getByTestId('online-seat-1')).toContainText('Open seat');
+
+        await page.getByTestId('online-seat-1-bot').click();            // flip → Bot
+        await expect(page.getByTestId('online-seat-1')).toContainText('Bot');
     });
 });
 
@@ -296,11 +319,12 @@ test.describe('Online — invite links', () => {
         await openOnline(guest, 'Linky');
         await guest.goto(`/?join=${code}`);
 
-        // Lands in the game room (not the setup screen), seated in the host's room.
+        // Lands in the game room (not the setup screen), seated in the host's room
+        // diagonally opposite the host (seat 2).
         await expect(guest.locator('wc-game-room')).toHaveCount(1);
         await expect(guest.locator('wc-play-online')).toHaveCount(0);
         await expect(guest.getByTestId('online-room-code')).toHaveText(code);
-        await expect(host.getByTestId('online-seat-1')).toContainText('Linky');
+        await expect(host.getByTestId('online-seat-2')).toContainText('Linky');
 
         await ctxHost.close();
         await ctxGuest.close();

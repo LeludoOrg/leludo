@@ -497,7 +497,9 @@ class QuickStart extends HTMLElement {
     }
 
     // Room screen (<wc-game-room>) asked to do something: leave/back, start the
-    // game (host), or run a per-seat host control (kick / add-bot / open).
+    // game (host), or run a per-seat host control. Seats mirror offline: 'human'
+    // opens the chair for a player, 'bot' drops a bot in, 'empty' clears it, and
+    // 'kick' removes a player who already joined (reopening the chair).
     _onRoomIntent({ kind, action, seat }) {
         if (kind === 'back' || kind === 'leave') { navBack(); return }
         if (kind === 'start') { this._net?.start(); return }
@@ -506,7 +508,8 @@ class QuickStart extends HTMLElement {
             if (!this._net) return
             if (action === 'kick') this._net.kick(seat)
             else if (action === 'bot') this._net.setSeat(seat, 'BOT')
-            else if (action === 'open') this._net.setSeat(seat, 'PLAYER')
+            else if (action === 'human') this._net.setSeat(seat, 'PLAYER')
+            else if (action === 'empty') this._net.setSeat(seat, 'CLOSED')
         }
     }
 
