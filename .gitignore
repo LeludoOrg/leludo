@@ -18,6 +18,7 @@ coverage/
 test-results/
 playwright-report/
 .playwright/
+recordings/
 
 # Capacitor web shipping dir (built from root)
 www/

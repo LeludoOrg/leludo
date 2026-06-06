@@ -14,6 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:online": "node tools/clear-recordings.mjs && playwright test online-multiplayer-sessions --workers=2",
     "build:www": "node tools/build-www.mjs",
     "version:sync": "node tools/sync-android-version.mjs",
     "icons:generate": "node tools/generate-icons.mjs",
