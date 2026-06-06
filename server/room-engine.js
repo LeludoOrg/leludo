@@ -159,11 +159,30 @@ export class RoomEngine {
 
     // ---- lobby intents ------------------------------------------------------
 
-    /** Seat a (re)connecting human. First to join becomes host. Reconnect = same seat. */
-    handleJoin(sessionId, name) {
+    /** Lowest open human seat, or -1 if none. */
+    _firstOpenSeat() {
+        return this.seats.findIndex(s => s.type === 'PLAYER' && s.sessionId === null);
+    }
+
+    /** Choose a seat for a NEW joiner: honour the requested colour seat when it's
+     *  a free human seat, otherwise fall back to the lowest open one. The seat
+     *  index doubles as the player's colour, so this is how a player picks their
+     *  in-game colour at join time. */
+    _pickSeat(preferred) {
+        const i = Number(preferred);
+        if (Number.isInteger(i) && i >= 0 && i < 4
+            && this.seats[i].type === 'PLAYER' && this.seats[i].sessionId === null) {
+            return i;
+        }
+        return this._firstOpenSeat();
+    }
+
+    /** Seat a (re)connecting human. First to join becomes host. Reconnect = same
+     *  seat (the preferred colour is ignored — you keep the seat you already hold). */
+    handleJoin(sessionId, name, preferredSeat = null) {
         let seat = this._seatOf(sessionId);
         if (seat === -1) {
-            seat = this.seats.findIndex(s => s.type === 'PLAYER' && s.sessionId === null);
+            seat = this._pickSeat(preferredSeat);
             if (seat === -1) return { ok: false, error: 'ROOM_FULL' };
             this.seats[seat].sessionId = sessionId;
             this.seats[seat].name = name || `Player ${seat + 1}`;

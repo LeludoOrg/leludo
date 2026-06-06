@@ -23,24 +23,47 @@ wc-play-online .online-identity {
     gap: var(--space-4);
 }
 
-wc-play-online .online-identity-pawn {
-    width: 72px;
-    height: 72px;
-    border-radius: var(--radius-lg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 0;
+/* Colour picker — four tiles in a 2×2 grid echoing the app's logo. The
+   selected tile is the player's chosen colour (sent as a preferred seat at
+   connect). Tapping a tile picks it. */
+wc-play-online .online-color-picker {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 6px;
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--color-fg) 5%, transparent);
 }
 
-wc-play-online .online-identity-pawn .seat-pawn {
-    width: 68%;
-    height: 68%;
+wc-play-online .online-color-tile {
+    width: 46px;
+    height: 46px;
+    border-radius: var(--radius-md);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    background: var(--tile);
+    opacity: 0.45;
+    transform: scale(0.9);
+    transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
-/* Centered, underlined name input (shares the shared .seat-name look). */
+wc-play-online .online-color-tile:hover {
+    opacity: 0.75;
+}
+
+wc-play-online .online-color-tile.is-selected {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--tile);
+}
+
+/* Centered, underlined name input (shares the shared .seat-name look). The
+   pencil is positioned out of flow so the name sits dead-centre under the
+   tiles instead of being nudged left by the pencil's width. */
 wc-play-online .online-identity-name {
-    width: auto;
+    position: relative;
+    width: 100%;
     max-width: 240px;
     justify-content: center;
 }
@@ -49,6 +72,13 @@ wc-play-online .online-identity-name .seat-name {
     text-align: center;
     font-size: 22px;
     font-weight: 600;
+}
+
+wc-play-online .online-identity-name .seat-name-pencil {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 wc-play-online .online-identity-hint {

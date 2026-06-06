@@ -86,7 +86,7 @@ function bindConnToRoom(conn, room) {
     conn.room = room;
     if (!room.socketsBySession.has(conn.sessionId)) room.socketsBySession.set(conn.sessionId, new Set());
     room.socketsBySession.get(conn.sessionId).add(conn.ws);
-    const joined = room.engine.handleJoin(conn.sessionId, conn.name);
+    const joined = room.engine.handleJoin(conn.sessionId, conn.name, conn.color);
     if (!joined.ok) safeSend(conn.ws, { t: 'error', error: joined.error });
 }
 
@@ -141,10 +141,13 @@ wss.on('connection', (ws, req) => {
     const name = q.get('name') || '';
     const mode = q.get('mode');
     const roomId = q.get('room') || 'default';
+    // Preferred seat colour (0..3); the engine honours it when that seat is free.
+    const colorRaw = q.get('color');
+    const color = colorRaw == null || colorRaw === '' ? null : Number(colorRaw);
 
     // Per-connection state. `room` is null until bound (immediately for private
     // rooms, on match-form for public matchmaking).
-    const conn = { ws, sessionId, name, room: null };
+    const conn = { ws, sessionId, name, color, room: null };
 
     // Test-only deterministic busy: exercises the client busy overlay without
     // depending on global counters (so it stays parallel-safe in CI).
@@ -196,7 +199,7 @@ wss.on('connection', (ws, req) => {
         switch (msg.t) {
             case 'roll': engine.handleRoll(sessionId); break;
             case 'move': engine.handleMove(sessionId, msg.token); break;
-            case 'join': engine.handleJoin(sessionId, msg.name); break;
+            case 'join': engine.handleJoin(sessionId, msg.name, msg.color); break;
             // host-only lobby controls (the engine enforces NOT_HOST / NOT_IN_LOBBY)
             case 'lobby_size': engine.handleSetSize(sessionId, msg.n); break;
             case 'lobby_seat': engine.handleSetSeat(sessionId, msg.seat, msg.seatType); break;

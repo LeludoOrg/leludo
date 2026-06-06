@@ -3,7 +3,7 @@ import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.j
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
-import {NetClient, getConfiguredServerUrl, getSessionId, getUsername} from "../scripts/net-client.js";
+import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
 import {mintRoomCode} from "../scripts/room-code.js";
@@ -600,11 +600,15 @@ class QuickStart extends HTMLElement {
         this._isPublic = false
         this._roomCode = code
         const players = create ? (this._onlinePlayers || 2) : 2
+        // The colour picker is the HOST's colour: only the room creator forwards
+        // a preferred seat. A joiner takes whatever seat the server assigns.
+        const params = { size: String(players) }
+        if (create) params.color = String(getOnlineColor())
         // Navigate setup → room: mount <wc-game-room>, then wire the socket. The
         // 'online-lobby' history entry means back returns to <wc-play-online>.
         this._mountGameRoom(code)
         goTo('online-lobby')
-        this._connect({ room: code, params: { size: String(players) } })
+        this._connect({ room: code, params })
     }
 
     _enterMatchmaking(size) {

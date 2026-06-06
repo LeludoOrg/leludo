@@ -69,6 +69,25 @@ test.describe('Home — offline / online split', () => {
         expect(divider.y).toBeLessThan(create.y);  // separator above Create room
     });
 
+    // The colour picker requests a seat: the seat index doubles as the colour,
+    // so choosing colour 2 seats you at seat 2 in the room you create. Guards the
+    // pick → preferred-seat handoff end to end (client param → server seating).
+    test('the picked colour becomes your seat in the created room', async ({ page }) => {
+        await page.goto('/');
+        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('online-name').fill('Hue');
+
+        await page.getByTestId('online-color-2').click();
+        await expect(page.getByTestId('online-color-2')).toHaveClass(/is-selected/);
+
+        await page.getByTestId('online-create').click();
+
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+        // Seat 2 = the chosen colour; you (the host) hold it.
+        await expect(page.getByTestId('online-seat-2')).toContainText('Hue');
+        await expect(page.getByTestId('online-seat-2')).toContainText('(you)');
+    });
+
     test('back from the online menu returns home', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
@@ -171,6 +190,36 @@ test.describe('Online lobby — create + join', () => {
         // perspective — both see #p-2-* tokens as theirs.
         await expect(host.locator('#p-2-0')).toBeVisible();
         await expect(guest.locator('#p-2-0')).toBeVisible();
+
+        await ctxHost.close();
+        await ctxGuest.close();
+    });
+
+    // The colour is the HOST's: only the room creator's pick is honoured. A
+    // joiner's pick is ignored — the server seats them in the next open seat,
+    // not their chosen colour. (Host takes colour 2; guest picks the free
+    // colour 1 but still lands in seat 0, the next open one.)
+    test('only the host picks a colour — a joiner is seated automatically', async ({ browser }) => {
+        const ctxHost = await browser.newContext();
+        const ctxGuest = await browser.newContext();
+        const host = await ctxHost.newPage();
+        const guest = await ctxGuest.newPage();
+
+        // Host picks colour 2 and creates → host holds seat 2.
+        await openOnline(host, 'Hosty');
+        await host.getByTestId('online-color-2').click();
+        await host.getByTestId('online-create').click();
+        const code = (await host.getByTestId('online-room-code').textContent())?.trim();
+        await expect(host.getByTestId('online-seat-2')).toContainText('(you)');
+
+        // Guest picks colour 1 (free) but JOINS → the pick is ignored; the guest
+        // is seated at the next open seat (0), NOT colour 1.
+        await openOnline(guest, 'Guesty');
+        await guest.getByTestId('online-color-1').click();
+        await guest.getByTestId('online-code-input').fill(code);
+        await guest.getByTestId('online-join').click();
+        await expect(guest.getByTestId('online-seat-0')).toContainText('(you)');
+        await expect(guest.getByTestId('online-seat-1')).not.toContainText('(you)');
 
         await ctxHost.close();
         await ctxGuest.close();

@@ -1,19 +1,31 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
 import { getSavedSeatName } from "../scripts/bot-names.js";
-import { getUsername, setUsername } from "../scripts/net-client.js";
-import { ICON_BACK, ICON_PLUS, ICON_PENCIL, PAWN_SVG } from "./wc-icons.js";
+import { getUsername, setUsername, getOnlineColor, setOnlineColor } from "../scripts/net-client.js";
+import { ICON_BACK, ICON_PLUS, ICON_PENCIL } from "./wc-icons.js";
 
-// The "Play online" setup screen: pick your name, then either join a friend's
-// room by code or create your own. It owns no socket — it validates the name
-// and emits an `online-intent` ({kind:'create'|'join'|'back', code?}) that
-// wc-quick-start (the net controller) acts on, navigating to <wc-game-room>.
-// Seats and bots are managed later, in the room, so there are no Open/Bot
-// toggles here — only the host's name input.
+// Tiles laid out like the logo: top-left, top-right, bottom-left, bottom-right
+// map to player colours 1, 2, 3, 0. Each tile's value is the colour index,
+// which doubles as the requested seat index the server seats you into.
+const TILE_ORDER = [1, 2, 3, 0];
+
+// The "Play online" setup screen: pick your colour + name, then join a friend's
+// room by code or create your own. It owns no socket — it remembers the colour
+// (getOnlineColor/setOnlineColor), which the controller forwards as the HOST's
+// preferred seat when you CREATE a room (a joiner takes whatever seat the server
+// assigns). It emits an `online-intent` ({kind:'create'|'join'|'back', code?})
+// that wc-quick-start (the net controller) acts on, navigating to <wc-game-room>.
 class PlayOnline extends HTMLElement {
     connectedCallback() {
         // Remembered username; fall back to the offline seat name as a suggestion.
         const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
+        const color = getOnlineColor()
+
+        const tiles = TILE_ORDER.map(c => /*html*/ `
+            <button class="online-color-tile${c === color ? ' is-selected' : ''}" type="button"
+                    data-color="${c}" data-testid="online-color-${c}"
+                    aria-label="Colour ${c + 1}" aria-pressed="${c === color}"
+                    style="--tile:hsl(var(--player-${c}));"></button>`).join('')
 
         const html = /*html*/ `
             <div class="frame">
@@ -24,18 +36,18 @@ class PlayOnline extends HTMLElement {
                 </div>
 
                 <div class="frame-body online-setup-body">
-                    <!-- Identity hero: your name, centered — mirrors the home
-                         screen's centered die + title so the transition feels
+                    <!-- Identity hero: your colour + name, centered — mirrors the
+                         home screen's centered die + title so the transition feels
                          continuous. The actions sit at the bottom like home's CTAs. -->
                     <div class="online-identity" data-testid="online-setup-seat-0">
-                        <div class="online-identity-pawn" style="background:hsl(var(--player-0));">
-                            <div class="seat-pawn">${PAWN_SVG(0)}</div>
+                        <div class="online-color-picker" role="group" aria-label="Pick your colour" data-testid="online-color-picker">
+                            ${tiles}
                         </div>
                         <label class="seat-name-wrap online-identity-name">
-                            <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-0));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
+                            <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-${color}));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
                             <span class="seat-name-pencil">${ICON_PENCIL}</span>
                         </label>
-                        <p class="online-identity-hint">This is you. Tap to rename.</p>
+                        <p class="online-identity-hint">Pick your colour and name to host a room &mdash; or join a friend&rsquo;s below.</p>
                     </div>
 
                     <p class="online-status" data-testid="online-status"></p>
@@ -55,6 +67,18 @@ class PlayOnline extends HTMLElement {
         const el = htmlToElement(html)
 
         el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); this._emit('back') })
+
+        // Colour picker: tapping a tile remembers it (sent as a preferred seat at
+        // connect) and retints the name caret to match.
+        el.querySelector('[data-testid="online-color-picker"]').addEventListener("click", (e) => {
+            const tile = e.target.closest('.online-color-tile')
+            if (!tile) return
+            const c = Number(tile.dataset.color)
+            if (c === getOnlineColor()) return
+            playClickSound()
+            setOnlineColor(c)
+            this._selectColor(c)
+        })
 
         const nameInput = el.querySelector('[data-testid="online-name"]')
         // Remember the name as it's typed and clear any "enter a name" prompt.
@@ -86,6 +110,17 @@ class PlayOnline extends HTMLElement {
         codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
 
         this.appendChild(el)
+    }
+
+    /** Reflect the picked colour in the tiles + the name caret. */
+    _selectColor(c) {
+        this.querySelectorAll('.online-color-tile').forEach(t => {
+            const on = Number(t.dataset.color) === c
+            t.classList.toggle('is-selected', on)
+            t.setAttribute('aria-pressed', String(on))
+        })
+        const input = this.querySelector('[data-testid="online-name"]')
+        if (input) input.style.caretColor = `hsl(var(--player-${c}))`
     }
 
     /** Require a non-empty name before going online; remember it. Returns the

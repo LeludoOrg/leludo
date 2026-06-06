@@ -73,6 +73,32 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
     });
 
+    // The seat index doubles as the player's colour, so a joiner can request
+    // their colour by asking for that seat. Honoured when free, else fall back.
+    it('seats a joiner in their requested colour when it is free', () => {
+        const { engine } = room(4);
+        expect(engine.handleJoin('a', 'A', 2)).toEqual({ ok: true, seat: 2 });
+        expect(engine.handleJoin('b', 'B', 3)).toEqual({ ok: true, seat: 3 });
+    });
+
+    it('falls back to the lowest open seat when the requested colour is taken', () => {
+        const { engine } = room(4);
+        engine.handleJoin('a', 'A', 2);                                  // takes seat 2
+        expect(engine.handleJoin('b', 'B', 2)).toEqual({ ok: true, seat: 0 });
+    });
+
+    it('ignores an out-of-range or closed preferred seat', () => {
+        const { engine } = room(2);                                      // seats 2,3 closed
+        expect(engine.handleJoin('a', 'A', 3)).toEqual({ ok: true, seat: 0 }); // closed → lowest open
+        expect(engine.handleJoin('b', 'B', 9)).toEqual({ ok: true, seat: 1 }); // out of range → lowest open
+    });
+
+    it('keeps your seat on reconnect, ignoring a fresh colour request', () => {
+        const { engine } = room(4);
+        engine.handleJoin('a', 'A', 1);                                  // seat 1
+        expect(engine.handleJoin('a', 'A', 3)).toEqual({ ok: true, seat: 1 }); // reconnect → same seat
+    });
+
     it('fills open human seats with bots on start', () => {
         const { engine } = room(3);     // 3 seats, only the host joins
         engine.handleJoin('h', 'Host');

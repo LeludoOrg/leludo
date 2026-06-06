@@ -52,6 +52,27 @@ export function setUsername(name) {
     } catch { /* storage blocked */ }
 }
 
+const COLOR_KEY = 'leludo-online-color';
+
+/** The player's preferred seat colour (0..3 = the four board colours). This is
+ *  a *request*: the server seats you in that colour if it's free, else the next
+ *  open seat (the room is authoritative). Defaults to 0 (red). */
+export function getOnlineColor() {
+    try {
+        const n = Number(localStorage.getItem(COLOR_KEY));
+        return Number.isInteger(n) && n >= 0 && n <= 3 ? n : 0;
+    } catch {
+        return 0;
+    }
+}
+
+/** Persist the player's preferred seat colour (0..3). */
+export function setOnlineColor(n) {
+    try {
+        if (Number.isInteger(n) && n >= 0 && n <= 3) localStorage.setItem(COLOR_KEY, String(n));
+    } catch { /* storage blocked */ }
+}
+
 /** Stable per-device session id (reconnect key). Persisted in localStorage. */
 export function getSessionId() {
     try {
