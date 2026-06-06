@@ -3,10 +3,16 @@ import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.j
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName} from "../scripts/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
-import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, setUsername} from "../scripts/net-client.js";
+import {NetClient, getConfiguredServerUrl, getSessionId, getUsername} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
 import {mintRoomCode} from "../scripts/room-code.js";
+import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
+// The online flow lives in two sibling components this controller mounts and
+// drives: <wc-play-online> (setup) and <wc-game-room> (lobby). Importing for
+// the customElements.define side effect so the tags upgrade when inserted.
+import "./wc-play-online.js";
+import "./wc-game-room.js";
 
 // Initial release ships private rooms only. The public-matchmaking backend
 // (queue + auto-start) stays wired and tested — this flag just hides the entry
@@ -20,71 +26,8 @@ const PUBLIC_MATCH_ENABLED = false;
 // to the board with no breath. Private rooms skip it (players saw the lobby).
 const MATCH_STARTING_MS = 2500;
 
-const DICE_SVG = (value, size = 56) => {
-    const PIP_LAYOUTS = {
-        1: [[1,1]],
-        2: [[0,0],[2,2]],
-        3: [[0,0],[1,1],[2,2]],
-        4: [[0,0],[0,2],[2,0],[2,2]],
-        5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
-        6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
-    };
-    const pad = size * 0.2;
-    const pip = size * 0.15;
-    const cell = (size - pad * 2) / 2;
-    const pips = PIP_LAYOUTS[value] || PIP_LAYOUTS[1];
-    const pipSvgs = pips.map(([gr, gc]) =>
-        `<circle cx="${pad + gc * cell}" cy="${pad + gr * cell}" r="${pip/2}" fill="var(--color-fg)"/>`
-    ).join('');
-    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${size * 0.22}" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="1"/>
-        ${pipSvgs}
-    </svg>`;
-};
-
-const QUAD_CHIP_SVG = (size = 26) => MINI_BOARD_SVG(size);
-
-const PLAY_ICON_SVG = (size = 14) =>
-    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-
-const MINI_BOARD_SVG = (size = 52) => {
-    // Faithful to design/home.jsx MiniBoard: 2x2 colored quadrants
-    // (each 50%), dark cross overlay sized at 1/3 of the box, tiny
-    // off-white diamond at the center.
-    // viewBox = 60 so the 1/3-thick cross sits at 20..40.
-    return `<svg width="${size}" height="${size}" viewBox="0 0 60 60" style="border-radius:7px;overflow:hidden;display:block;">
-        <rect x="0"  y="0"  width="30" height="30" fill="hsl(var(--player-1))"/>
-        <rect x="30" y="0"  width="30" height="30" fill="hsl(var(--player-2))"/>
-        <rect x="0"  y="30" width="30" height="30" fill="hsl(var(--player-3))"/>
-        <rect x="30" y="30" width="30" height="30" fill="hsl(var(--player-0))"/>
-        <!-- 1/3-thick dark cross (matches mockup's tinted lanes) -->
-        <rect x="0"  y="20" width="60" height="20" fill="rgba(20,15,10,0.22)"/>
-        <rect x="20" y="0"  width="20" height="60" fill="rgba(20,15,10,0.22)"/>
-        <!-- center diamond -->
-        <rect x="-3.4" y="-3.4" width="6.8" height="6.8"
-              transform="translate(30 30) rotate(45)"
-              fill="rgba(255,250,240,0.78)"/>
-    </svg>`;
-};
-
-const PAWN_SVG = (playerIndex) => `
-    <svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:100%;height:100%;filter:drop-shadow(0 1.2px 1.5px rgba(0,0,0,0.28));">
-        <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.18)"/>
-        <path d="M16 4c3.2 0 5.5 2.4 5.5 5.2 0 1.8-1 3.2-2.4 4 1.7.7 2.9 1.8 3.6 3.4l1.1 2.6c.4 1 .1 2-.7 2.4-.2.1-.4.1-.6.1H9.5c-.9 0-1.6-.7-1.6-1.6 0-.3.1-.6.2-.9l1.1-2.6c.7-1.6 1.9-2.7 3.6-3.4-1.4-.8-2.4-2.2-2.4-4C10.4 6.4 12.8 4 16 4z" fill="currentColor"/>
-        <path d="M16 4c3.2 0 5.5 2.4 5.5 5.2 0 1.8-1 3.2-2.4 4-.6-.3-1.3-.5-2-.5h-2.2c-.7 0-1.4.2-2 .5-1.4-.8-2.4-2.2-2.4-4C10.4 6.4 12.8 4 16 4z" fill="rgba(255,255,255,0.24)"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
-        <rect x="7.5" y="22" width="17" height="1.2" rx="0.6" fill="rgba(255,255,255,0.38)"/>
-    </svg>`;
-
-const ICON_BACK = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`;
-const ICON_CLOSE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
-const ICON_PLUS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>`;
-const ICON_USER = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0"/></svg>`;
-const ICON_BOT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M8 7h8a3 3 0 013 3v7a3 3 0 01-3 3H8a3 3 0 01-3-3v-7a3 3 0 013-3zM9 13h.01M15 13h.01M9 17h6"/></svg>`;
-const ICON_PENCIL = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
-const ICON_GLOBE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>`;
-const ICON_DEVICE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>`;
-
+// SVG icon + chip helpers are shared across the menu/setup/online components —
+// see ./wc-icons.js (imported above). Don't redefine them here.
 class QuickStart extends HTMLElement {
     constructor() {
         super();
@@ -158,6 +101,8 @@ class QuickStart extends HTMLElement {
         this._isPublic = false
         this._hideMatchStarting()
         this._net = null
+        this._playOnline = null
+        this._gameRoom = null
         this.innerHTML = ""
 
         const saved = this._readSavedGame()
@@ -505,173 +450,59 @@ class QuickStart extends HTMLElement {
         this._stopHomeDieCycle()
         this._isPublic = false
         this._leaveOnline()
-        this._buildOnlineScreen()
+        this.innerHTML = ""
+        this._gameRoom = null
+        const view = document.createElement('wc-play-online')
+        this.appendChild(view)
+        this._playOnline = view
+        view.addEventListener('online-intent', (e) => this._onPlayOnlineIntent(e.detail))
     }
 
-    // Builds the unified online screen. Opens in "setup" mode (seat 0 = YOU with
-    // a name input, seats 1..3 Open/Bot toggles, join-by-code, "Create room").
-    // Creating or joining flips THIS SAME screen into "room" mode via
-    // _showRoomMode — the room code banner + live seats appear inline and the
-    // footer swaps to Start/Leave. The old standalone "Game room" lobby is gone.
-    _buildOnlineScreen() {
-        this.innerHTML = ""
-        // The online setup screen is just an identity + an entry point: join a
-        // friend's room by code, or create your own. Seats and bots are managed
-        // later, in room mode (the live seat list), so there are no Open/Bot
-        // toggles here — only the host's name input.
-
-        // Remembered username; fall back to the offline seat name as a suggestion.
-        const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
-
-        const html = /*html*/ `
-            <div class="frame">
-                <div class="top-bar">
-                    <button class="back-btn icon-btn">${ICON_BACK}</button>
-                    <div class="top-bar-title">Play online</div>
-                    <wc-settings></wc-settings>
-                </div>
-
-                <div class="frame-body setup-body online-setup-body">
-                    <div class="online-room-slot"></div>
-
-                    <div class="online-intro">
-                        <h2 class="display-title">Play online</h2>
-                        <p class="setup-helper">Join a friend's room with their code, or start your own.</p>
-                    </div>
-
-                    <div class="online-join-section">
-                        <div class="online-join-row">
-                            <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
-                            <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
-                        </div>
-                    </div>
-
-                    <div class="online-divider online-new-room-divider"><span>or start a new room</span></div>
-
-                    <div class="seat-list">
-                        <div class="seat-row" data-testid="online-setup-seat-0">
-                            <div class="seat-color-cycle" style="background:hsl(var(--player-0));">
-                                <div class="seat-pawn">${PAWN_SVG(0)}</div>
-                            </div>
-                            <div class="seat-body">
-                                <label class="seat-name-wrap">
-                                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:hsl(var(--player-0));" value="${escapeHtml(savedName)}" maxlength="12" spellcheck="false" placeholder="Your name" />
-                                    <span class="seat-name-pencil">${ICON_PENCIL}</span>
-                                </label>
-                            </div>
-                            <span class="online-you-tag">You</span>
-                        </div>
-                    </div>
-
-                    <p class="online-status" data-testid="online-status"></p>
-                    <span data-testid="online-started" hidden>false</span>
-                    <span data-testid="online-is-host" hidden>false</span>
-                </div>
-
-                <div class="frame-footer">
-                    <button class="online-create-btn cta-primary" data-testid="online-create">${ICON_PLUS}<span>Create room</span></button>
-                    <button class="online-start-btn cta-primary" data-testid="online-start" hidden>${PLAY_ICON_SVG(13)}<span>Start game</span></button>
-                    <button class="online-leave-btn cta-secondary" data-testid="online-leave" hidden>Leave room</button>
-                </div>
-            </div>
-        `
-
-        const el = htmlToElement(html)
-
-        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
-
-        const nameInput = el.querySelector('[data-testid="online-name"]')
-        // Remember the name as it's typed and clear any "enter a name" prompt.
-        nameInput.addEventListener("input", () => {
-            const v = (nameInput.value || '').trim()
-            if (v) { setUsername(v); this._setOnlineStatus("") }
-        })
-        nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); nameInput.blur() } })
-
-        el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
-            if (!this._requireName()) return
-            playClickSound()
+    // Setup screen (<wc-play-online>) asked to do something: go back, create a
+    // room, or join one by code. The name is already validated + saved.
+    _onPlayOnlineIntent({ kind, code }) {
+        if (kind === 'back') { navBack(); return }
+        if (kind === 'create') {
             // Always a 4-seat room; the host fills empty seats with bots from the
-            // live seat list in room mode.
+            // live seat list in the room.
             this._onlinePlayers = 4
             this._enterLobby(mintRoomCode(), { create: true })
-        })
-
-        const codeInput = el.querySelector(".online-code-input")
-        const doJoin = () => {
-            if (!this._requireName()) return
-            const code = (codeInput.value || '').trim().toUpperCase()
-            if (code.length < 4) {
-                this._setOnlineStatus("Enter the 4-letter room code your host shared.")
-                codeInput.focus()
-                return
-            }
-            playClickSound()
+        } else if (kind === 'join') {
             this._enterLobby(code, { create: false })
         }
-        el.querySelector(".online-join-btn").addEventListener("click", doJoin)
-        codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
-
-        // Room-mode controls. Start/Leave stay hidden until _showRoomMode reveals
-        // them; the per-seat host controls (kick/bot/open) are delegated on the
-        // body so they survive _renderLobby rewriting the seat list.
-        el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._net?.start() })
-        el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); navBack() })
-        el.querySelector(".frame-body").addEventListener("click", (e) => {
-            const btn = e.target.closest("[data-action]")
-            if (!btn || !this._net) return
-            const action = btn.dataset.action
-            const seat = Number(btn.dataset.seat)
-            playClickSound()
-            if (action === "kick") this._net.kick(seat)
-            else if (action === "bot") this._net.setSeat(seat, "BOT")
-            else if (action === "open") this._net.setSeat(seat, "PLAYER")
-        })
-
-        this.appendChild(el)
     }
 
-    // Flip the current online screen from setup mode into room mode: reveal the
-    // room code, hide the intro + join-by-code, and swap "Create room" for
-    // Start/Leave. Seats are filled by _renderLobby as server state arrives.
-    _showRoomMode(code) {
-        this._roomCode = code
-        const setHidden = (sel, hidden) => { const e = this.querySelector(sel); if (e) e.hidden = hidden }
-        const slot = this.querySelector(".online-room-slot")
-        // Inject the code banner only in room mode, so the setup screen has no
-        // online-room-code element (the "no room until you create one" guard).
-        if (slot) slot.innerHTML = /*html*/ `
-            <div class="online-room-banner">
-                <span class="section-label">Room code</span>
-                <div class="online-code-display" data-testid="online-room-code">${escapeHtml(code)}</div>
-                <p class="online-room-share" data-testid="online-lobby-hint">Share this code with friends to let them join.</p>
-            </div>`
-        setHidden(".online-intro", true)
-        setHidden(".online-join-section", true)
-        setHidden(".online-new-room-divider", true)
-        setHidden('[data-testid="online-create"]', true)
-        setHidden('[data-testid="online-leave"]', false)
-        this._setLobbyStatus("Connecting…")
+    // Mount the room screen (<wc-game-room>) with its code, starting in a
+    // "Connecting…" state. Shared by private create/join and the public
+    // "matched" path. The socket is wired separately by the caller (_connect)
+    // and persists across the setup → room screen swap.
+    _mountGameRoom(code) {
+        this._stopHomeDieCycle()
+        this.innerHTML = ""
+        this._playOnline = null
+        const view = document.createElement('wc-game-room')
+        this.appendChild(view)
+        view.setCode(code)
+        view.setStatus('Connecting…')
+        view.addEventListener('room-intent', (e) => this._onRoomIntent(e.detail))
+        this._gameRoom = view
+        return view
     }
 
-    /** Require a non-empty name before going online; remember it. Returns the
-     *  trimmed name, or null (and prompts) when empty. */
-    _requireName() {
-        const input = this.querySelector('[data-testid="online-name"]')
-        const name = (input?.value || '').trim()
-        if (!name) {
-            this._setOnlineStatus('Enter a name to play online.')
-            input?.focus()
-            return null
+    // Room screen (<wc-game-room>) asked to do something: leave/back, start the
+    // game (host), or run a per-seat host control (kick / add-bot / open).
+    _onRoomIntent({ kind, action, seat }) {
+        if (kind === 'back' || kind === 'leave') { navBack(); return }
+        if (kind === 'start') { this._net?.start(); return }
+        if (kind === 'seat') {
+            if (!this._net) return
+            if (action === 'kick') this._net.kick(seat)
+            else if (action === 'bot') this._net.setSeat(seat, 'BOT')
+            else if (action === 'open') this._net.setSeat(seat, 'PLAYER')
         }
-        setUsername(name)
-        return name
     }
 
-    _setOnlineStatus(text) {
-        const el = this.querySelector('[data-testid="online-status"]')
-        if (el) el.textContent = text
-    }
+    _setOnlineStatus(text) { this._playOnline?.setStatus(text) }
 
     _myName() {
         return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
@@ -688,18 +519,19 @@ class QuickStart extends HTMLElement {
                 break
             case 'matched':
                 this._roomCode = msg.room
-                this.showOnlineLobby(msg.room)
+                this._mountGameRoom(msg.room)
                 replaceTo('online-lobby') // replace the search entry so back → menu
                 // Public matches auto-start the instant seats fill, so cover the
                 // brief lobby flash with a "Match found!" announcement.
                 if (this._isPublic) this._showMatchStarting()
                 break
             case 'seated':
+                // Host-ness is derived from state.hostSeat in <wc-game-room>;
+                // we only need our own seat index here.
                 this._mySeat = msg.playerIndex
-                this._isHost = !!msg.isHost
                 break
             case 'state':
-                this._renderLobby(msg.state)
+                this._gameRoom?.renderLobby(msg.state, this._mySeat)
                 if (msg.state.started) {
                     // Hand off to the real board, server-driven from here on.
                     this._inGame = true
@@ -722,7 +554,7 @@ class QuickStart extends HTMLElement {
                 this._setOnlineStatus('The host removed you from the room.')
                 break
             case 'busy':
-                this._onLobbyBusy(msg.reason)
+                this._gameRoom?.onBusy()
                 this._setSearchStatus('Servers are busy right now — please try again in a few minutes.')
                 break
             default:
@@ -768,10 +600,9 @@ class QuickStart extends HTMLElement {
         this._isPublic = false
         this._roomCode = code
         const players = create ? (this._onlinePlayers || 2) : 2
-        // Flip the current setup screen into room mode in place — no separate
-        // "Game room" screen. (Public matchmaking arrives from the search screen
-        // instead and uses showOnlineLobby to build the room screen fresh.)
-        this._showRoomMode(code)
+        // Navigate setup → room: mount <wc-game-room>, then wire the socket. The
+        // 'online-lobby' history entry means back returns to <wc-play-online>.
+        this._mountGameRoom(code)
         goTo('online-lobby')
         this._connect({ room: code, params: { size: String(players) } })
     }
@@ -815,86 +646,7 @@ class QuickStart extends HTMLElement {
         if (el) el.textContent = text
     }
 
-    // Build the online screen straight into room mode. Used by the public-match
-    // path (PUBLIC_MATCH_ENABLED), which arrives already connected from the
-    // search screen; private create/join flip in place via _showRoomMode.
-    showOnlineLobby(code) {
-        this._buildOnlineScreen()
-        this._showRoomMode(code)
-    }
-
-    _setLobbyStatus(text) {
-        const el = this.querySelector('[data-testid="online-status"]')
-        if (el) el.textContent = text
-    }
-
-    // Render the live room into the shared seat-list, reusing the offline seat-row
-    // look (pawn + name + status). Replaces the setup rows (seat-0 input + Open/Bot
-    // toggles) the moment the first server state arrives.
-    _renderLobby(state) {
-        const isHost = state.hostSeat === this._mySeat && this._mySeat !== -1
-        this._isHost = isHost
-        const startBtn = this.querySelector('[data-testid="online-start"]')
-        if (startBtn) startBtn.hidden = !isHost || state.started
-        const isHostEl = this.querySelector('[data-testid="online-is-host"]')
-        if (isHostEl) isHostEl.textContent = String(isHost)
-
-        const activeSeats = (state.seats || []).filter(s => s.type) // PLAYER or BOT
-        const seatList = this.querySelector('.seat-list')
-        if (seatList) {
-            const rows = [...activeSeats].sort((a, b) => a.index - b.index)
-            seatList.innerHTML = rows.map(s => {
-                const me = s.index === this._mySeat
-                const isBot = s.type === 'BOT'
-                let label, status
-                if (isBot) { label = s.name || `Bot ${s.index + 1}`; status = 'Bot' }
-                else if (s.connected) { label = s.name || `Player ${s.index + 1}`; status = s.isHost ? 'Host' : 'Ready' }
-                else { label = 'Open seat'; status = 'Open' }
-                const tags = me ? ' (you)' : ''
-
-                // Host-only per-seat controls (never on the host's own seat).
-                let controls = ''
-                if (isHost && !state.started && !s.isHost) {
-                    if (isBot) {
-                        controls = `<button class="online-seat-btn" data-action="open" data-seat="${s.index}" data-testid="online-seat-${s.index}-open">Open</button>`
-                    } else if (s.connected) {
-                        controls = `<button class="online-seat-btn online-seat-btn--danger" data-action="kick" data-seat="${s.index}" data-testid="online-seat-${s.index}-kick">Kick</button>`
-                    } else {
-                        controls = `<button class="online-seat-btn" data-action="bot" data-seat="${s.index}" data-testid="online-seat-${s.index}-bot">Add bot</button>`
-                    }
-                }
-                const dim = (!isBot && !s.connected) ? 0.4 : 1
-                return /*html*/ `
-                    <div class="seat-row" data-testid="online-seat-${s.index}">
-                        <div class="seat-color-cycle" style="background:hsl(var(--player-${s.index}));opacity:${dim};">
-                            <div class="seat-pawn">${PAWN_SVG(s.index)}</div>
-                        </div>
-                        <span class="online-seat-name">${escapeHtml(label)}${tags}</span>
-                        <span class="online-seat-status">${status}</span>
-                        ${controls}
-                    </div>`
-            }).join('')
-        }
-
-        const startedEl = this.querySelector('[data-testid="online-started"]')
-        if (startedEl) startedEl.textContent = String(!!state.started)
-
-        const humans = activeSeats.filter(s => s.type === 'PLAYER')
-        const joined = humans.filter(s => s.connected).length
-        if (state.started) {
-            this._setLobbyStatus('Game starting…')
-        } else if (isHost) {
-            this._setLobbyStatus(`You're the host. ${joined} player${joined === 1 ? '' : 's'} in — start when ready.`)
-        } else {
-            this._setLobbyStatus('Waiting for the host to start…')
-        }
-    }
-
-    _onLobbyBusy(reason) {
-        this._setLobbyStatus('Servers are busy right now — please try again in a few minutes.')
-        const startedEl = this.querySelector('[data-testid="online-started"]')
-        if (startedEl) startedEl.textContent = 'false'
-    }
+    _setLobbyStatus(text) { this._gameRoom?.setStatus(text) }
 
     _leaveOnline() {
         // Don't kill the socket once the game has handed off to the board — the

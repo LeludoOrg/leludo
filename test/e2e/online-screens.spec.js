@@ -74,30 +74,37 @@ test.describe('Home — offline / online split', () => {
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
     });
 
-    // The lobby is no longer a separate "Game room" screen. Creating a room flips
-    // the SAME "Play online" screen into room mode in place: the room-code banner
-    // appears, the join-by-code row goes away, and "Create room" is replaced by
-    // Start + Leave. Guards against reintroducing a standalone lobby screen.
-    test('creating a room flips the play-online screen into room mode in place', async ({ page }) => {
+    // Play online and the game room are two separate components/screens:
+    // <wc-play-online> (name + join/create) and <wc-game-room> (code + seats +
+    // Start). Creating a room navigates from the first to the second; back
+    // returns to setup (not all the way home). Guards the split + its wiring.
+    test('creating a room navigates from play-online to the game-room screen', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
         await page.getByTestId('online-name').fill('Hosty');
 
-        // Setup mode: join-by-code present, no room code yet, Create shown.
+        // Setup screen: the play-online component, with join + no room code yet.
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+        await expect(page.locator('wc-game-room')).toHaveCount(0);
         await expect(page.getByTestId('online-join')).toBeVisible();
         await expect(page.getByTestId('online-room-code')).toHaveCount(0);
 
         await page.getByTestId('online-create').click();
 
-        // Room mode on the same screen: code in, join + create out, Start/Leave in.
+        // Room screen: the game-room component replaces play-online. Code in,
+        // join + create gone (different screen), Start/Leave in.
+        await expect(page.locator('wc-game-room')).toHaveCount(1);
+        await expect(page.locator('wc-play-online')).toHaveCount(0);
         await expect(page.getByTestId('online-room-code')).toBeVisible();
-        await expect(page.getByTestId('online-create')).toBeHidden();
-        await expect(page.getByTestId('online-join')).toBeHidden();
+        await expect(page.getByTestId('online-create')).toHaveCount(0);
+        await expect(page.getByTestId('online-join')).toHaveCount(0);
         await expect(page.getByTestId('online-leave')).toBeVisible();
         await expect(page.getByTestId('online-start')).toBeVisible(); // host sees Start
 
-        // Back from the room returns to setup mode (not all the way home).
+        // Back from the room returns to the play-online setup screen.
         await page.goBack();
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+        await expect(page.locator('wc-game-room')).toHaveCount(0);
         await expect(page.getByTestId('online-create')).toBeVisible();
         await expect(page.getByTestId('online-room-code')).toHaveCount(0);
     });
