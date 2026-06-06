@@ -43,6 +43,18 @@ describe('buildSeatLayout (online seat → board layout)', () => {
         expect(guest.playerNames[0]).toBe('Divya');
     });
 
+    it('colours the two empty quads consistently across both 2P screens', () => {
+        // Regression (the two-screenshot report): the empty quads must be the same
+        // board rotated, so a pawn sits next to the SAME colours on both screens.
+        // The guest's whole colour map must be the host's rotated 180° (the two
+        // players are diagonal), empty quads included — not the leftover colours
+        // dropped into board order, which swapped red/yellow between the screens.
+        const host = buildSeatLayout({}, 0, twoPlayerState).colorMap;
+        const guest = buildSeatLayout({}, 1, twoPlayerState).colorMap;
+        const rotated180 = [host[2], host[3], host[0], host[1]];
+        expect(guest).toEqual(rotated180);
+    });
+
     it('4-player game keeps every seat in its own colour (identity map)', () => {
         const state = {
             playerTypes: ['PLAYER', 'PLAYER', 'PLAYER', 'PLAYER'],

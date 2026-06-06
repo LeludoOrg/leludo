@@ -16,7 +16,6 @@
 import { dispatch, subscribe, EVENTS } from './game-store.js';
 import { COMMANDS } from './command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
-import { fillColorMap } from './game-logic.js';
 import { setDimmedPlayers, clearPresence } from './net-overlay.js';
 
 let _started = false;
@@ -30,33 +29,33 @@ function enqueue(makeStep) {
 /**
  * Map a server snapshot onto local board positions for this client.
  *
- * Rank seats among the occupied ones (the turn order) so a 2-player match on
- * adjacent server seats still seats the opponent diagonally for BOTH players —
- * not just the host (see online-state.toLocal). The colour map is completed into
- * a permutation (fillColorMap) so empty quads never repeat an active player's
- * colour. Pure apart from setOnline; exported for tests.
+ * toLocal rotates the shared seat arrangement so this client sits bottom-right
+ * (board pos 2) in its own colour, and a 2-player match on adjacent server seats
+ * still seats the opponent diagonally for BOTH players (see online-state). Map
+ * ALL FOUR chairs — player or empty — through it: toLocal is a bijection, so the
+ * colour map comes out a full permutation that's identical across clients up to
+ * the per-client rotation (no empty quad ever repeats an active colour, and the
+ * empty quads agree on their corners). Pure apart from setOnline; exported for tests.
  */
 export function buildSeatLayout(net, seat, state) {
     const activeSeats = [];
     for (let s = 0; s < 4; s++) if (state.playerTypes[s] != null) activeSeats.push(s);
     setOnline(net, seat, activeSeats);
 
-    // Rotate server seats to board positions so this client sits bottom-right
-    // (board pos 2) in its own colour; a seat's index doubles as its base-colour
-    // index, and leftover colours fill the empty quads.
     const playerTypes = new Array(4).fill(undefined);
     const playerNames = new Array(4).fill('');
     const positions = new Array(4).fill(undefined);
     const colorMap = new Array(4).fill(-1);
-    for (const s of activeSeats) {
+    for (let s = 0; s < 4; s++) {
         const pos = toLocal(s);
+        colorMap[pos] = s; // a seat's index doubles as its base-colour index
+        if (state.playerTypes[s] == null) continue;
         playerTypes[pos] = state.playerTypes[s];
         playerNames[pos] = state.playerNames[s];
         positions[pos] = state.positions[s];
-        colorMap[pos] = s;
     }
 
-    return { playerTypes, playerNames, positions, colorMap: fillColorMap(colorMap) };
+    return { playerTypes, playerNames, positions, colorMap };
 }
 
 /** Hand off from the lobby: mount the board from the first started snapshot. */

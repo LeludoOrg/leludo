@@ -126,6 +126,36 @@ describe('online-state seat → board-position mapping', () => {
         }
     });
 
+    it('places 2-player EMPTY chairs consistently on adjacent server seats', () => {
+        // Regression (the two-screenshot report): a 2-player match on ADJACENT
+        // server seats (0,1) spreads the players to a diagonal, leaving two empty
+        // quads. Those were coloured in board order on each screen, so the two
+        // leftover colours swapped corners between the perspectives — a pawn sat
+        // next to red on one screen, yellow on the other. The arrangement now
+        // re-seats BOTH players AND empties as one shared rotation, so reading the
+        // clockwise board order of all four chairs (positions 0,1,2,3) from each
+        // perspective, normalised so chair 0 leads, must give the identical cycle.
+        const active = [0, 1]; // adjacent — the matchmaker's 2-player default
+        const cycleFrom = (selfSeat) => {
+            setOnline({}, selfSeat, active);
+            const clockwise = [0, 1, 2, 3].map(toServer); // chair at each board pos
+            const zero = clockwise.indexOf(0);
+            return [0, 1, 2, 3].map((k) => clockwise[(zero + k) % 4]);
+        };
+        const reference = cycleFrom(0);
+        expect(cycleFrom(1)).toEqual(reference); // both screens: same ring, rotated
+    });
+
+    it('keeps the opponent diagonal AND empties consistent for adjacent 2P', () => {
+        // Self always bottom-right (2), opponent top-left (0); the two empty
+        // chairs take the other diagonal (top-right 1 / bottom-left 3) and land on
+        // corners that are 180°-swapped between the two perspectives.
+        setOnline({}, 0, [0, 1]);
+        expect([0, 1, 2, 3].map(toLocal)).toEqual([2, 0, 3, 1]); // host frame
+        setOnline({}, 1, [0, 1]);
+        expect([0, 1, 2, 3].map(toLocal)).toEqual([0, 2, 1, 3]); // guest = host rotated 180°
+    });
+
     it('toServer inverts toLocal over only the active seats', () => {
         setOnline({}, 1, [0, 1]);
         for (const s of [0, 1]) expect(toServer(toLocal(s))).toBe(s);
