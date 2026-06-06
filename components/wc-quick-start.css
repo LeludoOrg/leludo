@@ -193,14 +193,6 @@ wc-quick-start .home-online-cta {
    Reuses the offline seat-list look (.seat-row / .seat-pill / .seat-name).
    Only the online-specific extras live here. */
 
-/* Seat 0 = YOU; the rest sit in this re-rendered block (seat 0 stays outside it
-   so live name typing is never clobbered by a re-render). */
-wc-quick-start .online-others {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 /* The "You" tag where the offline seat-0 row would show a Human/Bot pill. */
 wc-quick-start .online-you-tag {
     flex-shrink: 0;
@@ -215,10 +207,16 @@ wc-quick-start .online-you-tag {
 }
 
 wc-quick-start .online-join-section {
-    margin-top: var(--space-6);
+    margin-top: var(--space-5);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+}
+
+/* Separator between "join a friend" (top) and "start a new room" (the name
+   input below). Hidden once the screen flips into room mode. */
+wc-quick-start .online-new-room-divider {
+    margin: var(--space-5) 0;
 }
 
 /* ----- Online (lobby) ----- */

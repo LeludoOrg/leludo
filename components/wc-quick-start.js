@@ -156,7 +156,6 @@ class QuickStart extends HTMLElement {
         // closed the socket): drop any stale online references.
         this._inGame = false
         this._isPublic = false
-        this._pendingBotSeats = null
         this._hideMatchStarting()
         this._net = null
         this.innerHTML = ""
@@ -505,7 +504,6 @@ class QuickStart extends HTMLElement {
     showOnlineScreen() {
         this._stopHomeDieCycle()
         this._isPublic = false
-        this._pendingBotSeats = null
         this._leaveOnline()
         this._buildOnlineScreen()
     }
@@ -517,14 +515,10 @@ class QuickStart extends HTMLElement {
     // footer swaps to Start/Leave. The old standalone "Game room" lobby is gone.
     _buildOnlineScreen() {
         this.innerHTML = ""
-        // Online private room reuses the offline "who's playing?" seat setup.
-        // Seat 0 is always YOU (the host). Seats 1..3 are each an Open seat (a
-        // friend joins with the code) or a Bot. Always four seats — the room is
-        // 4-handed; any Open seat nobody claims becomes a bot when the host
-        // starts. Persisted across visits so choices stick.
-        if (!this._onlineSeats || this._onlineSeats.length !== 4) {
-            this._onlineSeats = [{ type: 'YOU' }, { type: 'PLAYER' }, { type: 'PLAYER' }, { type: 'PLAYER' }]
-        }
+        // The online setup screen is just an identity + an entry point: join a
+        // friend's room by code, or create your own. Seats and bots are managed
+        // later, in room mode (the live seat list), so there are no Open/Bot
+        // toggles here — only the host's name input.
 
         // Remembered username; fall back to the offline seat name as a suggestion.
         const savedName = (getUsername() || getSavedSeatName('PLAYER', 0) || '').slice(0, 12)
@@ -542,8 +536,17 @@ class QuickStart extends HTMLElement {
 
                     <div class="online-intro">
                         <h2 class="display-title">Play online</h2>
-                        <p class="setup-helper">You host the room. Friends join with the code; fill the rest with bots.</p>
+                        <p class="setup-helper">Join a friend's room with their code, or start your own.</p>
                     </div>
+
+                    <div class="online-join-section">
+                        <div class="online-join-row">
+                            <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
+                            <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
+                        </div>
+                    </div>
+
+                    <div class="online-divider online-new-room-divider"><span>or start a new room</span></div>
 
                     <div class="seat-list">
                         <div class="seat-row" data-testid="online-setup-seat-0">
@@ -557,15 +560,6 @@ class QuickStart extends HTMLElement {
                                 </label>
                             </div>
                             <span class="online-you-tag">You</span>
-                        </div>
-                        <div id="online-seat-list" class="online-others"></div>
-                    </div>
-
-                    <div class="online-join-section">
-                        <div class="online-divider"><span>or join a friend</span></div>
-                        <div class="online-join-row">
-                            <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" />
-                            <button class="online-join-btn cta-secondary" data-testid="online-join">Join</button>
                         </div>
                     </div>
 
@@ -594,25 +588,12 @@ class QuickStart extends HTMLElement {
         })
         nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); nameInput.blur() } })
 
-        // Delegated Open/Bot toggle on the "other seats" block (seat 0 with the
-        // name input stays outside it, so re-rendering never clobbers typing).
-        const seats = this._onlineSeats
-        el.querySelector("#online-seat-list").addEventListener("click", (e) => {
-            const toggle = e.target.closest('.seat-half[data-otype]')
-            if (!toggle) return
-            const i = Number(toggle.closest('[data-oseat]').dataset.oseat)
-            if (seats[i] && seats[i].type !== toggle.dataset.otype) {
-                playClickSound(); seats[i].type = toggle.dataset.otype; this._renderOnlineSeats()
-            }
-        })
-
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
             if (!this._requireName()) return
             playClickSound()
-            // Always a 4-seat room; bot seats (indices 1..3 with type BOT) are
-            // applied in room mode right after we're seated as host.
-            this._onlinePlayers = seats.length
-            this._pendingBotSeats = seats.map((s, i) => (i > 0 && s.type === 'BOT' ? i : -1)).filter(i => i > 0)
+            // Always a 4-seat room; the host fills empty seats with bots from the
+            // live seat list in room mode.
+            this._onlinePlayers = 4
             this._enterLobby(mintRoomCode(), { create: true })
         })
 
@@ -648,7 +629,6 @@ class QuickStart extends HTMLElement {
         })
 
         this.appendChild(el)
-        this._renderOnlineSeats()
     }
 
     // Flip the current online screen from setup mode into room mode: reveal the
@@ -668,39 +648,10 @@ class QuickStart extends HTMLElement {
             </div>`
         setHidden(".online-intro", true)
         setHidden(".online-join-section", true)
+        setHidden(".online-new-room-divider", true)
         setHidden('[data-testid="online-create"]', true)
         setHidden('[data-testid="online-leave"]', false)
         this._setLobbyStatus("Connecting…")
-    }
-
-    /** Render the three other seats (everyone but you), each an Open/Bot toggle. */
-    _renderOnlineSeats() {
-        const list = this.querySelector("#online-seat-list")
-        if (!list) return
-        const seats = this._onlineSeats
-
-        let html = ""
-        for (let i = 1; i <= 3; i++) {
-            const isBot = seats[i]?.type === 'BOT'
-            const colorVar = `hsl(var(--player-${i}))`
-            const activeStyle = `style="background:${colorVar};color:#fff;"`
-            html += /*html*/ `
-                <div class="seat-row" data-oseat="${i}" data-testid="online-setup-seat-${i}">
-                    <div class="seat-color-cycle" style="background:${colorVar};">
-                        <div class="seat-pawn">${PAWN_SVG(i)}</div>
-                    </div>
-                    <div class="seat-body">
-                        <div class="seat-empty-title" style="opacity:0.85;">${isBot ? 'Bot' : 'Open seat'}</div>
-                        <div class="seat-empty-sub">${isBot ? 'Plays automatically' : 'A friend joins with the code'}</div>
-                    </div>
-                    <div class="seat-pill">
-                        <button data-otype="PLAYER" class="seat-half ${isBot ? 'seat-half--inactive' : ''}" data-testid="online-setup-seat-${i}-open" ${isBot ? '' : activeStyle}>${ICON_USER}<span>Open</span></button>
-                        <button data-otype="BOT" class="seat-half ${isBot ? '' : 'seat-half--inactive'}" data-testid="online-setup-seat-${i}-bot" ${isBot ? activeStyle : ''}>${ICON_BOT}<span>Bot</span></button>
-                    </div>
-                </div>`
-        }
-
-        list.innerHTML = html
     }
 
     /** Require a non-empty name before going online; remember it. Returns the
@@ -746,12 +697,6 @@ class QuickStart extends HTMLElement {
             case 'seated':
                 this._mySeat = msg.playerIndex
                 this._isHost = !!msg.isHost
-                // Apply the bot seats chosen on the create screen. Host-only +
-                // lobby-phase, both true right after we're seated as the creator.
-                if (this._isHost && this._pendingBotSeats?.length) {
-                    this._pendingBotSeats.forEach(i => this._net?.setSeat(i, 'BOT'))
-                    this._pendingBotSeats = null
-                }
                 break
             case 'state':
                 this._renderLobby(msg.state)
