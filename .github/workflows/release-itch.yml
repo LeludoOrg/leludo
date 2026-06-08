@@ -1,0 +1,90 @@
+name: Release (itch.io)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ITCH_USER: giddu
+  ITCH_GAME: leludo
+
+jobs:
+  detect-version:
+    name: Detect version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Read VERSION from version.js
+        id: read
+        run: |
+          VERSION=$(node -e "import('./version.js').then(m => process.stdout.write(m.VERSION))")
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read VERSION from version.js" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected VERSION=$VERSION"
+
+  test:
+    name: Unit + integration tests
+    needs: detect-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:run
+
+  publish-itch:
+    name: Publish HTML5 build to itch.io
+    needs: [detect-version, test]
+    runs-on: ubuntu-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build www/
+        run: npm run build:www
+
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -o butler.zip
+          chmod +x butler
+          ./butler -V
+
+      - name: Push HTML5 build to itch.io
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          ./butler push www "${ITCH_USER}/${ITCH_GAME}:html" --userversion="$VERSION"
+
+      - name: Confirm push
+        run: |
+          ./butler status "${ITCH_USER}/${ITCH_GAME}:html"
