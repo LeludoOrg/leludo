@@ -9,6 +9,9 @@
   "scripts": {
     "dev": "node tools/dev.mjs",
     "mp:server": "node server/local-server.mjs 8890",
+    "cf:dev": "npx --yes wrangler dev",
+    "cf:deploy": "npx --yes wrangler deploy",
+    "cf:tail": "npx --yes wrangler tail",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

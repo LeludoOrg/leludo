@@ -1,7 +1,29 @@
 # Multiplayer Plan — Cloudflare Durable Objects
 
-Status: **proposal**. Branch: `feat/multiplayer-plan`. No code yet — this file
-is the design + execution plan.
+Status: **deploy shell implemented**. Branch: `feat/multiplayer-plan`. The
+runtime-agnostic engine (`server/room-engine.js`, `server/admission.js`,
+`server/matchmaker.js`) and the local Node `ws` runtime (`server/local-server.mjs`,
+dev + e2e) shipped first; the Cloudflare transport shell now lives in
+[`server/cf/`](../server/cf/) (Worker + three Durable Objects) with
+[`wrangler.toml`](../wrangler.toml) and a `deploy-worker` job in
+[release-web.yml](../.github/workflows/release-web.yml). See
+[server/cf/README.md](../server/cf/README.md) for the deploy runbook.
+
+**Launch deviation — rooms are pinned, not hibernated.** `LudoRoomDO` accepts
+sockets with `server.accept()` (standard), so the runtime keeps the DO resident
+while a client is connected and the engine's plain `setTimeout` bot-pacing +
+reconnect-grace timers work unchanged. This spends duration (GB-s) while a game
+idles between moves; on the **free plan an over-limit throttles rather than
+bills**, so the "structurally unspendable" guarantee still holds. WebSocket
+Hibernation (zero idle duration, §"Why Durable Objects") is a follow-up — it
+needs the engine persisted + rehydrated across eviction, including a resumable
+RNG. A zero-connection leak-guard alarm in `LudoRoomDO` covers the one case
+pinning misses (every client drops at once → DO evicted → grace timers lost).
+
+**Public matchmaking is deployed but not wired client-side.** The launch client
+is private-rooms-only; `MatchmakingDO` exists for parity. Turning it on needs a
+client redial (a queued socket can't be moved between DOs — see
+[match-do.js](../server/cf/match-do.js) header).
 
 ## Goal
 

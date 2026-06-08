@@ -23,6 +23,9 @@ recordings/
 # Capacitor web shipping dir (built from root)
 www/
 
+# Cloudflare Wrangler local state
+.wrangler/
+
 # Generated Play Store release notes
 distribution/whatsnew/
 

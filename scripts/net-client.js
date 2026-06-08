@@ -9,11 +9,23 @@
 
 const DEFAULT_PORT = 8890;
 
+// Deployed Cloudflare Worker (server/cf/worker.js). The client dials this in
+// production; it's a custom-domain route on the worker (see wrangler.toml).
+// Override at runtime with the `?server=` query param or localStorage
+// `leludo-mp-server` (e.g. to point at a *.workers.dev URL before the custom
+// domain is set up).
+const PROD_SERVER_URL = 'wss://mp.leludo.org';
+
 /** Build the ws:// URL from connection options + query overrides. */
 export function resolveServerUrl(explicit) {
     if (explicit) return explicit;
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${location.hostname}:${DEFAULT_PORT}`;
+    // Local dev / e2e: `npm run dev` runs the Node ws server (local-server.mjs)
+    // on 8890 alongside the static site, so online play works out of the box.
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        return `ws://${location.hostname}:${DEFAULT_PORT}`;
+    }
+    // Production: the Cloudflare Worker on its own subdomain.
+    return PROD_SERVER_URL;
 }
 
 /**

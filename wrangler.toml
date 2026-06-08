@@ -1,0 +1,44 @@
+name = "leludo-mp"
+main = "server/cf/worker.js"
+compatibility_date = "2025-06-01"
+
+# Operator-tunable capacity caps (see docs/multiplayer-plan.md → Budget). Sized to
+# stay inside the Cloudflare free tier — hitting one returns a friendly BUSY to
+# the player, never a bill. Override per-environment with `wrangler secret`/vars
+# or the dashboard; no code redeploy needed.
+[vars]
+MAX_CONCURRENT_GAMES = "40"
+MAX_GAMES_PER_DAY = "250"
+RECONNECT_GRACE_MS = "60000"
+MATCH_FILL_MS = "20000"
+
+# One Durable Object class per role (docs/multiplayer-plan.md → Components):
+#   ROOM      one instance per game (authoritative state)
+#   ADMISSION singleton hard-capacity gate
+#   MATCH     singleton public matchmaking queue (off the launch path — see
+#             server/cf/match-do.js header)
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "LudoRoomDO"
+
+[[durable_objects.bindings]]
+name = "ADMISSION"
+class_name = "AdmissionDO"
+
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "MatchmakingDO"
+
+# Free plan → SQLite-backed Durable Objects (the only DO storage tier on the
+# free plan). `new_sqlite_classes` MUST list every DO class on first deploy.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LudoRoomDO", "AdmissionDO", "MatchmakingDO"]
+
+# Custom domain — gives the client a stable wss:// endpoint that matches the
+# PROD_SERVER_URL default in scripts/net-client.js. Requires leludo.org's DNS to
+# be on Cloudflare; uncomment after the zone is added, then `wrangler deploy`
+# creates the `mp` record automatically.
+# [[routes]]
+# pattern = "mp.leludo.org"
+# custom_domain = true

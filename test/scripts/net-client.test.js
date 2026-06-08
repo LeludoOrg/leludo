@@ -1,5 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NetClient } from '../../scripts/net-client.js';
+import { NetClient, resolveServerUrl } from '../../scripts/net-client.js';
+
+/**
+ * Server-URL resolution. Regression guard: production used to derive
+ * `wss://<host>:8890`, which points at a port nothing serves on leludo.org —
+ * online play could never connect. Prod must resolve to the deployed Cloudflare
+ * Worker; only localhost keeps the dev ws server on :8890.
+ */
+describe('resolveServerUrl', () => {
+    const stubHost = (hostname, protocol = 'https:') =>
+        vi.stubGlobal('location', { hostname, protocol });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('uses the local Node ws server on localhost / 127.0.0.1', () => {
+        stubHost('localhost', 'http:');
+        expect(resolveServerUrl()).toBe('ws://localhost:8890');
+        stubHost('127.0.0.1', 'http:');
+        expect(resolveServerUrl()).toBe('ws://127.0.0.1:8890');
+    });
+
+    it('points production at the Cloudflare Worker, NOT host:8890', () => {
+        stubHost('leludo.org');
+        expect(resolveServerUrl()).toBe('wss://mp.leludo.org');
+    });
+
+    it('honours an explicit override verbatim', () => {
+        stubHost('leludo.org');
+        expect(resolveServerUrl('wss://leludo-mp.acme.workers.dev'))
+            .toBe('wss://leludo-mp.acme.workers.dev');
+    });
+});
 
 /**
  * Auto-reconnect guards the multiplayer disconnect feature: a dropped socket
