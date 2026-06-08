@@ -50,22 +50,27 @@ export function extractBullets(changelogHtml, version) {
 }
 
 /**
- * Build the exact text that gets written to whatsnew-en-US, capped at
- * MAX_LEN. The returned string is what Play Store will read — no
- * trailing newline. r0adkll/upload-google-play measures the raw file
- * contents, so any trailing whitespace counts against the cap (an
- * earlier version of this script wrote `text + '\n'` and pushed
- * MAX_LEN-truncated builds to MAX_LEN + 1 chars, breaking the upload).
+ * Build the exact text that gets written to whatsnew-en-US. The
+ * returned string is what Play Store will read — no trailing newline,
+ * no truncation. r0adkll/upload-google-play measures the raw file
+ * contents, so any trailing whitespace counts against the cap.
+ *
+ * If the joined bullets exceed `max` chars this throws an explicit
+ * error with the actual length and overflow amount. Mid-sentence
+ * ellipsis truncation produces ugly release notes ("…and clear it with
+ * the &times; — the same controls you already kno…"), so we'd rather
+ * fail the release pipeline and force the author to shorten the
+ * changelog entry than ship a half-finished sentence to the Play
+ * Store.
  */
 export function buildWhatsnewText(bullets, max = MAX_LEN) {
-  let text = bullets.map((b) => `• ${b}`).join('\n');
+  const text = bullets.map((b) => `• ${b}`).join('\n');
   if (text.length > max) {
-    // Reserve one slot for the trailing ellipsis so the truncated form
-    // is exactly `max` characters, not `max + 1`.
-    text = text.slice(0, max - 1).trimEnd() + '…';
-  }
-  if (text.length > max) {
-    throw new Error(`whatsnew is ${text.length} chars after truncation (max ${max})`);
+    throw new Error(
+      `whatsnew is ${text.length} chars (max ${max}, over by ${text.length - max}). ` +
+      `Shorten the changelog Highlights bullets for the current VERSION — ` +
+      `the Play Store rejects en-US release notes longer than ${max} characters.`,
+    );
   }
   return text;
 }
