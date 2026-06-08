@@ -43,15 +43,17 @@
         <div class="static-page-body">
             <div class="static-page-intro">
                 <h1 class="static-page-title">Privacy policy</h1>
-                <div class="static-page-sub">Effective May 14, 2026</div>
+                <div class="static-page-sub">Effective June 8, 2026</div>
             </div>
 
             <div class="static-page-content" style="gap: var(--space-5);">
                 <section>
                     <div class="section-label cl-section-label">The short version</div>
                     <div class="surface-card privacy-card">
-                        Leludo runs entirely on your device. We don&rsquo;t collect, transmit, or sell personal data.
-                        No accounts, no analytics, no trackers, no ads.
+                        Leludo runs on your device. We never sell or share your data. We use anonymous
+                        Google Analytics to count screens viewed and game events &mdash; no names, no save
+                        state, no individual moves. No accounts, no advertising, no other third-party
+                        trackers.
                     </div>
                 </section>
 
@@ -71,10 +73,41 @@
                 </section>
 
                 <section>
+                    <div class="section-label cl-section-label">Anonymous analytics</div>
+                    <div class="surface-card privacy-card">
+                        We use Google Analytics 4 to understand which screens get used, whether games
+                        start and finish, and roughly where the build is running (Play Store APK, the
+                        leludo.org website, an installed PWA, or an embed on a portal like itch.io). This
+                        helps us decide what to improve next.
+                        <p class="privacy-paragraph-spaced"><strong>What gets sent:</strong></p>
+                        <ul class="privacy-list-spaced">
+                            <li>Screen names (home, board, settings, pause, etc.)</li>
+                            <li>Generic game events (game start, game end, capture, store-nudge click)</li>
+                            <li>App version</li>
+                            <li>Platform &amp; source (android, web, itch, pwa, &hellip;)</li>
+                            <li>Browser / device metadata supplied automatically by Google Analytics, including IP-derived approximate location (typically country)</li>
+                        </ul>
+                        <p class="privacy-paragraph-spaced"><strong>What is never sent:</strong></p>
+                        <ul class="privacy-list-spaced">
+                            <li>Player names you type for seats</li>
+                            <li>Your saved game, the board state, or any individual move you make</li>
+                            <li>Any value that could identify you personally</li>
+                        </ul>
+                        <p class="privacy-paragraph-spaced"><strong>Cookie:</strong> Google Analytics sets a <code>_ga</code> cookie to count distinct visitors. No advertising cookies.</p>
+                        <p class="privacy-paragraph-spaced"><strong>Opt out:</strong> install the
+                            <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener" class="privacy-link">Google Analytics opt-out add-on</a>,
+                            enable your browser&rsquo;s tracking-prevention or Do-Not-Track setting, or use a
+                            tracker-blocking extension. Analytics is also disabled during local
+                            development.</p>
+                    </div>
+                </section>
+
+                <section>
                     <div class="section-label cl-section-label">What we don&rsquo;t do</div>
                     <div class="surface-card privacy-card">
-                        No cookies for tracking. No fingerprinting. No third-party analytics or advertising SDKs.
-                        No remote servers receive gameplay, names, or device info.
+                        No advertising SDKs. No fingerprinting. No cross-site tracking. No remote
+                        servers receive your seat names, save state, or individual moves. The only
+                        third-party service we contact is Google Analytics, scoped as described above.
                     </div>
                 </section>
 
@@ -90,8 +123,9 @@
                 <section>
                     <div class="section-label cl-section-label">Android app</div>
                     <div class="surface-card privacy-card">
-                        The Android build is the same app packaged with Capacitor. It requests no special permissions
-                        and makes no network calls beyond what you initiate by tapping a link.
+                        The Android build is the same app packaged with Capacitor. It requests no
+                        special permissions and makes no network calls beyond the anonymous Google
+                        Analytics events described above and links you tap yourself.
                     </div>
                 </section>
 
