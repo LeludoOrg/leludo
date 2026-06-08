@@ -290,6 +290,14 @@ Minimum sections per entry:
 - **Highlights** — short bullet list of changes. For user-visible diffs, describe what the player will see. For pure internal work (refactors, dead-code removal, dep bumps), say so plainly — e.g. "Internal code cleanup: …. No gameplay or UI changes." Don't invent user-facing narrative.
 - For Play Store releases only (versions actually shipped to a listing): also include **Play Store description — short** (≤80 chars) and **Play Store description — full** sections so the published copy stays in sync with the app.
 
+**Hard cap: the Highlights bullets must total ≤500 characters per entry.** The Play Store rejects en-US release notes longer than 500 chars and [tools/extract-whatsnew.mjs](tools/extract-whatsnew.mjs) — which feeds release-android.yml — now fails the build (instead of silently truncating mid-sentence) when the joined bullets exceed the cap. The extractor counts each `<li>` text content prefixed with `• ` and joined with newlines, e.g. `• First bullet\n• Second bullet`. If the entry trips the cap, shorten the bullets — don't bypass the check by editing MAX_LEN. Sanity-check while drafting:
+
+```bash
+node -e "const fs=require('fs');const html=fs.readFileSync('changelog.html','utf8');const a=html.match(/<article[^>]*>([\s\S]*?)<\/article>/)[1];const ul=a.match(/Highlights[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/)[1];const b=[...ul.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map(m=>m[1].replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim());console.log(b.map(x=>'• '+x).join('\n').length,'chars')"
+```
+
+Aim for ≤450 to leave headroom; the script enforces 500.
+
 ## Android (Capacitor)
 
 Capacitor's `webDir` is `www/`, which is **built** from the root by `tools/build-www.mjs` (copies the three HTMLs + `changelog.css` + `manifest.json` + `sw.js` + `version.js` + the `styles/`, `components/`, `scripts/`, and `assets/` trees). `www/` is gitignored.
