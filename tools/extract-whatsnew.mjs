@@ -9,47 +9,13 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MAX_LEN = 500;
-const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, '..');
+export const MAX_LEN = 500;
 
-const versionSrc = await readFile(resolve(root, 'version.js'), 'utf8');
-const vMatch = versionSrc.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
-if (!vMatch) throw new Error('VERSION constant not found in version.js');
-const version = vMatch[1];
-
-const changelog = await readFile(resolve(root, 'changelog.html'), 'utf8');
-
-const articles = [...changelog.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)].map((m) => m[1]);
-const target = articles.find((body) => new RegExp(`>v${version.replace(/\./g, '\\.')}<`).test(body));
-if (!target) throw new Error(`No changelog article found for v${version}`);
-
-const highlightsBlock = target.match(/Highlights[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/);
-if (!highlightsBlock) throw new Error(`No Highlights <ul> in v${version} article`);
-
-const bullets = [...highlightsBlock[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)]
-  .map((m) => decodeEntities(stripTags(m[1])).trim())
-  .filter(Boolean);
-
-if (bullets.length === 0) throw new Error(`No <li> bullets in v${version} Highlights`);
-
-let text = bullets.map((b) => `• ${b}`).join('\n');
-if (text.length > MAX_LEN) {
-  text = text.slice(0, MAX_LEN - 1).trimEnd() + '…';
-}
-
-const outDir = resolve(root, 'distribution/whatsnew');
-await mkdir(outDir, { recursive: true });
-const outPath = resolve(outDir, 'whatsnew-en-US');
-await writeFile(outPath, text + '\n');
-
-console.log(`whatsnew v${version} (${text.length} chars) → ${outPath}`);
-
-function stripTags(html) {
+export function stripTags(html) {
   return html.replace(/<[^>]+>/g, '');
 }
 
-function decodeEntities(s) {
+export function decodeEntities(s) {
   return s
     .replace(/&rsquo;/g, '’')
     .replace(/&lsquo;/g, '‘')
@@ -65,4 +31,63 @@ function decodeEntities(s) {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ');
+}
+
+export function extractBullets(changelogHtml, version) {
+  const articles = [...changelogHtml.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)].map((m) => m[1]);
+  const target = articles.find((body) => new RegExp(`>v${version.replace(/\./g, '\\.')}<`).test(body));
+  if (!target) throw new Error(`No changelog article found for v${version}`);
+
+  const highlightsBlock = target.match(/Highlights[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/);
+  if (!highlightsBlock) throw new Error(`No Highlights <ul> in v${version} article`);
+
+  const bullets = [...highlightsBlock[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)]
+    .map((m) => decodeEntities(stripTags(m[1])).trim())
+    .filter(Boolean);
+
+  if (bullets.length === 0) throw new Error(`No <li> bullets in v${version} Highlights`);
+  return bullets;
+}
+
+/**
+ * Build the exact text that gets written to whatsnew-en-US, capped at
+ * MAX_LEN. The returned string is what Play Store will read — no
+ * trailing newline. r0adkll/upload-google-play measures the raw file
+ * contents, so any trailing whitespace counts against the cap (an
+ * earlier version of this script wrote `text + '\n'` and pushed
+ * MAX_LEN-truncated builds to MAX_LEN + 1 chars, breaking the upload).
+ */
+export function buildWhatsnewText(bullets, max = MAX_LEN) {
+  let text = bullets.map((b) => `• ${b}`).join('\n');
+  if (text.length > max) {
+    // Reserve one slot for the trailing ellipsis so the truncated form
+    // is exactly `max` characters, not `max + 1`.
+    text = text.slice(0, max - 1).trimEnd() + '…';
+  }
+  if (text.length > max) {
+    throw new Error(`whatsnew is ${text.length} chars after truncation (max ${max})`);
+  }
+  return text;
+}
+
+// CLI entrypoint — skip when imported as a module.
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('extract-whatsnew.mjs')) {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(here, '..');
+
+  const versionSrc = await readFile(resolve(root, 'version.js'), 'utf8');
+  const vMatch = versionSrc.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
+  if (!vMatch) throw new Error('VERSION constant not found in version.js');
+  const version = vMatch[1];
+
+  const changelog = await readFile(resolve(root, 'changelog.html'), 'utf8');
+  const bullets = extractBullets(changelog, version);
+  const text = buildWhatsnewText(bullets);
+
+  const outDir = resolve(root, 'distribution/whatsnew');
+  await mkdir(outDir, { recursive: true });
+  const outPath = resolve(outDir, 'whatsnew-en-US');
+  await writeFile(outPath, text);
+
+  console.log(`whatsnew v${version} (${text.length} chars) → ${outPath}`);
 }
