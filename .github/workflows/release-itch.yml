@@ -84,7 +84,8 @@ jobs:
         run: |
           VERSION="${{ needs.detect-version.outputs.version }}"
           ./butler push www "${ITCH_USER}/${ITCH_GAME}:html" --userversion="$VERSION"
-
-      - name: Confirm push
-        run: |
-          ./butler status "${ITCH_USER}/${ITCH_GAME}:html"
+        # butler push reports success or fails the step itself — there's
+        # no separate status check, because itch's channel-listing
+        # endpoint is eventually consistent. An earlier `butler status`
+        # step ran milliseconds after the first push and got "No channel
+        # html found" even though the upload had succeeded.
