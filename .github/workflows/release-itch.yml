@@ -73,6 +73,17 @@ jobs:
       - name: Build www/
         run: npm run build:www
 
+      - name: Zip web bundle
+        # Same naming convention as the gh-pages release zip in
+        # release-web.yml: `ludo-web-v<VERSION>.zip`. butler push uses
+        # the filename as the upload's display name on itch, so the
+        # uploaded file in the project's Uploads section reads
+        # `ludo-web-v0.19.2.zip` instead of a bare `www` directory name.
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          cd www
+          zip -r "../ludo-web-v${VERSION}.zip" .
+
       - name: Install butler
         run: |
           curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
@@ -83,8 +94,9 @@ jobs:
       - name: Push HTML5 build to itch.io
         run: |
           VERSION="${{ needs.detect-version.outputs.version }}"
-          ./butler push www "${ITCH_USER}/${ITCH_GAME}:html" --userversion="$VERSION"
-
-      - name: Confirm push
-        run: |
-          ./butler status "${ITCH_USER}/${ITCH_GAME}:html"
+          ./butler push "ludo-web-v${VERSION}.zip" "${ITCH_USER}/${ITCH_GAME}:html" --userversion="$VERSION"
+        # butler push reports success or fails the step itself — there's
+        # no separate status check, because itch's channel-listing
+        # endpoint is eventually consistent. An earlier `butler status`
+        # step ran milliseconds after the first push and got "No channel
+        # html found" even though the upload had succeeded.
