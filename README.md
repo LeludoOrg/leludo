@@ -1,8 +1,17 @@
 # Ludo
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Web](https://img.shields.io/badge/Play-leludo.org-4ade80?logo=googlechrome&logoColor=white)](https://leludo.org)
+[![Google Play](https://img.shields.io/badge/Google%20Play-Android-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.leludo.ludo)
+[![itch.io](https://img.shields.io/badge/itch.io-Browser%20build-fa5c5c?logo=itchdotio&logoColor=white)](https://giddu.itch.io/leludo)
 
-Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, no Tailwind. Ships to web ([leludo.org](https://leludo.org)) and Android via Capacitor.
+Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, no Tailwind.
+
+**Play it:**
+
+- **Web:** <https://leludo.org>
+- **Android:** [Google Play](https://play.google.com/store/apps/details?id=com.leludo.ludo)
+- **itch.io:** <https://giddu.itch.io/leludo> (HTML5 embed + APK download)
 
 Play offline. Four AI personalities (`balanced`, `aggressive`, `defensive`, `rusher`). No ads, no tracking, no accounts.
 
