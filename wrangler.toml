@@ -39,6 +39,6 @@ new_sqlite_classes = ["LudoRoomDO", "AdmissionDO", "MatchmakingDO"]
 # PROD_SERVER_URL default in scripts/net-client.js. Requires leludo.org's DNS to
 # be on Cloudflare; uncomment after the zone is added, then `wrangler deploy`
 # creates the `mp` record automatically.
-# [[routes]]
-# pattern = "mp.leludo.org"
-# custom_domain = true
+[[routes]]
+pattern = "mp.leludo.org"
+custom_domain = true
