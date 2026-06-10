@@ -16,20 +16,22 @@
 // }) → Promise<void>
 
 import { pawnSVG } from "./pawn-shape.js";
+import {
+    el,
+    injectOnce,
+    createOverlayRoot,
+    scheduleCleanup,
+    overlayRootCSS,
+    CLEANUP_MARGIN_MS,
+    EASE_SETTLE,
+    EASE_BURST,
+} from "./overlay-base.js";
 
 const STYLE_ID = 'hmarr-styles';
 
 function injectCSS() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = `
-      .hmarr-root {
-        position: absolute; inset: 0;
-        pointer-events: none;
-        z-index: 1000;
-        overflow: visible;
-      }
+    injectOnce(STYLE_ID, `
+      ${overlayRootCSS('hmarr-root')}
       /* Outer wrap owns translate + the start→end size scale; origin
          center keeps the pawn centered on its slot as it shrinks. */
       .hmarr-pawn-wrap { position: absolute; transform-origin: center center; }
@@ -81,15 +83,7 @@ function injectCSS() {
         pointer-events: none;
         mix-blend-mode: screen;
       }
-    `;
-    document.head.appendChild(style);
-}
-
-function el(cls, css) {
-    const d = document.createElement('div');
-    d.className = cls;
-    if (css) d.style.cssText = css;
-    return d;
+    `);
 }
 
 export function playHomeArrival(opts) {
@@ -117,8 +111,7 @@ export function playHomeArrival(opts) {
     // real settled token's size. 1 = no size change.
     const endScale   = opts.endScale != null ? opts.endScale : 1;
 
-    const root = el('hmarr-root');
-    container.appendChild(root);
+    const root = createOverlayRoot(container, 'hmarr-root');
 
     const startX = source ? source.x : home.x;
     const startY = source ? source.y : home.y;
@@ -164,7 +157,7 @@ export function playHomeArrival(opts) {
                 { transform: 'scale(0.94, 1.08)', offset: 0.55 },
                 { transform: 'scale(1, 1)' },
             ],
-            { duration: 480, easing: 'cubic-bezier(.3, 1.6, .4, 1)', fill: 'forwards' }
+            { duration: 480, easing: EASE_SETTLE, fill: 'forwards' }
         );
     }, travelMs);
 
@@ -173,13 +166,7 @@ export function playHomeArrival(opts) {
         if (flashBoard) playBoardFlash(root, color);
     }, travelMs);
 
-    return new Promise(function (resolve) {
-        setTimeout(function () {
-            if (root.parentNode) root.parentNode.removeChild(root);
-            onComplete();
-            resolve();
-        }, duration + 80);
-    });
+    return scheduleCleanup(root, duration + CLEANUP_MARGIN_MS, onComplete);
 }
 
 function playBurst(root, home, color, label, ms, burstSize) {
@@ -197,7 +184,7 @@ function playBurst(root, home, color, label, ms, burstSize) {
             { opacity: 0.9, transform: 'scale(1.0)', offset: 0.08 },
             { opacity: 0,   transform: 'scale(8)' },
         ],
-        { duration: Math.round(ms * 0.5), easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }
+        { duration: Math.round(ms * 0.5), easing: EASE_BURST, fill: 'forwards' }
     );
 
     const palette = [color, color, color, '#ebe3d6', '#1a1410', '#f3c969'];
@@ -228,7 +215,7 @@ function playBurst(root, home, color, label, ms, burstSize) {
                 { opacity: 1, transform: 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) rotate(' + rot.toFixed(0) + 'deg)', offset: 0.85 },
                 { opacity: 0, transform: 'translate(' + (tx * 1.05).toFixed(1) + 'px,' + (ty + 18).toFixed(1) + 'px) rotate(' + (rot * 1.1).toFixed(0) + 'deg)' },
             ],
-            { duration: Math.round(ms * 0.85), delay: Math.round(Math.random() * 120), easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }
+            { duration: Math.round(ms * 0.85), delay: Math.round(Math.random() * 120), easing: EASE_BURST, fill: 'forwards' }
         );
     }
 
@@ -263,6 +250,6 @@ function playBoardFlash(root, color) {
             { opacity: 0.35, offset: 0.4 },
             { opacity: 0 },
         ],
-        { duration: 520, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }
+        { duration: 520, easing: EASE_BURST, fill: 'forwards' }
     );
 }

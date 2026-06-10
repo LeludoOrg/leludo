@@ -14,13 +14,8 @@
     text-align: center;
 }
 
-#settings-overlay .settings-title {
-    font-family: var(--font-display);
-    font-size: 40px;
-    line-height: 1;
-    letter-spacing: -0.025em;
-    margin: 0;
-}
+/* .settings-title inherits the shared 40px serif rule from styles/base.css
+   (.display-title selector list). No overrides needed here. */
 
 #settings-overlay .settings-groups {
     padding: var(--space-4) var(--space-2);
@@ -30,7 +25,7 @@
 }
 
 #settings-overlay .settings-group-card {
-    padding: 0 14px;
+    padding: 0 var(--card-pad);
 }
 
 #settings-overlay .settings-row {
@@ -41,7 +36,7 @@
 }
 
 #settings-overlay .settings-row--bordered {
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent);
+    border-bottom: 1px solid var(--hairline);
 }
 
 #settings-overlay .settings-row-label {
@@ -135,7 +130,7 @@
 }
 
 #settings-overlay .bot-pool-row + .bot-pool-row {
-    border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent);
+    border-top: 1px solid var(--hairline);
 }
 
 #settings-overlay .bot-pool-body {
@@ -195,7 +190,7 @@
 }
 
 #settings-overlay .about-row--separator {
-    border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent);
+    border-top: 1px solid var(--hairline);
     padding-top: var(--space-2);
     margin-top: var(--space-1);
 }

@@ -18,7 +18,18 @@
 //   onComplete,            optional callback fired after cleanup
 // }) → Promise<void>
 
-import { PAWN_BODY, pawnSVG } from "./pawn-shape.js";
+import { pawnSVG } from "./pawn-shape.js";
+import {
+    el,
+    injectOnce,
+    createOverlayRoot,
+    scheduleCleanup,
+    overlayRootCSS,
+    arcPoint,
+    CLEANUP_MARGIN_MS,
+    EASE_SETTLE,
+    EASE_BURST,
+} from "./overlay-base.js";
 
 const STYLE_ID = 'plnch-styles';
 
@@ -31,16 +42,8 @@ const CHIP_DELAY_MS = 60;
 const CHIP_VISIBLE_MS = 1100;
 
 function injectCSS() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = `
-      .plnch-root {
-        position: absolute; inset: 0;
-        pointer-events: none;
-        z-index: 1000;
-        overflow: visible;
-      }
+    injectOnce(STYLE_ID, `
+      ${overlayRootCSS('plnch-root')}
       .plnch-pawn-wrap {
         position: absolute;
         transform-origin: center 86%;
@@ -117,34 +120,7 @@ function injectCSS() {
         color: #1a1410;
         box-shadow: 0 6px 18px rgba(0,0,0,0.35);
       }
-    `;
-    document.head.appendChild(style);
-}
-
-function ghostSVG(color, size) {
-    return (
-        '<svg class="plnch-trail-svg" viewBox="0 0 100 100" ' +
-        'width="' + size + '" height="' + size + '">' +
-            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
-            '<path d="' + PAWN_BODY + '" fill="' + color + '"/>' +
-            '<circle cx="50" cy="24" r="16" fill="' + color + '"/>' +
-        '</svg>'
-    );
-}
-
-function el(cls, css) {
-    const d = document.createElement('div');
-    d.className = cls;
-    if (css) d.style.cssText = css;
-    return d;
-}
-
-// Parabolic-arc point. p ∈ [0,1] from yard to entry, arcH = pixels above
-// the straight line at apex. Returns {x, y} in container coords.
-function arcAt(yard, entry, p, arcH) {
-    const x = yard.x + (entry.x - yard.x) * p;
-    const y = yard.y + (entry.y - yard.y) * p - arcH * 4 * p * (1 - p);
-    return { x: x, y: y };
+    `);
 }
 
 // Tangent angle (rad) of the arc at p. Used to tilt the pawn into the leap.
@@ -175,8 +151,7 @@ export function playPawnLaunch(opts) {
         ? opts.arcHeight
         : Math.max(dist * 0.32, pawnSize * 1.4);
 
-    const root = el('plnch-root');
-    container.appendChild(root);
+    const root = createOverlayRoot(container, 'plnch-root');
 
     const T_anticipation = Math.round(duration * 0.28);
     const T_crouch       = Math.round(duration * 0.12);
@@ -244,14 +219,14 @@ export function playPawnLaunch(opts) {
         const N_TRAIL = 5;
         for (let i = 0; i < N_TRAIL; i++) {
             const p = (i + 1) / (N_TRAIL + 1);
-            const pt = arcAt(yard, entry, p, arcH);
+            const pt = arcPoint(yard, entry, p, arcH);
             const tw = el(
                 'plnch-trail-wrap',
                 'left:' + (pt.x - pawnSize / 2) + 'px;' +
                 'top:'  + (pt.y - pawnSize / 2) + 'px;' +
                 'width:' + pawnSize + 'px; height:' + pawnSize + 'px;'
             );
-            tw.innerHTML = ghostSVG(color, pawnSize);
+            tw.innerHTML = pawnSVG(color, pawnSize, 'plnch-trail-svg', 'plnch-trail-', { flat: true });
             root.appendChild(tw);
             const ang = arcAngle(yard, entry, p, arcH);
             const tilt = (ang * 180 / Math.PI) * 0.18;
@@ -306,7 +281,7 @@ export function playPawnLaunch(opts) {
         const keyframes = [];
         for (let i = 0; i <= STEPS; i++) {
             const p = i / STEPS;
-            const pt = arcAt(yard, entry, p, arcH);
+            const pt = arcPoint(yard, entry, p, arcH);
             const ang = arcAngle(yard, entry, p, arcH);
             const tilt = (ang * 180 / Math.PI) * 0.22;
             const tx = pt.x - yard.x;
@@ -339,7 +314,7 @@ export function playPawnLaunch(opts) {
                 { transform: 'translate(' + tx.toFixed(1) + 'px,' + (ty - 6).toFixed(1) + 'px) scale(0.92, 1.10)', offset: 0.6 },
                 { transform: 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(1, 1)' },
             ],
-            { duration: T_land, easing: 'cubic-bezier(.3,1.6,.4,1)', fill: 'forwards' }
+            { duration: T_land, easing: EASE_SETTLE, fill: 'forwards' }
         );
         playLandingFX(root, entry, color, pawnSize, label);
     }, t_land);
@@ -348,15 +323,9 @@ export function playPawnLaunch(opts) {
     // this extension the root was removed at duration+80 while the chip
     // was still doing its opacity-1 hold — the user saw it for ~300ms.
     const chipEndMs = label ? t_land + CHIP_DELAY_MS + CHIP_VISIBLE_MS : 0;
-    const cleanupMs = Math.max(duration + 80, chipEndMs + 80);
+    const cleanupMs = Math.max(duration + CLEANUP_MARGIN_MS, chipEndMs + CLEANUP_MARGIN_MS);
 
-    return new Promise(function (resolve) {
-        setTimeout(function () {
-            if (root.parentNode) root.parentNode.removeChild(root);
-            onComplete();
-            resolve();
-        }, cleanupMs);
-    });
+    return scheduleCleanup(root, cleanupMs, onComplete);
 }
 
 function playLandingFX(root, entry, color, pawnSize, label) {
@@ -374,7 +343,7 @@ function playLandingFX(root, entry, color, pawnSize, label) {
             { opacity: 0.95, transform: 'scale(1.0)', offset: 0.12 },
             { opacity: 0,    transform: 'scale(6.5)' },
         ],
-        { duration: 520, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }
+        { duration: 520, easing: EASE_BURST, fill: 'forwards' }
     );
 
     const N_DUST = 6;

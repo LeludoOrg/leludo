@@ -56,6 +56,7 @@ import {
     shouldEndGame,
     computeLeftoverRankOrder,
     deserializeGameState,
+    grantsAnotherTurn,
 } from "./turn-rules.js";
 import { state, PHASES } from "./game-state.js";
 import { EVENTS } from "./game-reducer.js";
@@ -67,6 +68,8 @@ import {
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "./nav-history.js";
 import { dispatch } from "./game-store.js";
 import { isOnlineActive, onlineNet, onlineLocalSelf } from "./online-state.js";
+import { STORAGE_KEYS } from "./storage-keys.js";
+import { SCREENS, GAME_BACK_ACTION } from "./screens.js";
 
 export {
     pauseGameLogic,
@@ -101,10 +104,6 @@ export const COMMANDS = Object.freeze({
     NET_END: 'NET_END',
 });
 
-// When set, the next rollDice uses this value instead of the local RNG. Used
-// by NET_APPLY_ROLL so the client renders the server's authoritative dice.
-let _forcedDice = null;
-
 // --- phase machine guards ---
 
 function canRoll() {
@@ -120,6 +119,36 @@ function canSelectToken(tokenIndex) {
 
 function isPlayerFinished(playerIndex) {
     return isPlayerFinishedPure(state.playerTokenPositions[playerIndex]);
+}
+
+// Mount every seated player's tokens into their current cells, then restack the
+// touched cells. Shared by the offline start, the online start, and resume —
+// the `playerTokenPositions` guard is a no-op for startGame (always populated)
+// and required for the net/resume paths.
+function mountTokensFromState() {
+    const containersToRestack = new Set();
+    state.playerTypes.forEach((playerType, playerIndex) => {
+        if (!playerType || !state.playerTokenPositions[playerIndex]) return;
+        state.playerTokenPositions[playerIndex].forEach((pos, tokenIndex) => {
+            const token = document.createElement("wc-token");
+            token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
+            const container = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, pos));
+            if (container) {
+                container.appendChild(token);
+                containersToRestack.add(container);
+            }
+        });
+    });
+    containersToRestack.forEach(cell => updateCellStacking(cell));
+}
+
+// Mount the end-of-game recap and hide the board. Shared by netEnd, resume, and
+// the normal finish path.
+function mountGameEnd() {
+    document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
+    document.getElementById("game").classList.add("hidden");
+    releaseWakeLock();
+    goTo(SCREENS.GAME_END);
 }
 
 // Defensive DOM reset for a fresh game. startGame can be reached from
@@ -218,21 +247,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
 
     showGame();
 
-    const containersToRestack = new Set();
-    state.playerTypes.forEach((playerType, playerIndex) => {
-        if (!playerType) return;
-        state.playerTokenPositions[playerIndex].forEach((pos, tokenIndex) => {
-            const token = document.createElement("wc-token");
-            token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
-            const containerId = getTokenContainerId(playerIndex, tokenIndex, pos);
-            const targetContainer = document.getElementById(containerId);
-            if (targetContainer) {
-                targetContainer.appendChild(token);
-                containersToRestack.add(targetContainer);
-            }
-        });
-    });
-    containersToRestack.forEach(cell => updateCellStacking(cell));
+    mountTokensFromState();
 
     moveDice(state.currentPlayerIndex);
 }
@@ -269,20 +284,7 @@ function netStartGame(payload, emit) {
     setPlayerNames(state.playerNames);
     showGame();
 
-    const containersToRestack = new Set();
-    state.playerTypes.forEach((playerType, playerIndex) => {
-        if (!playerType || !state.playerTokenPositions[playerIndex]) return;
-        state.playerTokenPositions[playerIndex].forEach((pos, tokenIndex) => {
-            const token = document.createElement("wc-token");
-            token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
-            const container = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, pos));
-            if (container) {
-                container.appendChild(token);
-                containersToRestack.add(container);
-            }
-        });
-    });
-    containersToRestack.forEach(cell => updateCellStacking(cell));
+    mountTokensFromState();
 
     moveDice(state.currentPlayerIndex);
 }
@@ -320,14 +322,11 @@ function netDropPlayer(playerIndex, emit) {
 function netEnd(ranks, winnerIndex, emit) {
     if (state.phase === PHASES.GAME_ENDED) return;
     emit({ type: EVENTS.NET_GAME_ENDED, playerRanks: ranks, winnerIndex });
-    document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
-    document.getElementById("game").classList.add("hidden");
-    releaseWakeLock();
-    goTo('game-end');
+    mountGameEnd();
 }
 
 function resumeSavedGame(emit) {
-    const saved = deserializeGameState(localStorage.getItem('ludo-save'));
+    const saved = deserializeGameState(localStorage.getItem(STORAGE_KEYS.SAVE));
     if (!saved) return;
 
     const playerTypes = saved.playerTypesArr.slice();
@@ -365,27 +364,10 @@ function resumeSavedGame(emit) {
 
     showGame();
 
-    const containersToRestack = new Set();
-    state.playerTypes.forEach((playerType, playerIndex) => {
-        if (!playerType || !state.playerTokenPositions[playerIndex]) return;
-        state.playerTokenPositions[playerIndex].forEach((pos, tokenIndex) => {
-            const token = document.createElement("wc-token");
-            token.setAttribute("id", getTokenElementId(playerIndex, tokenIndex));
-            const containerId = getTokenContainerId(playerIndex, tokenIndex, pos);
-            const container = document.getElementById(containerId);
-            if (container) {
-                container.appendChild(token);
-                containersToRestack.add(container);
-            }
-        });
-    });
-    containersToRestack.forEach(cell => updateCellStacking(cell));
+    mountTokensFromState();
 
     if (shouldEndGame(state.playerTypes, state.playerTokenPositions)) {
-        document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
-        document.getElementById("game").classList.add("hidden");
-        releaseWakeLock();
-        goTo('game-end');
+        mountGameEnd();
         return;
     }
 
@@ -396,7 +378,9 @@ function resumeSavedGame(emit) {
     moveDice(state.currentPlayerIndex);
 }
 
-function rollDice(emit) {
+// `forcedValue` is the server's authoritative dice for online play (passed by
+// NET_APPLY_ROLL); offline it's null and the value is rolled locally.
+function rollDice(emit, forcedValue = null) {
     if (isGameLogicPaused()) return;
     if (!canRoll()) return;
     emit({ type: EVENTS.DICE_ROLL_STARTED });
@@ -405,10 +389,9 @@ function rollDice(emit) {
             const lastDiceRoll = state.currentDiceRoll;
             const pi = state.currentPlayerIndex;
             const hasTokenAtHome = state.playerTokenPositions[pi].includes(-1);
-            const newRoll = _forcedDice != null
-                ? _forcedDice
+            const newRoll = forcedValue != null
+                ? forcedValue
                 : rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome);
-            _forcedDice = null;
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
             setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
@@ -521,10 +504,7 @@ function handleAfterTokenMove(tripComplete, captureCount, emit) {
             }
             emit({ type: EVENTS.GAME_ENDED, winnerIndex: state.winnerIndex });
 
-            document.getElementById("game-container").appendChild(document.createElement("wc-game-end"));
-            document.getElementById("game").classList.add("hidden");
-            releaseWakeLock();
-            goTo('game-end');
+            mountGameEnd();
             isGameDone = true;
         }
     }
@@ -532,11 +512,10 @@ function handleAfterTokenMove(tripComplete, captureCount, emit) {
     if (isGameDone) return;
 
     activateDice();
-    // A finished trip, capture, or 6 normally grants another turn — but a
-    // player who just finished their LAST token has no tokens left to move,
-    // so advance instead of granting an empty repeat roll.
-    const grantsRepeat = (tripComplete || captureCount > 0 || state.currentDiceRoll === 6)
-        && !isPlayerFinished(state.currentPlayerIndex);
+    const grantsRepeat = grantsAnotherTurn(
+        state.currentDiceRoll, captureCount, tripComplete,
+        isPlayerFinished(state.currentPlayerIndex),
+    );
     if (grantsRepeat) {
         emit({ type: EVENTS.TURN_REPEATS, playerIndex: state.currentPlayerIndex });
     } else {
@@ -564,7 +543,7 @@ function restartGame(emit) {
 
     resetThemeChrome();
 
-    replaceTo('game');
+    replaceTo(SCREENS.GAME);
     startGame(quickStartId, namesByPlayerIndex, emit);
 }
 
@@ -598,7 +577,7 @@ function exitToHome(emit) {
         quickStart.showHomeScreen();
     }
 
-    replaceTo('home');
+    replaceTo(SCREENS.HOME);
     resumeGameLogic();
 }
 
@@ -612,7 +591,7 @@ function onlineNewGame(emit) {
     const quickStart = document.querySelector('wc-quick-start');
     if (quickStart && typeof quickStart.showOnlineScreen === 'function') {
         quickStart.showOnlineScreen();
-        goTo('online');
+        goTo(SCREENS.ONLINE);
     }
 }
 
@@ -685,7 +664,7 @@ function handleGamePause(emit) {
     pauseGameLogic();
     emit({ type: EVENTS.GAME_PAUSED });
     showPauseMenu();
-    goTo('pause');
+    goTo(SCREENS.PAUSE);
 
     const overlay = document.getElementById("pause-menu");
     const resumeBtn = document.getElementById("pm-resume");
@@ -722,15 +701,15 @@ function handleGamePause(emit) {
     exitBtns.forEach(el => el.addEventListener("click", onExitClick));
 }
 
-registerScreenHandler('pause', () => {
+registerScreenHandler(SCREENS.PAUSE, () => {
     if (_pauseCloseHandler) _pauseCloseHandler();
 });
 
-registerScreenHandler('game-end', () => {
+registerScreenHandler(SCREENS.GAME_END, () => {
     dispatch({ type: COMMANDS.EXIT_TO_HOME });
 });
 
-registerScreenHandler('__game_back__', () => {
+registerScreenHandler(GAME_BACK_ACTION, () => {
     dispatch({ type: COMMANDS.PAUSE });
 });
 
@@ -742,12 +721,12 @@ export function getFinishedCount(playerIndex) {
 }
 
 export function clearSavedGame() {
-    try { localStorage.removeItem('ludo-save'); }
+    try { localStorage.removeItem(STORAGE_KEYS.SAVE); }
     catch (e) { console.warn('clearSavedGame failed', e); }
 }
 
 export function getSavedGame() {
-    return deserializeGameState(localStorage.getItem('ludo-save'));
+    return deserializeGameState(localStorage.getItem(STORAGE_KEYS.SAVE));
 }
 
 // --- the command handler entry point ---
@@ -782,8 +761,7 @@ export function commandHandler(currentState, command, services, emit) {
         case COMMANDS.NET_SYNC_TURN:
             return netSyncTurn(command.playerIndex, emit);
         case COMMANDS.NET_APPLY_ROLL:
-            _forcedDice = command.value;
-            return rollDice(emit);
+            return rollDice(emit, command.value);
         case COMMANDS.NET_APPLY_MOVE:
             return selectToken(command.playerIndex, command.tokenIndex, emit);
         case COMMANDS.NET_DROP_PLAYER:

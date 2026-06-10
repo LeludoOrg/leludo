@@ -40,25 +40,54 @@ function nameOf(seats, i) {
     return 'Bot';
 }
 
-function pickKnockoutKing(stats, seats, winnerIndex) {
-    let max = 0;
+/**
+ * Shared "best player over 4 seats" scan behind most pickers. Returns the
+ * winning index or -1 when nothing clears the bar. Options:
+ *   - min        only values >= min count; if nothing clears it, returns -1.
+ *                Doubles as the sentinel filter (e.g. min:0 drops the -1
+ *                "never happened" markers in the min-direction pickers).
+ *   - skipIndex  seat to ignore (e.g. exclude the already-credited player).
+ *   - tieToWinner  on an exact tie, prefer this seat (knockout king credits
+ *                the game winner when capture counts are level).
+ *   - direction  'max' (default) or 'min' (earliest-turn pickers).
+ *
+ * Threshold-at-scan vs the old threshold-at-end is equivalent: a sub-min
+ * value can never out-rank a qualifying one, so filtering it out early
+ * picks the same seat the per-picker loops did.
+ */
+function argmaxPlayer(values, { min = -Infinity, skipIndex = -1, tieToWinner = -1, direction = 'max' } = {}) {
+    let bestVal = direction === 'min' ? Infinity : -Infinity;
     let pi = -1;
     for (let i = 0; i < 4; i++) {
-        const c = stats.playerCaptures[i] || 0;
-        if (c > max || (c === max && i === winnerIndex)) {
-            if (c >= max) { max = c; pi = i; }
-        }
+        if (i === skipIndex) continue;
+        const v = values[i];
+        if (v < min) continue;
+        const better = direction === 'min' ? v < bestVal : v > bestVal;
+        const tie = v === bestVal && i === tieToWinner;
+        if (pi === -1 || better || tie) { bestVal = v; pi = i; }
     }
-    if (max < 2 || pi === -1) return null;
-    return {
+    return pi;
+}
+
+function makeCard({ playerIndex, type, title, body, stat }) {
+    return { playerIndex, type, title, body, stat };
+}
+
+function pickKnockoutKing(stats, seats, winnerIndex) {
+    const captures = stats.playerCaptures.map((c) => c || 0);
+    const pi = argmaxPlayer(captures, { min: 2, tieToWinner: winnerIndex });
+    if (pi === -1) return null;
+    return makeCard({
         playerIndex: pi,
         type: 'ko',
         title: 'Knockout king',
         body: `${nameOf(seats, pi)} sent rivals home`,
-        stat: `${max}×`,
-    };
+        stat: `${captures[pi]}×`,
+    });
 }
 
+// Hot dice keeps a bespoke scan: it ranks by streak LENGTH but the card
+// needs the whole streak object (value + atTurn), not just a number.
 function pickHotDice(stats, seats) {
     let best = null;
     let bestPi = -1;
@@ -72,112 +101,90 @@ function pickHotDice(stats, seats) {
     if (!best) return null;
     const word = countWord(best.length);
     const repeated = String(best.value).repeat(Math.min(best.length, 4));
-    return {
+    return makeCard({
         playerIndex: bestPi,
         type: 'dice',
         title: 'Hot dice',
         body: `${nameOf(seats, bestPi)} rolled ${word} ${best.value}s in a row on turn ${best.atTurn}`,
         stat: repeated,
-    };
+    });
 }
 
 function pickFirstHome(stats, seats) {
-    let best = -1;
-    let pi = -1;
-    for (let i = 0; i < 4; i++) {
-        const t = stats.firstFinishTurn[i];
-        if (t < 0) continue;
-        if (pi === -1 || t < best) { best = t; pi = i; }
-    }
+    // min:0 drops the -1 "never finished" sentinels; direction:'min' takes
+    // the earliest finish turn.
+    const pi = argmaxPlayer(stats.firstFinishTurn, { min: 0, direction: 'min' });
     if (pi === -1) return null;
-    return {
+    return makeCard({
         playerIndex: pi,
         type: 'home',
         title: 'First home',
         body: `${nameOf(seats, pi)} got the first pawn home`,
-        stat: `T-${best}`,
-    };
+        stat: `T-${stats.firstFinishTurn[pi]}`,
+    });
 }
 
 function pickRoughDay(stats, seats) {
-    let max = 0;
-    let pi = -1;
-    for (let i = 0; i < 4; i++) {
-        const c = stats.sentHomeCount[i] || 0;
-        if (c > max) { max = c; pi = i; }
-    }
-    if (max < 3 || pi === -1) return null;
-    return {
+    const sent = stats.sentHomeCount.map((c) => c || 0);
+    const pi = argmaxPlayer(sent, { min: 3 });
+    if (pi === -1) return null;
+    return makeCard({
         playerIndex: pi,
         type: 'send',
         title: 'Rough day',
         body: `${nameOf(seats, pi)} was sent home`,
-        stat: `${max}×`,
-    };
+        stat: `${sent[pi]}×`,
+    });
 }
 
 function pickLongRoad(stats, seats, skipPi) {
-    let max = -1;
-    let pi = -1;
-    for (let i = 0; i < 4; i++) {
-        if (i === skipPi) continue;
-        const t = stats.firstHomeStretchTurn[i];
-        if (t < 0) continue;
-        if (t > max) { max = t; pi = i; }
-    }
-    if (pi === -1 || max < 15) return null;
-    return {
+    // min:15 doubles as the late-entry bar and the -1 sentinel filter.
+    const pi = argmaxPlayer(stats.firstHomeStretchTurn, { min: 15, skipIndex: skipPi });
+    if (pi === -1) return null;
+    const turn = stats.firstHomeStretchTurn[pi];
+    return makeCard({
         playerIndex: pi,
         type: 'bolt',
         title: 'Long road',
-        body: `${nameOf(seats, pi)} crossed the finish at turn ${max}`,
-        stat: `T-${max}`,
-    };
+        body: `${nameOf(seats, pi)} crossed the finish at turn ${turn}`,
+        stat: `T-${turn}`,
+    });
 }
 
 function pickSlowStart(stats, seats) {
-    let max = 0;
-    let pi = -1;
-    for (let i = 0; i < 4; i++) {
-        const n = stats.pawnsAtBaseAtTurn20[i];
-        if (n >= 3 && n > max) { max = n; pi = i; }
-    }
+    const pi = argmaxPlayer(stats.pawnsAtBaseAtTurn20, { min: 3 });
     if (pi === -1) return null;
-    return {
+    return makeCard({
         playerIndex: pi,
         type: 'bolt',
         title: 'Slow start',
         body: `${nameOf(seats, pi)} took a while to leave home`,
         stat: 'T-20',
-    };
+    });
 }
 
 function pickChampion(stats, seats, winnerIndex) {
-    return {
+    return makeCard({
         playerIndex: winnerIndex,
         type: 'crown',
         title: 'Champion',
         body: `${nameOf(seats, winnerIndex)} crossed the finish first`,
         stat: '1st',
-    };
+    });
 }
 
 function pickDistanceLeader(stats, seats, skipPi) {
-    let max = 0;
-    let pi = -1;
-    for (let i = 0; i < 4; i++) {
-        if (i === skipPi) continue;
-        const d = stats.distanceTraveled[i] || 0;
-        if (d > max) { max = d; pi = i; }
-    }
+    const dist = stats.distanceTraveled.map((d) => d || 0);
+    // min:1 reproduces the old "only credit a player who actually moved".
+    const pi = argmaxPlayer(dist, { min: 1, skipIndex: skipPi });
     if (pi === -1) return null;
-    return {
+    return makeCard({
         playerIndex: pi,
         type: 'bolt',
         title: 'Distance run',
         body: `${nameOf(seats, pi)} clocked the most steps`,
-        stat: `${max}`,
-    };
+        stat: `${dist[pi]}`,
+    });
 }
 
 /**

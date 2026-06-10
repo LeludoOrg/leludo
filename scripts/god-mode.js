@@ -7,8 +7,10 @@
 
 import { getTokenElement } from "./render-logic.js";
 import { isCapacitorNative } from "./platform.js";
+import { YARD, PLAYER_OFFSET, TRACK_LEN, LAST_TRACK_SQUARE } from "./board-constants.js";
+import { STORAGE_KEYS } from "./storage-keys.js";
 
-const STORAGE_KEY = 'debug-god-mode';
+const STORAGE_KEY = STORAGE_KEYS.GOD_MODE;
 
 let _enabled = false;
 let _selection = null;
@@ -69,17 +71,17 @@ export function clearGodSelection() {
  * the player whose entry mark it is).
  */
 export function cellIdToPosition(cellId, playerIndex) {
-    if (/^h-\d-\d$/.test(cellId)) return -1;
+    if (/^h-\d-\d$/.test(cellId)) return YARD;
     const markMatch = cellId.match(/^m(\d+)$/);
     if (markMatch) {
         const mark = parseInt(markMatch[1], 10);
-        const pos = (mark - 13 * playerIndex + 52) % 52;
-        if (pos > 50) return null;
+        const pos = (mark - PLAYER_OFFSET * playerIndex + TRACK_LEN) % TRACK_LEN;
+        if (pos > LAST_TRACK_SQUARE) return null;
         return pos;
     }
     const stretchMatch = cellId.match(/^p\ds([1-6])$/);
     if (stretchMatch) {
-        return 50 + parseInt(stretchMatch[1], 10);
+        return LAST_TRACK_SQUARE + parseInt(stretchMatch[1], 10);
     }
     return null;
 }

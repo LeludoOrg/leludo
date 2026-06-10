@@ -1,7 +1,28 @@
+/* Top-level game container shell (index.html) — was an inline style. */
+#game-container {
+    width: 100%;
+    max-width: var(--frame-max-w);
+}
+
 /* ============================================================
    #pause-menu — overlay defined in index.html, populated by
    scripts/render-logic.js (renderPauseScoreboard).
    ============================================================ */
+
+/* Pause standings block + its header row — were inline styles in index.html. */
+#pause-menu .pause-standings {
+    padding: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+#pause-menu .pause-standings-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
 
 #pause-menu .pause-body {
     text-align: center;
@@ -20,7 +41,7 @@
 }
 
 #pause-menu .pause-scoreboard {
-    padding: 0 14px;
+    padding: 0 var(--card-pad);
 }
 
 #pause-menu .pm-row {
@@ -31,7 +52,7 @@
 }
 
 #pause-menu .pm-row + .pm-row {
-    border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent);
+    border-top: 1px solid var(--hairline);
 }
 
 #pause-menu .pm-pawn {
@@ -62,10 +83,10 @@
     text-overflow: ellipsis;
 }
 
+/* .pm-upnext / .pm-type extend the shared .eyebrow recipe (styles/base.css):
+   uppercase + 0.14em tracking come from there; only the diffs live below. */
 #pause-menu .pm-upnext {
     font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
     font-weight: 500;
     opacity: 0.6;
     margin-left: 6px;
@@ -76,9 +97,7 @@
     align-items: center;
     gap: 4px;
     color: color-mix(in srgb, var(--color-fg) 60%, transparent);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    opacity: 1;
     font-weight: 500;
     align-self: flex-start;
 }

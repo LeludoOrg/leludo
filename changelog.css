@@ -12,13 +12,8 @@
     padding: var(--space-2) var(--space-3) 0;
 }
 
-.static-page-title {
-    font-family: var(--font-display);
-    font-size: 40px;
-    line-height: 1;
-    letter-spacing: -0.025em;
-    margin: 0;
-}
+/* .static-page-title inherits the shared 40px serif rule from styles/base.css
+   (.display-title selector list). No overrides needed here. */
 
 .static-page-sub {
     font-size: 12px;
@@ -31,6 +26,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-8);
+}
+
+/* Tighter section gap — used by privacy.html (was an inline gap override). */
+.static-page-content--tight {
+    gap: var(--space-5);
 }
 
 /* Privacy & changelog cards share visuals */
@@ -94,12 +94,8 @@
     letter-spacing: -0.025em;
 }
 
-.cl-entry-date {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    opacity: 0.4;
-}
+/* .cl-entry-date inherits the shared eyebrow recipe from styles/base.css
+   (.eyebrow selector list). No overrides needed here. */
 
 .cl-entry-sections {
     display: flex;

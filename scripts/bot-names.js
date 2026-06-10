@@ -1,5 +1,8 @@
 // Cheeky bot name pools — harmless, region-flavoured.
 
+import { STORAGE_KEYS } from "./storage-keys.js";
+import { pick } from "./rng-util.js";
+
 export const BOT_NAME_POOLS = {
     english: [
         "Capt Obv", "Whiffs", "Boomer", "Karen", "Reply Guy",
@@ -32,7 +35,7 @@ export const BOT_POOL_LABELS = {
     hindi: "Hindi / Hinglish",
 };
 
-const POOL_KEY = "bot-name-pool";
+const POOL_KEY = STORAGE_KEYS.BOT_NAME_POOL;
 
 export function getActivePoolKey() {
     const stored = localStorage.getItem(POOL_KEY);
@@ -61,14 +64,14 @@ export function randomBotName(used = [], { poolKey, rng = Math.random } = {}) {
     const pool = BOT_NAME_POOLS[key];
     const available = pool.filter(n => !used.includes(n));
     const source = available.length ? available : pool;
-    return source[Math.floor(rng() * source.length)];
+    return pick(source, rng);
 }
 
 export function isDefaultBotName(name) {
     return Object.values(BOT_NAME_POOLS).some(pool => pool.includes(name));
 }
 
-const SEAT_NAME_KEY = "seat-names";
+const SEAT_NAME_KEY = STORAGE_KEYS.SEAT_NAMES;
 
 function readSeatNameMap() {
     try {

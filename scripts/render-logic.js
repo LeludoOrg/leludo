@@ -1,9 +1,26 @@
-import {getMarkIndex} from "./index.js";
+import {getMarkIndex} from "./game-logic.js";
+import {YARD, ENTRY_SQUARE, LAST_TRACK_SQUARE} from "./board-constants.js";
+import { SCREENS } from "./screens.js";
+import { MINI_PAWN_BODY } from "./pawn-mini.js";
 import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "./nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
+import {requestWakeLock, releaseWakeLock} from "./wake-lock.js";
+
+// Re-exported so the scripts barrel and existing importers keep one entry point
+// even though the wake-lock implementation now lives in its own module.
+export {requestWakeLock, releaseWakeLock};
+
+// The board is a 15×15 grid, so a cell is 1/15 of the board's width.
+const BOARD_CELLS = 15;
+
+/** rAF is paused while the tab is hidden; several animation paths fast-forward
+ *  instead of waiting on it. Guards the non-browser (test) case too. */
+function isTabHidden() {
+    return typeof document !== 'undefined' && document.hidden;
+}
 
 // Finish-cell DOM id, e.g. "p0s6" — the home-stretch goal square per player.
 const FINISH_CELL_ID_RE = /^p\ds6$/;
@@ -16,12 +33,12 @@ const FINISH_CELL_ID_RE = /^p\ds6$/;
  * @return {string}
  */
 export function getTokenContainerId(playerIndex, tokenIndex, tokenPosition) {
-    if (tokenPosition === -1) {
+    if (tokenPosition === YARD) {
         return `h-${playerIndex}-${tokenIndex}`
     }
 
-    if (tokenPosition > 50) {
-        const safeIndex = tokenPosition % 50;
+    if (tokenPosition > LAST_TRACK_SQUARE) {
+        const safeIndex = tokenPosition - LAST_TRACK_SQUARE;
         return `p${playerIndex}s${safeIndex}`
     }
 
@@ -104,7 +121,7 @@ export function animateDiceRoll(currentDiceRoll) {
         function tick(timestamp) {
             // Hidden tab: nothing to animate and rAF is paused — snap to the
             // final face and let the replay queue move on (see nextFrame).
-            if (typeof document !== 'undefined' && document.hidden) {
+            if (isTabHidden()) {
                 updateDiceFace(diceRoll, currentDiceRoll);
                 resolve();
                 return;
@@ -133,7 +150,7 @@ export function animateDiceRoll(currentDiceRoll) {
 
         // Snap straight to the result when the tab is already hidden — no rAF
         // will fire to run the spin, so don't wait on it.
-        if (typeof document !== 'undefined' && document.hidden) {
+        if (isTabHidden()) {
             updateDiceFace(currentDiceRoll, currentDiceRoll);
             resolve();
             return;
@@ -362,7 +379,7 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
 
     // Hidden tab: the victim is already settled into its home seat above — skip
     // the KO overlay so the online replay queue doesn't stall on its timers.
-    if (typeof document !== 'undefined' && document.hidden) {
+    if (isTabHidden()) {
         element.style.visibility = prevVisibility;
         return Promise.resolve();
     }
@@ -401,11 +418,11 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
 
     // Hidden tab: the token is already parented into the finish cell — skip the
     // cosmetic arrival overlay so the online replay queue doesn't stall on it.
-    if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
+    if (isTabHidden()) return Promise.resolve();
 
     const finalRect = element.getBoundingClientRect();
     const containerRect = boardWrap.getBoundingClientRect();
-    const cellSize = containerRect.width / 15;
+    const cellSize = containerRect.width / BOARD_CELLS;
     const src = sourceRect || finalRect;
     const sourceCenter = {
         x: src.left + src.width / 2 - containerRect.left,
@@ -461,7 +478,7 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     // Hidden tab: rAF/overlay timers are paused or throttled, which would stall
     // the online replay queue. Land the pawn in its entry cell immediately and
     // skip the leap flourish (the client catches up visually when shown again).
-    if (typeof document !== 'undefined' && document.hidden) {
+    if (isTabHidden()) {
         clearStackStyles(element);
         delete element.dataset.moving;
         finalContainer.appendChild(element);
@@ -474,7 +491,7 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     const containerRect = boardWrap.getBoundingClientRect();
     const yardRect = element.getBoundingClientRect();
     const entryRect = finalContainer.getBoundingClientRect();
-    const cellSize = containerRect.width / 15;
+    const cellSize = containerRect.width / BOARD_CELLS;
 
     const yardCenter = {
         x: yardRect.left + yardRect.width / 2 - containerRect.left,
@@ -526,7 +543,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
     const path = getContainerPath(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition);
     const element = getTokenElement(playerIndex, tokenIndex);
 
-    if (currentTokenPosition === -1 && newTokenPosition === 0) {
+    if (currentTokenPosition === YARD && newTokenPosition === ENTRY_SQUARE) {
         return playYardLaunch(playerIndex, tokenIndex, path[path.length - 1]);
     }
 
@@ -540,7 +557,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         // and the online replay queue (which awaits this promise) would wedge —
         // the client desyncs from the server. Land the token in its final cell
         // immediately; it catches up visually when the tab is shown again.
-        if (typeof document !== 'undefined' && document.hidden) {
+        if (isTabHidden()) {
             clearStackStyles(element);
             delete element.dataset.moving;
             finalContainer.appendChild(element);
@@ -580,7 +597,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         function step() {
             // Tab went hidden mid-glide: fast-forward to the final cell so the
             // replay queue keeps draining (rAF is paused while hidden).
-            if (typeof document !== 'undefined' && document.hidden && stepIndex < path.length) {
+            if (isTabHidden() && stepIndex < path.length) {
                 stepIndex = path.length;
             }
             if (stepIndex >= path.length) {
@@ -666,51 +683,17 @@ export function inactiveDice() {
     document.getElementById("wc-dice").dataset.active = "false"
 }
 
-let _wakeLock = null;
-let _wakeWanted = false;
-let _wakeListenerAttached = false;
-
-async function _acquireWakeLock() {
-    if (!("wakeLock" in navigator)) return;
-    if (_wakeLock || document.visibilityState !== "visible") return;
-    try {
-        _wakeLock = await navigator.wakeLock.request("screen");
-        _wakeLock.addEventListener("release", () => { _wakeLock = null; });
-    } catch (e) {
-        // permission denied / battery saver — silently ignore
-    }
-}
-
-export function requestWakeLock() {
-    _wakeWanted = true;
-    if (!_wakeListenerAttached) {
-        document.addEventListener("visibilitychange", () => {
-            if (_wakeWanted && document.visibilityState === "visible") _acquireWakeLock();
-        });
-        _wakeListenerAttached = true;
-    }
-    _acquireWakeLock();
-}
-
-export function releaseWakeLock() {
-    _wakeWanted = false;
-    if (_wakeLock) {
-        _wakeLock.release().catch(() => {});
-        _wakeLock = null;
-    }
-}
-
 export function showGame() {
     document.getElementById("main-menu").classList.add("hidden")
     document.getElementById("game").classList.remove("hidden")
-    replaceTo('game')
+    replaceTo(SCREENS.GAME)
     requestWakeLock()
 }
 
 const PAWN_SVG_MINI = (playerIndex) => `
     <svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22));">
         <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.18)"/>
-        <path d="M16 4c3.2 0 5.5 2.4 5.5 5.2 0 1.8-1 3.2-2.4 4 1.7.7 2.9 1.8 3.6 3.4l1.1 2.6c.4 1 .1 2-.7 2.4-.2.1-.4.1-.6.1H9.5c-.9 0-1.6-.7-1.6-1.6 0-.3.1-.6.2-.9l1.1-2.6c.7-1.6 1.9-2.7 3.6-3.4-1.4-.8-2.4-2.2-2.4-4C10.4 6.4 12.8 4 16 4z" fill="currentColor"/>
+        <path d="${MINI_PAWN_BODY}" fill="currentColor"/>
         <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
     </svg>`;
 

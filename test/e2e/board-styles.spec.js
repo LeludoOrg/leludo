@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { startGame as bootGame } from './helpers.js';
 
 /**
  * Regression suite for board CSS.
@@ -14,10 +15,7 @@ import { test, expect } from '@playwright/test';
 const HSL_RE = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/;
 
 async function startGame(page) {
-    await page.goto('/');
-    await page.locator('.new-game-btn').click();
-    await page.locator('.start-btn').click();
-    await page.locator('wc-board:not(.hidden)').waitFor();
+    await bootGame(page);
     // wait for at least one corner widget to populate so we can read pill styles
     await page.locator('.corner-widget').first().waitFor();
 }
@@ -187,10 +185,7 @@ test.describe('Token rendering inside cells', () => {
         // wc-token box. On small viewports (24px cells) the pawns visibly
         // fell below the cell border when 2+ tokens shared a cell.
         // Fix: wc-token svg { display: block; } — removes the strut.
-        await page.goto('/?positions=39,39,39,39&player=0');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
-        await page.locator('wc-board:not(.hidden)').waitFor();
+        await bootGame(page, '?positions=39,39,39,39&player=0');
 
         const data = await page.evaluate(async () => {
             const mod = await import('/scripts/render-logic.js');
@@ -233,10 +228,7 @@ test.describe('Finish-cell token stacking', () => {
         // this looked like "all finished tokens turned green" (P0 colormap).
         // Fix: handleGameStart + handleGameResume must updateCellStacking
         // on every cell they appended tokens into.
-        await page.goto('/?positions=56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
-        await page.locator('wc-board:not(.hidden)').waitFor();
+        await bootGame(page, '?positions=56,56,56,56,56,56,56,56,56,56,56,56,56,56,56,56');
 
         const data = await page.evaluate(() => {
             return ['p0s6', 'p1s6', 'p2s6', 'p3s6'].map(id => {
@@ -266,10 +258,7 @@ test.describe('Capture animation', () => {
         // The overlay (.kocap-root) must mount inside the board-wrap so the
         // POW! + flying defender pawn position correctly relative to the
         // capture cell, and must clean itself up when the promise resolves.
-        await page.goto('/?positions=20,,,,7,,,,,,,,,,,,&player=0');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
-        await page.locator('wc-board:not(.hidden)').waitFor();
+        await bootGame(page, '?positions=20,,,,7,,,,,,,,,,,,&player=0');
         await page.waitForFunction(() => {
             const v = document.getElementById('p-1-0');
             return v && v.parentElement?.id === 'm20';
@@ -322,10 +311,7 @@ test.describe('Capture animation', () => {
         // appendChild before the source restack.
         // Setup: P0 token 0 at m20 (pos 20, non-safe), P1 token 0 also
         // at m20 (pos 7, non-safe). Trigger animateCaptureToHome on P1.
-        await page.goto('/?positions=20,,,,7,,,,,,,,,,,,&player=0');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
-        await page.locator('wc-board:not(.hidden)').waitFor();
+        await bootGame(page, '?positions=20,,,,7,,,,,,,,,,,,&player=0');
         await page.waitForFunction(() => {
             const p0 = document.getElementById('p-0-0');
             const p1 = document.getElementById('p-1-0');
@@ -360,10 +346,7 @@ test.describe('Capture animation', () => {
         // attached to its home cell. Regression guard against the previous
         // backwards-walk path; the new blast-then-teleport must land the
         // token in h-{pi}-{ti} just as reliably.
-        await page.goto('/?positions=1&player=0');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
-        await page.locator('wc-board:not(.hidden)').waitFor();
+        await bootGame(page, '?positions=1&player=0');
         await page.waitForFunction(() => !!document.querySelector('#h-0-0 wc-token, #m1 wc-token'));
         const result = await page.evaluate(async () => {
             const mod = await import('/scripts/render-logic.js');

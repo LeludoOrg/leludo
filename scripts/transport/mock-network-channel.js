@@ -1,11 +1,11 @@
 /**
- * Mock-network channel — JSON-serializes every command and event hop so
- * the test suite catches non-serializable payloads early. Stands in for
- * a real WebSocket transport during development.
+ * Mock-network channel — a test seam that JSON-serializes every command
+ * and event hop so the suite catches non-serializable payloads early.
+ * Stands in for the real networked transport without any sockets.
  *
- * Phase F of the event-sourced refactor. Pairs a client side (send
- * commands, receive events) with a server side (apply commands, broadcast
- * events) via synchronous JSON round-tripping. No real network involved.
+ * Pairs a client side (send commands, receive events) with a server side
+ * (apply commands, broadcast events) via synchronous JSON round-tripping.
+ * No real network involved.
  *
  * Use createMockNetworkPair({ applyCommand }) to get { client, server }.
  *   client.send(cmd)        — JSON-encodes cmd, hands to server
@@ -17,19 +17,18 @@
  * events back through server.broadcast.
  */
 
+import { makeEventHub } from './event-hub.js';
+
 function jsonRoundTrip(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
 export function createMockNetworkPair({ applyCommand }) {
-    const clientHandlers = new Set();
+    const hub = makeEventHub('client handler threw');
 
     const server = {
         broadcast(event) {
-            const encoded = jsonRoundTrip(event);
-            for (const h of clientHandlers) {
-                try { h([encoded]); } catch (e) { console.error('client handler threw', e); }
-            }
+            hub.emit([jsonRoundTrip(event)]);
         },
     };
 
@@ -39,8 +38,7 @@ export function createMockNetworkPair({ applyCommand }) {
             return applyCommand(encoded, server);
         },
         onEvents(handler) {
-            clientHandlers.add(handler);
-            return () => clientHandlers.delete(handler);
+            return hub.subscribe(handler);
         },
     };
 

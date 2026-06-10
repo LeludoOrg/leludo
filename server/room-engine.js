@@ -31,6 +31,7 @@ import {
 import { makeRng } from '../scripts/game-driver.js';
 import { randomBotName } from '../scripts/bot-names.js';
 import { spreadPick } from '../scripts/seat-allocation.js';
+import { MSG, REASON, ERR } from '../scripts/net-protocol.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',
@@ -225,7 +226,7 @@ export class RoomEngine {
         let seat = this._seatOf(sessionId);
         if (seat === -1) {
             seat = this._pickSeat(preferredSeat);
-            if (seat === -1) return { ok: false, error: 'ROOM_FULL' };
+            if (seat === -1) return { ok: false, error: ERR.ROOM_FULL };
             this.seats[seat].sessionId = sessionId;
             this.seats[seat].name = name || `Player ${seat + 1}`;
             if (this.hostSession == null) this.hostSession = sessionId;
@@ -233,7 +234,7 @@ export class RoomEngine {
         if (name) this.seats[seat].name = name;
         this.seats[seat].connected = true;
         this.transport.send(seat, {
-            t: 'seated',
+            t: MSG.SEATED,
             playerIndex: seat,
             isHost: this._isHost(sessionId),
             roomId: this.roomId,
@@ -243,12 +244,12 @@ export class RoomEngine {
         // clients, and resume play if the game was held waiting on a disconnect.
         if (this.started && this.phase !== PHASES.ENDED) {
             this._clearGrace(seat);
-            this._broadcastState('reconnect');
+            this._broadcastState(REASON.RECONNECT);
             if (this.waiting) { this.waiting = false; this._beginTurn(); }
             return { ok: true, seat };
         }
 
-        this._broadcastState('join');
+        this._broadcastState(REASON.JOIN);
         this._maybeAutoStart();
         return { ok: true, seat };
     }
@@ -273,10 +274,10 @@ export class RoomEngine {
         }
         while (this._activeCount() > size) {
             const i = this._findRemovableSeat();
-            if (i === -1) return this._reject(this._seatOf(sessionId), 'CANT_SHRINK'); // would kick a human
+            if (i === -1) return this._reject(this._seatOf(sessionId), ERR.CANT_SHRINK); // would kick a human
             this._closeSeat(i);
         }
-        this._broadcastState('lobby');
+        this._broadcastState(REASON.LOBBY);
         return { ok: true };
     }
 
@@ -288,8 +289,8 @@ export class RoomEngine {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
         const seat = this.seats[i];
-        if (!seat) return this._reject(this._seatOf(sessionId), 'BAD_SEAT');
-        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), 'CANT_CHANGE_HOST');
+        if (!seat) return this._reject(this._seatOf(sessionId), ERR.BAD_SEAT);
+        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_CHANGE_HOST);
 
         if (type === 'BOT') {
             this._bootIfHuman(i);
@@ -297,12 +298,12 @@ export class RoomEngine {
         } else if (type === 'PLAYER') {
             this._openSeat(i);
         } else if (type === 'CLOSED') {
-            if (this._activeCount() <= MIN_PLAYERS) return this._reject(this._seatOf(sessionId), 'MIN_TWO');
+            if (this._activeCount() <= MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.MIN_TWO);
             this._closeSeat(i);
         } else {
-            return this._reject(this._seatOf(sessionId), 'BAD_TYPE');
+            return this._reject(this._seatOf(sessionId), ERR.BAD_TYPE);
         }
-        this._broadcastState('lobby');
+        this._broadcastState(REASON.LOBBY);
         return { ok: true };
     }
 
@@ -311,10 +312,10 @@ export class RoomEngine {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
         const seat = this.seats[i];
-        if (!seat || seat.type !== 'PLAYER' || !seat.sessionId) return this._reject(this._seatOf(sessionId), 'NOTHING_TO_KICK');
-        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), 'CANT_KICK_HOST');
+        if (!seat || seat.type !== 'PLAYER' || !seat.sessionId) return this._reject(this._seatOf(sessionId), ERR.NOTHING_TO_KICK);
+        if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_KICK_HOST);
         this._bootIfHuman(i); // notifies + reopens
-        this._broadcastState('lobby');
+        this._broadcastState(REASON.LOBBY);
         return { ok: true };
     }
 
@@ -322,16 +323,16 @@ export class RoomEngine {
     handleStart(sessionId) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
-        if (this._activeCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), 'NEED_TWO_PLAYERS');
+        if (this._activeCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.NEED_TWO_PLAYERS);
         this._startGame();
         return { ok: true };
     }
 
     _hostLobbyGuard(sessionId) {
         const seat = this._seatOf(sessionId);
-        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
-        if (this.phase !== PHASES.LOBBY) return this._reject(seat, 'NOT_IN_LOBBY');
-        if (!this._isHost(sessionId)) return this._reject(seat, 'NOT_HOST');
+        if (seat === -1) return this._reject(seat, ERR.NOT_SEATED);
+        if (this.phase !== PHASES.LOBBY) return this._reject(seat, ERR.NOT_IN_LOBBY);
+        if (!this._isHost(sessionId)) return this._reject(seat, ERR.NOT_HOST);
         return null;
     }
 
@@ -359,7 +360,7 @@ export class RoomEngine {
     _bootIfHuman(i) {
         const s = this.seats[i];
         if (s.type === 'PLAYER' && s.sessionId && s.sessionId !== this.hostSession) {
-            this.transport.send(i, { t: 'kicked' });
+            this.transport.send(i, { t: MSG.KICKED });
             s.sessionId = null;
             s.connected = false;
             s.name = '';
@@ -378,6 +379,20 @@ export class RoomEngine {
         return -1;
     }
 
+    /**
+     * Project the lobby seat objects into the parallel in-game arrays the pure
+     * scripts/* modules consume (playerTypes / playerNames / botPersonalities)
+     * plus a fresh starting board. The seat objects stay the lobby source of
+     * truth; these arrays are the derived in-game view. `_dropSeat` is the one
+     * place that has to mutate BOTH afterwards (see the note there).
+     */
+    _materialisePlayers() {
+        this.playerTypes = this.seats.map(s => s.type || undefined);
+        this.playerNames = this.seats.map((s, i) => s.name || (s.type === 'BOT' ? `Bot ${i + 1}` : `Player ${i + 1}`));
+        this.botPersonalities = this.seats.map(s => (s.type === 'BOT' ? (s.personality || 'balanced') : null));
+        this.positions = this.seats.map(s => (s.type ? [-1, -1, -1, -1] : null));
+    }
+
     _startGame() {
         // Open human seats with nobody in them become bots; any bot missing a
         // name/personality (shouldn't happen, but be defensive) gets filled too.
@@ -386,10 +401,7 @@ export class RoomEngine {
             else if (s.type === 'BOT' && (!s.name || !s.personality)) this._fillBot(i);
         });
 
-        this.playerTypes = this.seats.map(s => s.type || undefined);
-        this.playerNames = this.seats.map((s, i) => s.name || (s.type === 'BOT' ? `Bot ${i + 1}` : `Player ${i + 1}`));
-        this.botPersonalities = this.seats.map(s => (s.type === 'BOT' ? (s.personality || 'balanced') : null));
-        this.positions = this.seats.map(s => (s.type ? [-1, -1, -1, -1] : null));
+        this._materialisePlayers();
         this.captures = [0, 0, 0, 0];
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
@@ -413,8 +425,8 @@ export class RoomEngine {
                 const next = this.seats.find(s => s.sessionId && s.connected);
                 this.hostSession = next ? next.sessionId : null;
             }
-            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) return this._end('abandoned');
-            this._broadcastState('disconnect');
+            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) return this._end(REASON.ABANDONED);
+            this._broadcastState(REASON.DISCONNECT);
             return;
         }
 
@@ -424,8 +436,8 @@ export class RoomEngine {
         // window, the game flows on. If they were the last human watching a
         // bots-only endgame, end it.
         if (!this.positions[seat] || isPlayerFinished(this.positions[seat])) {
-            this._broadcastState('disconnect');
-            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) this._end('abandoned');
+            this._broadcastState(REASON.DISCONNECT);
+            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) this._end(REASON.ABANDONED);
             return;
         }
 
@@ -433,37 +445,51 @@ export class RoomEngine {
         // the game flow on. Clients dim them; their turns get skipped until they
         // reconnect or the timer forfeits them.
         this._startGrace(seat);
-        this._broadcastState('disconnect');
+        this._broadcastState(REASON.DISCONNECT);
         // If it was their turn, pass it straight away so nobody waits on them.
         if (seat === this.currentPlayerIndex) this._advanceTurn();
+    }
+
+    // ---- seat predicates ----------------------------------------------------
+    // The disconnect/turn logic repeatedly scans the four seats for the same few
+    // shapes. `_seatsWhere` runs a predicate over every seat index; the named
+    // predicates below are the building blocks. Mind the subtle differences:
+    // `_isActiveInGameSeat` does NOT filter out finished players (it just asks
+    // "does this seat still hold pawns?"), whereas the human predicates do.
+
+    /** Seat indexes for which `predicate(i)` is truthy. */
+    _seatsWhere(predicate) {
+        const out = [];
+        for (let i = 0; i < 4; i++) if (predicate(i)) out.push(i);
+        return out;
+    }
+
+    /** Seat still holding pawns on the board, any type, finished or not. */
+    _isActiveInGameSeat(i) {
+        return !!(this.playerTypes[i] && this.positions[i]);
+    }
+
+    /** Human seat still in the game: not forfeited and not finished, link aside. */
+    _isActiveHuman(i) {
+        return this.playerTypes[i] === 'PLAYER' && !!this.positions[i]
+            && !isPlayerFinished(this.positions[i]);
     }
 
     // ---- disconnect / reconnect plumbing ------------------------------------
 
     /** Active (unfinished) human seats currently disconnected and counting down. */
     _disconnectedActiveHumans() {
-        const out = [];
-        for (let i = 0; i < 4; i++) {
-            if (this.playerTypes[i] === 'PLAYER' && this.positions[i]
-                && !isPlayerFinished(this.positions[i]) && !this.seats[i].connected) out.push(i);
-        }
-        return out;
+        return this._seatsWhere(i => this._isActiveHuman(i) && !this.seats[i].connected);
     }
 
     /** Human seats still in the game (not forfeited, not finished), regardless of link. */
     _seatedActiveHumans() {
-        const out = [];
-        for (let i = 0; i < 4; i++) {
-            if (this.playerTypes[i] === 'PLAYER' && this.positions[i] && !isPlayerFinished(this.positions[i])) out.push(i);
-        }
-        return out;
+        return this._seatsWhere(i => this._isActiveHuman(i));
     }
 
     /** Seats still holding pawns on the board (any type). */
     _activeInGameSeats() {
-        const out = [];
-        for (let i = 0; i < 4; i++) if (this.playerTypes[i] && this.positions[i]) out.push(i);
-        return out;
+        return this._seatsWhere(i => this._isActiveInGameSeat(i));
     }
 
     _startGrace(seat) {
@@ -481,17 +507,15 @@ export class RoomEngine {
 
     /** A seat whose human is currently disconnected mid-reconnect. */
     _isDisconnectedHuman(i) {
-        return this.playerTypes[i] === 'PLAYER' && this.positions[i]
-            && !isPlayerFinished(this.positions[i]) && !this.seats[i].connected;
+        return this._isActiveHuman(i) && !this.seats[i].connected;
     }
 
     /** Is there any active seat that can take a turn right now (bot or live human)? */
     _anyoneCanAct() {
-        for (let i = 0; i < 4; i++) {
-            if (!this.playerTypes[i] || !this.positions[i] || isPlayerFinished(this.positions[i])) continue;
-            if (this.playerTypes[i] === 'BOT' || this.seats[i].connected) return true;
-        }
-        return false;
+        return this._seatsWhere(i =>
+            this._isActiveInGameSeat(i) && !isPlayerFinished(this.positions[i])
+            && (this.playerTypes[i] === 'BOT' || this.seats[i].connected)
+        ).length > 0;
     }
 
     /** Reconnect window elapsed: forfeit the seat (remove pawns) and continue. */
@@ -504,7 +528,11 @@ export class RoomEngine {
         this._clearGrace(seat);
         const wasCurrent = seat === this.currentPlayerIndex;
 
-        // Forfeit: strip the pawns and deactivate the seat.
+        // Forfeit: strip the pawns and deactivate the seat. This is the one spot
+        // that must keep BOTH representations in sync after the game has started:
+        // the derived in-game arrays (playerTypes/positions/ranks — what the pure
+        // turn logic reads) AND the lobby seat object (what _publicState reports).
+        // Update only one and the board and the seat list disagree.
         this.playerTypes[seat] = undefined;
         this.positions[seat] = null;
         this.ranks[seat] = 0;
@@ -514,11 +542,11 @@ export class RoomEngine {
         s.name = '';
 
         // Tell clients to clear this player's pawns from the board.
-        this.transport.broadcast({ t: 'dropped', seat, state: this._publicState() });
+        this.transport.broadcast({ t: MSG.DROPPED, seat, state: this._publicState() });
 
         // Only one human (or one participant) left → the match is over.
         if (this._seatedActiveHumans().length <= 1 || this._activeInGameSeats().length <= 1) {
-            return this._end('opponent-left');
+            return this._end(REASON.OPPONENT_LEFT);
         }
 
         // If the game was held on this seat (everyone was disconnected) or it was
@@ -530,20 +558,20 @@ export class RoomEngine {
 
     handleRoll(sessionId) {
         const seat = this._seatOf(sessionId);
-        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
-        if (this.phase !== PHASES.AWAIT_ROLL) return this._reject(seat, 'NOT_AWAITING_ROLL');
-        if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
-        if (this.playerTypes[seat] !== 'PLAYER') return this._reject(seat, 'NOT_A_HUMAN_SEAT');
+        if (seat === -1) return this._reject(seat, ERR.NOT_SEATED);
+        if (this.phase !== PHASES.AWAIT_ROLL) return this._reject(seat, ERR.NOT_AWAITING_ROLL);
+        if (seat !== this.currentPlayerIndex) return this._reject(seat, ERR.NOT_YOUR_TURN);
+        if (this.playerTypes[seat] !== 'PLAYER') return this._reject(seat, ERR.NOT_A_HUMAN_SEAT);
         this._doRoll();
         return { ok: true };
     }
 
     handleMove(sessionId, tokenIndex) {
         const seat = this._seatOf(sessionId);
-        if (seat === -1) return this._reject(seat, 'NOT_SEATED');
-        if (this.phase !== PHASES.AWAIT_MOVE) return this._reject(seat, 'NOT_AWAITING_MOVE');
-        if (seat !== this.currentPlayerIndex) return this._reject(seat, 'NOT_YOUR_TURN');
-        if (!this.legalMoves.includes(tokenIndex)) return this._reject(seat, 'ILLEGAL_MOVE');
+        if (seat === -1) return this._reject(seat, ERR.NOT_SEATED);
+        if (this.phase !== PHASES.AWAIT_MOVE) return this._reject(seat, ERR.NOT_AWAITING_MOVE);
+        if (seat !== this.currentPlayerIndex) return this._reject(seat, ERR.NOT_YOUR_TURN);
+        if (!this.legalMoves.includes(tokenIndex)) return this._reject(seat, ERR.ILLEGAL_MOVE);
         this._applyMoveAndContinue(tokenIndex);
         return { ok: true };
     }
@@ -561,14 +589,14 @@ export class RoomEngine {
             this.phase = PHASES.AWAIT_ROLL;
             this.currentDiceRoll = 0;
             this.legalMoves = [];
-            this._broadcastState('waiting');
+            this._broadcastState(REASON.WAITING);
             return;
         }
         this.waiting = false;
         this.phase = PHASES.AWAIT_ROLL;
         this.currentDiceRoll = 0;
         this.legalMoves = [];
-        this._broadcastState('turn');
+        this._broadcastState(REASON.TURN);
         if (this.playerTypes[this.currentPlayerIndex] === 'BOT') {
             this.schedule(() => this._botStep(), this.botDelayMs);
         }
@@ -590,7 +618,7 @@ export class RoomEngine {
 
         if (this.consecutiveSixes === 3) {
             this.consecutiveSixes = 0;
-            this._broadcastState('three-sixes');
+            this._broadcastState(REASON.THREE_SIXES);
             this._advanceTurn();
             return null;
         }
@@ -598,14 +626,14 @@ export class RoomEngine {
         if (movable.length === 0) {
             this.consecutiveSixes = 0;
             this.noMoveStreak[pi]++;
-            this._broadcastState('no-move');
+            this._broadcastState(REASON.NO_MOVE);
             this._advanceTurn();
             return null;
         }
         this.noMoveStreak[pi] = 0;
         this.legalMoves = movable;
         this.phase = PHASES.AWAIT_MOVE;
-        this._broadcastState('rolled');
+        this._broadcastState(REASON.ROLLED);
         return movable;
     }
 
@@ -646,7 +674,7 @@ export class RoomEngine {
         }
 
         this.transport.broadcast({
-            t: 'moved',
+            t: MSG.MOVED,
             p: pi,
             token: tokenIndex,
             from: result.fromPosition,
@@ -655,14 +683,14 @@ export class RoomEngine {
             state: this._publicState(),
         });
 
-        if (ended) return this._end('finished');
+        if (ended) return this._end(REASON.FINISHED);
 
         const playsAgain = (dice === 6 || result.captureCount > 0 || result.tripComplete)
             && !isPlayerFinished(this.positions[pi]);
         if (playsAgain) {
             this.phase = PHASES.AWAIT_ROLL;
             this.currentDiceRoll = 0;
-            this._broadcastState('again');
+            this._broadcastState(REASON.AGAIN);
             if (this.playerTypes[pi] === 'BOT') this.schedule(() => this._botStep(), this.botDelayMs);
         } else {
             this._advanceTurn();
@@ -677,7 +705,7 @@ export class RoomEngine {
 
     _advanceTurn() {
         const next = getNextPlayerIndex(this.currentPlayerIndex, this.playerTypes, this.positions);
-        if (next === -1) return this._end('no-active-players');
+        if (next === -1) return this._end(REASON.NO_ACTIVE_PLAYERS);
         this.currentPlayerIndex = next;
         this.consecutiveSixes = 0;
         this._beginTurn();
@@ -689,7 +717,7 @@ export class RoomEngine {
         this.waiting = false;
         if (this.started) this._rankLeftovers();
         this.phase = PHASES.ENDED;
-        this.transport.broadcast({ t: 'ended', reason, ranks: this.ranks.slice(), state: this._publicState() });
+        this.transport.broadcast({ t: MSG.ENDED, reason, ranks: this.ranks.slice(), state: this._publicState() });
         this.transport.release?.();
     }
 
@@ -705,7 +733,10 @@ export class RoomEngine {
     }
 
     _reject(seat, error) {
-        if (seat !== undefined && seat !== -1) this.transport.send(seat, { t: 'rejected', error });
+        // seat === -1 means the sender isn't seated (no transport channel to it),
+        // so we deliberately skip the per-seat frame and just return the error to
+        // the caller — not a bug, there's simply nobody to send the rejection to.
+        if (seat !== undefined && seat !== -1) this.transport.send(seat, { t: MSG.REJECTED, error });
         return { ok: false, error };
     }
 
@@ -745,6 +776,6 @@ export class RoomEngine {
     }
 
     _broadcastState(reason) {
-        this.transport.broadcast({ t: 'state', reason, state: this._publicState() });
+        this.transport.broadcast({ t: MSG.STATE, reason, state: this._publicState() });
     }
 }

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openOnline } from './helpers.js';
 
 /**
  * End-to-end online gameplay against the real wc-board. A host creates a
@@ -10,12 +11,6 @@ import { test, expect } from '@playwright/test';
  * This guards the "stuck on Game starting…" regression — once started, the
  * board must mount and the turn must actually progress.
  */
-
-async function openOnline(page, name, query = '') {
-    await page.goto(`/${query}`);
-    await page.getByTestId('home-play-online').click();
-    await page.getByTestId('online-name').fill(name);
-}
 
 test.describe('Online gameplay', () => {
     test('host + bot game mounts the real board and the turn progresses', async ({ page }) => {

@@ -14,14 +14,11 @@
  *   - public (matchmaking) → the MatchmakingDO singleton
  * Plain HTTP `/health` + `/stats` answer monitoring without touching a room.
  */
-import { json } from './cf-utils.js';
+import { json, ADMISSION_NAME, MATCH_NAME, requireWebsocket } from './cf-utils.js';
 
 export { LudoRoomDO } from './room-do.js';
 export { AdmissionDO } from './admission-do.js';
 export { MatchmakingDO } from './match-do.js';
-
-const ADMISSION_NAME = 'global';
-const MATCH_NAME = 'global';
 
 export default {
     async fetch(request, env) {
@@ -37,9 +34,8 @@ export default {
             return stub.fetch('https://do/stats');
         }
 
-        if (request.headers.get('Upgrade') !== 'websocket') {
-            return new Response('expected a websocket upgrade', { status: 426 });
-        }
+        const notWs = requireWebsocket(request);
+        if (notWs) return notWs;
 
         // Public matchmaking routes to the queue singleton; everything else is a
         // private room keyed by its code (defaulting to "default" so the dev

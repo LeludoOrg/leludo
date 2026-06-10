@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openOnline } from './helpers.js';
 
 /**
  * Home now offers two clear, separate paths — offline (pass-and-play on this
@@ -10,13 +11,6 @@ import { test, expect } from '@playwright/test';
  * (server/local-server.mjs on 8890), so "both clients meet in one room" is an
  * end-to-end check, not a mock.
  */
-
-/** Open the online menu and enter a display name (required to play online). */
-async function openOnline(page, name) {
-    await page.goto('/');
-    await page.getByTestId('home-play-online').click();
-    await page.getByTestId('online-name').fill(name);
-}
 
 test.describe('Home — offline / online split', () => {
     test('home shows both paths', async ({ page }) => {

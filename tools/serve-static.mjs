@@ -25,6 +25,8 @@ const MIME = {
     '.woff2':'font/woff2',
     '.ttf':  'font/ttf',
     '.mp3':  'audio/mpeg',
+    '.m4a':  'audio/mp4',
+    '.webm': 'video/webm',
     '.webmanifest':'application/manifest+json',
 };
 

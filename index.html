@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#EFE9DC"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 
+    <!-- Apply the saved theme before first paint (no FOUC). Classic sync script. -->
+    <script src="theme-boot.js"></script>
+
     <script type="module" src="components/index.js"></script>
     <script type="module" src="scripts/index.js"></script>
 
@@ -40,7 +43,7 @@
 <body>
 
 <div id="root" class="page">
-    <div id="game-container" style="width:100%;max-width:var(--frame-max-w);">
+    <div id="game-container">
         <wc-quick-start id="main-menu"></wc-quick-start>
         <wc-board id="game" class="hidden"></wc-board>
     </div>
@@ -58,9 +61,9 @@
             <h2 class="display-title">Take a breather</h2>
             <p class="body-helper">The board's right where you left it.<br>Resume when you're ready, or bow out to the menu.</p>
 
-            <div style="padding:16px 0; display:flex; flex-direction:column; gap:24px;">
+            <div class="pause-standings">
                 <div>
-                    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+                    <div class="pause-standings-head">
                         <div class="section-label">Standings</div>
                         <div id="pm-turn-count" class="section-label">Turn 0</div>
                     </div>

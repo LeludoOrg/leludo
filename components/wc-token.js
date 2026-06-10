@@ -37,6 +37,11 @@ class Token extends HTMLElement {
 
     constructor() {
         super()
+        this._playerIndex = NaN
+        this._tokenIndex = NaN
+        // One AbortController per connection drives listener cleanup so the
+        // global keyup handler can't accumulate across re-created tokens.
+        this._abort = null
     }
 
     /**
@@ -47,21 +52,28 @@ class Token extends HTMLElement {
      */
     attributeChangedCallback(name, oldValue, newValue) {
         if (name === "id") {
-
-            const id = newValue;
-            const idTokens = id.split("-")
-            const playerIndex = +idTokens[1]
-            const tokenIndex = +idTokens[2]
-            let tokenHTML = TOKEN_HTML(playerIndex);
-            const tokenElement = htmlToElement(tokenHTML)
-            this.appendChild(tokenElement) // fixme: if triggered multiple time would cause issues
-
-            document.addEventListener("keyup", ($event) =>  {
-                if ($event.key === (+tokenIndex + 1).toString()) {
-                    this.handleTokenClick(playerIndex, tokenIndex)
-                }
-            })
+            const idTokens = newValue.split("-")
+            this._playerIndex = +idTokens[1]
+            this._tokenIndex = +idTokens[2]
+            // replaceChildren (not appendChild) so re-assigning id re-renders
+            // in place instead of stacking a second pawn SVG.
+            this.replaceChildren(htmlToElement(TOKEN_HTML(this._playerIndex)))
         }
+    }
+
+    connectedCallback() {
+        this._abort = new AbortController()
+        document.addEventListener("keyup", ($event) => {
+            if (!Number.isNaN(this._tokenIndex)
+                && $event.key === (this._tokenIndex + 1).toString()) {
+                this.handleTokenClick(this._playerIndex, this._tokenIndex)
+            }
+        }, { signal: this._abort.signal })
+    }
+
+    disconnectedCallback() {
+        this._abort?.abort()
+        this._abort = null
     }
 
     /**

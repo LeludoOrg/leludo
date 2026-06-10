@@ -7,6 +7,9 @@
  * this module.
  */
 
+import { MSG } from "./net-protocol.js";
+import { STORAGE_KEYS } from "./storage-keys.js";
+
 const DEFAULT_PORT = 8890;
 
 // Deployed Cloudflare Worker (server/cf/worker.js). The client dials this in
@@ -39,13 +42,13 @@ export function getConfiguredServerUrl() {
     try {
         const fromQuery = new URLSearchParams(location.search).get('server');
         if (fromQuery) return fromQuery;
-        const stored = localStorage.getItem('leludo-mp-server');
+        const stored = localStorage.getItem(STORAGE_KEYS.MP_SERVER);
         if (stored) return stored;
     } catch { /* non-browser / blocked storage */ }
     return resolveServerUrl();
 }
 
-const USERNAME_KEY = 'leludo-username';
+const USERNAME_KEY = STORAGE_KEYS.USERNAME;
 
 /** The player's remembered online display name (empty if never set). */
 export function getUsername() {
@@ -64,7 +67,7 @@ export function setUsername(name) {
     } catch { /* storage blocked */ }
 }
 
-const COLOR_KEY = 'leludo-online-color';
+const COLOR_KEY = STORAGE_KEYS.ONLINE_COLOR;
 
 /** The player's preferred seat colour (0..3 = the four board colours). This is
  *  a *request*: the server seats you in that colour if it's free, else the next
@@ -88,10 +91,10 @@ export function setOnlineColor(n) {
 /** Stable per-device session id (reconnect key). Persisted in localStorage. */
 export function getSessionId() {
     try {
-        let s = localStorage.getItem('leludo-mp-session');
+        let s = localStorage.getItem(STORAGE_KEYS.MP_SESSION);
         if (!s) {
             s = `s-${Math.random().toString(36).slice(2)}`;
-            localStorage.setItem('leludo-mp-session', s);
+            localStorage.setItem(STORAGE_KEYS.MP_SESSION, s);
         }
         return s;
     } catch {
@@ -155,7 +158,7 @@ export class NetClient {
             try { msg = JSON.parse(ev.data); } catch { return; }
             // Pin the reconnect target to the seated room and stop re-queueing as
             // a fresh public match on a future drop.
-            if (msg && msg.t === 'seated' && msg.roomId) {
+            if (msg && msg.t === MSG.SEATED && msg.roomId) {
                 this._room = msg.roomId;
                 delete this._params.mode;
             }
@@ -185,14 +188,14 @@ export class NetClient {
         }
     }
 
-    roll() { this.send({ t: 'roll' }); }
-    move(token) { this.send({ t: 'move', token }); }
+    roll() { this.send({ t: MSG.ROLL }); }
+    move(token) { this.send({ t: MSG.MOVE, token }); }
 
     // Host-only lobby controls (the server rejects them from non-hosts).
-    setSize(n) { this.send({ t: 'lobby_size', n }); }
-    setSeat(seat, seatType) { this.send({ t: 'lobby_seat', seat, seatType }); }
-    kick(seat) { this.send({ t: 'lobby_kick', seat }); }
-    start() { this.send({ t: 'lobby_start' }); }
+    setSize(n) { this.send({ t: MSG.LOBBY_SIZE, n }); }
+    setSeat(seat, seatType) { this.send({ t: MSG.LOBBY_SEAT, seat, seatType }); }
+    kick(seat) { this.send({ t: MSG.LOBBY_KICK, seat }); }
+    start() { this.send({ t: MSG.LOBBY_START }); }
 
     close() { this._closedByUs = true; this.ws?.close(); }
 }

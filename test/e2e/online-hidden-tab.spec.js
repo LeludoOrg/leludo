@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openOnline } from './helpers.js';
 
 /**
  * Regression: a backgrounded online client must stay in sync with the server.
@@ -19,12 +20,6 @@ import { test, expect } from '@playwright/test';
  * AND requestAnimationFrame paused, exactly like a backgrounded tab) and require
  * its turn counter to keep climbing in lockstep — proof the queue never wedges.
  */
-
-async function openOnline(page, name) {
-    await page.goto('/');
-    await page.getByTestId('home-play-online').click();
-    await page.getByTestId('online-name').fill(name);
-}
 
 const readTurn = async (page) => {
     const t = (await page.locator('#turn-counter').textContent().catch(() => '')) || '';

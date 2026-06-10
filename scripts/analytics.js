@@ -27,14 +27,20 @@ export const GA_MEASUREMENT_ID = 'G-SY4NN1BV58';
 // closed set keeps GA reports clean. Patterns match the *embed* host,
 // not the parent storefront (e.g. itch.io serves embeds from CDN hosts
 // like html-classic.itch.zone and v6p9d9t4.ssl.hwcdn.net).
-const ITCH_HOST_PATTERNS = [/\.itch\.zone$/i, /\.hwcdn\.net$/i, /\.itch\.io$/i];
-const CRAZYGAMES_HOST_PATTERNS = [/\.crazygames\.com$/i];
-const POKI_HOST_PATTERNS = [/\.poki\.com$/i, /\.poki-gdn\.com$/i];
-const GAMEJOLT_HOST_PATTERNS = [/\.gamejolt\.com$/i, /\.gamejolt\.net$/i, /\.gamejolt\.io$/i];
-const NEWGROUNDS_HOST_PATTERNS = [/\.newgrounds\.com$/i, /\.ngfiles\.com$/i];
-const Y8_HOST_PATTERNS = [/\.y8\.com$/i];
-const KONGREGATE_HOST_PATTERNS = [/\.kongregate\.com$/i, /\.konggames\.com$/i];
-const LELUDO_HOST_PATTERNS = [/^leludo\.org$/i, /^www\.leludo\.org$/i];
+// Host → source lookup table. Ordered: first matching `patterns` entry
+// wins, so keep it specific-first if patterns ever overlap. `source` is
+// either a literal string or a fn(mode) for hosts whose source depends on
+// the display mode (leludo.org → leludo_org vs installed pwa).
+const HOST_SOURCES = [
+    { patterns: [/\.itch\.zone$/i, /\.hwcdn\.net$/i, /\.itch\.io$/i], source: 'itch' },
+    { patterns: [/\.crazygames\.com$/i], source: 'crazygames' },
+    { patterns: [/\.poki\.com$/i, /\.poki-gdn\.com$/i], source: 'poki' },
+    { patterns: [/\.gamejolt\.com$/i, /\.gamejolt\.net$/i, /\.gamejolt\.io$/i], source: 'gamejolt' },
+    { patterns: [/\.newgrounds\.com$/i, /\.ngfiles\.com$/i], source: 'newgrounds' },
+    { patterns: [/\.y8\.com$/i], source: 'y8' },
+    { patterns: [/\.kongregate\.com$/i, /\.konggames\.com$/i], source: 'kongregate' },
+    { patterns: [/^leludo\.org$/i, /^www\.leludo\.org$/i], source: (mode) => (mode === 'standalone' ? 'pwa' : 'leludo_org') },
+];
 
 let _enabled = false;
 let _initialized = false;
@@ -47,6 +53,15 @@ function isLocalhost(host) {
 
 function matchHost(host, patterns) {
     return patterns.some((re) => re.test(host));
+}
+
+/**
+ * Shared payload every GA call spreads in: app version + the resolved
+ * platform info. Kept in one place so config/trackScreen/trackEvent stay
+ * in sync.
+ */
+function baseParams() {
+    return { app_version: VERSION, ...(_platformInfo || {}) };
 }
 
 function detectDisplayMode() {
@@ -92,26 +107,16 @@ export function detectPlatform({ hostname, native, inIframe, displayMode } = {})
     if (isNative) {
         platform = 'android';
         source = 'play_store';
-    } else if (matchHost(host, ITCH_HOST_PATTERNS)) {
-        source = 'itch';
-    } else if (matchHost(host, CRAZYGAMES_HOST_PATTERNS)) {
-        source = 'crazygames';
-    } else if (matchHost(host, POKI_HOST_PATTERNS)) {
-        source = 'poki';
-    } else if (matchHost(host, GAMEJOLT_HOST_PATTERNS)) {
-        source = 'gamejolt';
-    } else if (matchHost(host, NEWGROUNDS_HOST_PATTERNS)) {
-        source = 'newgrounds';
-    } else if (matchHost(host, Y8_HOST_PATTERNS)) {
-        source = 'y8';
-    } else if (matchHost(host, KONGREGATE_HOST_PATTERNS)) {
-        source = 'kongregate';
-    } else if (matchHost(host, LELUDO_HOST_PATTERNS)) {
-        source = mode === 'standalone' ? 'pwa' : 'leludo_org';
-    } else if (isLocalhost(host)) {
-        source = isNative ? 'play_store' : 'dev';
-    } else if (iframe) {
-        source = 'embed_other';
+    } else {
+        const hit = HOST_SOURCES.find((entry) => matchHost(host, entry.patterns));
+        if (hit) {
+            source = typeof hit.source === 'function' ? hit.source(mode) : hit.source;
+        } else if (isLocalhost(host)) {
+            // Native already handled above, so a non-native localhost is a dev session.
+            source = 'dev';
+        } else if (iframe) {
+            source = 'embed_other';
+        }
     }
 
     return {
@@ -151,8 +156,7 @@ export function initAnalytics() {
     gtag('js', new Date());
     gtag('config', GA_MEASUREMENT_ID, {
         send_page_view: false,
-        app_version: VERSION,
-        ..._platformInfo,
+        ...baseParams(),
         transport_type: 'beacon',
     });
 }
@@ -163,16 +167,14 @@ export function trackScreen(name) {
         page_title: name,
         page_path: `/${name}`,
         page_location: `${location.origin}/${name}`,
-        app_version: VERSION,
-        ...(_platformInfo || {}),
+        ...baseParams(),
     });
 }
 
 export function trackEvent(name, params) {
     if (!_enabled) return;
     gtag('event', name, {
-        app_version: VERSION,
-        ...(_platformInfo || {}),
+        ...baseParams(),
         ...(params || {}),
     });
 }

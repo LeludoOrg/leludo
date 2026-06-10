@@ -16,6 +16,7 @@ import {
     getNextPlayerIndex,
     shouldEndGame,
     computeLeftoverRankOrder,
+    grantsAnotherTurn,
 } from './turn-rules.js';
 import { EVENTS } from './game-reducer.js';
 
@@ -238,11 +239,10 @@ export function runGame(opts) {
             break;
         }
 
-        // A 6, capture, or finished trip grants another turn — unless the
-        // player just finished their last token, in which case they have
-        // nothing left to move and the turn must advance.
-        const playsAgain = (dice === 6 || result.captureCount > 0 || result.tripComplete)
-            && !isPlayerFinished(positions[currentPlayerIndex]);
+        const playsAgain = grantsAnotherTurn(
+            dice, result.captureCount, result.tripComplete,
+            isPlayerFinished(positions[currentPlayerIndex]),
+        );
         if (!playsAgain) {
             const next = getNextPlayerIndex(currentPlayerIndex, playerTypes, positions);
             if (next === -1) { ended = true; break; }

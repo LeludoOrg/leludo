@@ -1,39 +1,36 @@
 /**
- * In-process transport channel — the default for solo + local pass-and-play.
+ * In-process transport channel — the seam used by solo + local
+ * pass-and-play (online play runs over the real network channel instead).
  *
- * Phase F of the event-sourced refactor. The Channel is the seam between
- * "client" (UI dispatching commands) and "authority" (the command handler
- * + reducer that owns truth). In-process means both halves run in the
- * same JS context with synchronous calls; later phases can swap in a
- * WebSocketChannel without touching the rest of the code.
+ * The Channel sits between "client" (UI dispatching commands) and
+ * "authority" (the command handler + reducer that owns truth). In-process
+ * means both halves run in the same JS context with synchronous calls, so
+ * this is a thin wrapper — it exists to hold the same Channel interface the
+ * networked transport implements, which keeps the rest of the code
+ * transport-agnostic and makes the seam easy to drive in tests.
  *
  * Contract:
  *   const channel = createInProcessChannel({ dispatch });
  *   channel.send(command);   // forward to authority
  *   channel.onEvents(handler); // receive events back
  *
- * The current store dispatches commands synchronously and emits events
- * synchronously through its subscriber list, so this channel is a thin
- * wrapper. It exists to lock in the interface that a real network
- * transport will implement.
+ * The store dispatches commands synchronously and emits events
+ * synchronously through its subscriber list, so send/onEvents map straight
+ * onto dispatch/subscribe.
  */
 
 import { dispatch, subscribe } from '../game-store.js';
+import { makeEventHub } from './event-hub.js';
 
 export function createInProcessChannel() {
-    const eventHandlers = new Set();
-    subscribe((event) => {
-        for (const h of eventHandlers) {
-            try { h([event]); } catch (e) { console.error('channel handler threw', e); }
-        }
-    });
+    const hub = makeEventHub('channel handler threw');
+    subscribe((event) => hub.emit([event]));
     return {
         send(command) {
             return dispatch(command);
         },
         onEvents(handler) {
-            eventHandlers.add(handler);
-            return () => eventHandlers.delete(handler);
+            return hub.subscribe(handler);
         },
     };
 }

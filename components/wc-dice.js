@@ -48,22 +48,29 @@ const DICE_HTML = /*html*/ `
 class Dice extends HTMLElement {
     constructor() {
         super()
-
         this.dataset.active = "true"
+        this._abort = null
+    }
 
-        const diceElement = htmlToElement(DICE_HTML)
-        this.appendChild(diceElement)
-
-        this.addEventListener("click", () => {
-            this.handleDiceClick();
-        })
-
-
-        document.addEventListener("keyup", ($event) =>  {
+    connectedCallback() {
+        if (!this.firstElementChild) {
+            this.appendChild(htmlToElement(DICE_HTML))
+        }
+        // AbortController so the global space-to-roll keyup is removed on
+        // disconnect instead of leaking one handler per re-created dice.
+        this._abort = new AbortController()
+        const { signal } = this._abort
+        this.addEventListener("click", () => this.handleDiceClick(), { signal })
+        document.addEventListener("keyup", ($event) => {
             if ($event.key === " ") {
                 this.handleDiceClick()
             }
-        })
+        }, { signal })
+    }
+
+    disconnectedCallback() {
+        this._abort?.abort()
+        this._abort = null
     }
 
     handleDiceClick() {

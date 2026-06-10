@@ -1,4 +1,6 @@
-// KO Punch capture overlay. Standalone — no deps. Self-contained DOM/style.
+// KO Punch capture overlay. Self-contained DOM/style; shares the pawn shape
+// (pawn-shape.js) and overlay scaffolding (overlay-base.js) with the sibling
+// launch / home-arrival overlays.
 //
 // playKOCapture({
 //   container,              HTMLElement (position: relative/absolute)
@@ -14,20 +16,22 @@
 // }) → Promise<void>  (resolves after overlay DOM is removed)
 
 import { pawnSVG } from "./pawn-shape.js";
+import {
+    el,
+    injectOnce,
+    createOverlayRoot,
+    scheduleCleanup,
+    overlayRootCSS,
+    arcPoint,
+    CLEANUP_MARGIN_MS,
+    EASE_SETTLE,
+} from "./overlay-base.js";
 
 const STYLE_ID = 'kocap-styles';
 
 function injectCSS() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = `
-      .kocap-root {
-        position: absolute; inset: 0;
-        pointer-events: none;
-        z-index: 1000;
-        overflow: visible;
-      }
+    injectOnce(STYLE_ID, `
+      ${overlayRootCSS('kocap-root')}
       .kocap-layer { position: absolute; left: 0; top: 0; }
       /* Outer wrap owns translate + spin + the start→end size scale; origin
          center keeps the pawn centered on its target as it scales, so its
@@ -75,8 +79,7 @@ function injectCSS() {
         60% { transform: translate(1px, 0); }
       }
       .kocap-board-shake { animation: kocap-shake 320ms ease-out; }
-    `;
-    document.head.appendChild(style);
+    `);
 }
 
 function powSVG(attackerColor) {
@@ -96,8 +99,7 @@ function arcKeyframes(dx, dy, spins, endScale) {
     const frames = [];
     for (let i = 0; i <= N; i++) {
         const t = i / N;
-        const x = dx * t;
-        const y = dy * t - peak * 4 * t * (1 - t);
+        const { x, y } = arcPoint({ x: 0, y: 0 }, { x: dx, y: dy }, t, peak);
         const rot = spins * 360 * t;
         // Scale from the on-board size to the home-seat size so the final
         // frame matches the real token exactly.
@@ -146,18 +148,14 @@ export function playKOCapture(opts) {
         y: cap.y + dirVec.y * 240,
     };
 
-    const root = document.createElement('div');
-    root.className = 'kocap-root';
-    container.appendChild(root);
+    const root = createOverlayRoot(container, 'kocap-root');
 
-    const pow = document.createElement('div');
-    pow.className = 'kocap-pow';
     const powSize = pawnSize * 2.2;
-    pow.style.cssText =
+    const pow = el('kocap-pow',
         'left:' + (cap.x - powSize / 2) + 'px;' +
         'top:'  + (cap.y - powSize / 2) + 'px;' +
         'width:'  + powSize + 'px;' +
-        'height:' + powSize + 'px;';
+        'height:' + powSize + 'px;');
     pow.innerHTML = powSVG(attackerColor);
     root.appendChild(pow);
 
@@ -174,16 +172,14 @@ export function playKOCapture(opts) {
 
     const lineAngle = ({ left: 0, right: 180, top: 90, bottom: 270 })[attackFrom] || 0;
     for (let i = 0; i < 4; i++) {
-        const line = document.createElement('div');
-        line.className = 'kocap-speed-line';
         const len = 30 + Math.random() * 30;
         const offset = -30 + i * 18;
-        line.style.cssText =
+        const line = el('kocap-speed-line',
             'left:' + (cap.x + 18) + 'px;' +
             'top:'  + (cap.y + offset) + 'px;' +
             'width:' + len + 'px;' +
             'transform-origin: 0 50%;' +
-            'transform: rotate(' + lineAngle + 'deg);';
+            'transform: rotate(' + lineAngle + 'deg);');
         root.appendChild(line);
         line.animate(
             [
@@ -195,16 +191,13 @@ export function playKOCapture(opts) {
         );
     }
 
-    const traj = document.createElement('div');
-    traj.className = 'kocap-pawn-wrap';
-    traj.style.cssText =
+    const traj = el('kocap-pawn-wrap',
         'left:' + (cap.x - pawnSize / 2) + 'px;' +
         'top:'  + (cap.y - pawnSize / 2) + 'px;' +
         'width:' + pawnSize + 'px;' +
-        'height:' + pawnSize + 'px;';
+        'height:' + pawnSize + 'px;');
 
-    const squash = document.createElement('div');
-    squash.className = 'kocap-pawn-squash';
+    const squash = el('kocap-pawn-squash');
     squash.innerHTML = pawnSVG(defenderColor, pawnSize, 'kocap-pawn-svg', 'kocap-grad-');
     traj.appendChild(squash);
     root.appendChild(traj);
@@ -217,7 +210,7 @@ export function playKOCapture(opts) {
             { transform: 'scale(1, 1)',      offset: 0.3 },
             { transform: 'scale(1, 1)',      offset: 1 },
         ],
-        { duration: duration, easing: 'cubic-bezier(.3, 1.6, .4, 1)', fill: 'forwards' }
+        { duration: duration, easing: EASE_SETTLE, fill: 'forwards' }
     );
 
     const dx = home.x - cap.x;
@@ -234,12 +227,10 @@ export function playKOCapture(opts) {
         { x:  40, y: -120, d: 120 },
     ];
     starOffsets.forEach(function (o) {
-        const star = document.createElement('div');
-        star.className = 'kocap-star';
-        star.style.cssText =
+        const star = el('kocap-star',
             'left:' + (cap.x - 5) + 'px;' +
             'top:'  + (cap.y - 5) + 'px;' +
-            'background:' + attackerColor + ';';
+            'background:' + attackerColor + ';');
         root.appendChild(star);
         const sx = ({ left: 1, right: -1, top: 1, bottom: 1 }[attackFrom] || 1) * o.x;
         const sy = ({ top: 1, bottom: -1, left: 1, right: 1 }[attackFrom] || 1) * o.y;
@@ -260,11 +251,5 @@ export function playKOCapture(opts) {
         setTimeout(function () { container.classList.remove('kocap-board-shake'); }, 360);
     }
 
-    return new Promise(function (resolve) {
-        setTimeout(function () {
-            if (root.parentNode) root.parentNode.removeChild(root);
-            onComplete();
-            resolve();
-        }, duration + 80);
-    });
+    return scheduleCleanup(root, duration + CLEANUP_MARGIN_MS, onComplete);
 }

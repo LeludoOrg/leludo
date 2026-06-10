@@ -8,6 +8,7 @@
 import { state } from '../game-state.js';
 import { EVENTS, subscribe } from '../game-store.js';
 import { serializeGameState, getTurnCount } from '../index.js';
+import { STORAGE_KEYS } from '../storage-keys.js';
 
 const SAVE_AFTER = new Set([
     EVENTS.GAME_STARTED,
@@ -42,14 +43,14 @@ function save() {
             gameStartedAt: state.gameStartedAt,
             turnCount: getTurnCount(),
         });
-        localStorage.setItem('ludo-save', JSON.stringify(serialized));
+        localStorage.setItem(STORAGE_KEYS.SAVE, JSON.stringify(serialized));
     } catch (e) {
         console.warn('persistence-listener: save failed', e);
     }
 }
 
 function clear() {
-    try { localStorage.removeItem('ludo-save'); }
+    try { localStorage.removeItem(STORAGE_KEYS.SAVE); }
     catch (e) { console.warn('persistence-listener: clear failed', e); }
 }
 

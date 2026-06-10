@@ -18,11 +18,21 @@ export function numEnv(value, fallback) {
     return Number.isFinite(n) ? n : fallback;
 }
 
-/** Clamp a requested seat count to the legal 2..4 ring (mirrors local-server). */
-export function clampSeats(raw, fallback) {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0, Math.min(4, Math.floor(n)));
+// Seat clamp is shared with the Node server — single definition lives in the
+// transport shell; re-exported here so the CF modules keep importing it locally.
+export { clampSeats } from '../transport-shell.js';
+
+// Durable Object singleton names. The Admission gate and the public Matchmaker
+// are each one global instance, addressed by a fixed name from the Worker + DOs.
+export const ADMISSION_NAME = 'global';
+export const MATCH_NAME = 'global';
+
+/** 426 Response unless the request is a WebSocket upgrade; null when it is. */
+export function requireWebsocket(request) {
+    if (request.headers.get('Upgrade') !== 'websocket') {
+        return new Response('expected a websocket upgrade', { status: 426 });
+    }
+    return null;
 }
 
 /** Best-effort send of a pre-stringified frame; a closed socket is a no-op. */
