@@ -12,6 +12,11 @@ name: Release (Web Beta)
 #     LeludoOrg/leludo-beta.
 #   - Does NOT tag or create a GitHub release. Beta is a rolling
 #     channel; bumping VERSION is optional.
+#
+# Multiplayer: deploy-worker-beta ships the ISOLATED beta Worker
+# (`leludo-mp-beta`, wrangler.toml `[env.beta]`) so beta.leludo.org's
+# client (BETA_SERVER_URL in scripts/net/net-client.js) talks to its
+# own Durable Objects + admission counters, never production's.
 
 on:
   workflow_dispatch:
@@ -46,6 +51,42 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
+
+  deploy-worker-beta:
+    name: Deploy multiplayer Worker (beta)
+    needs: test
+    runs-on: ubuntu-latest
+    # Deploys server/cf/* under wrangler.toml's [env.beta] → the separate
+    # `leludo-mp-beta` Worker with its own Durable Objects. Mirrors the
+    # deploy-worker job in release-web.yml but with --env beta, and runs in
+    # parallel with the gh-pages publish. Requires repo secrets
+    # CLOUDFLARE_API_TOKEN (scoped: Workers Scripts + Durable Objects edit) and
+    # CLOUDFLARE_ACCOUNT_ID. If either is absent the job no-ops with a notice
+    # instead of failing the beta deploy.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check Cloudflare credentials
+        id: creds
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set — skipping beta Worker deploy."
+          fi
+
+      - name: Deploy to Cloudflare Workers (beta)
+        if: steps.creds.outputs.present == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env beta
 
   publish-beta:
     name: Publish to leludo-beta

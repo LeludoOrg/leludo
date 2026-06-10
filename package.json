@@ -12,6 +12,8 @@
     "cf:dev": "npx --yes wrangler dev",
     "cf:deploy": "npx --yes wrangler deploy",
     "cf:tail": "npx --yes wrangler tail",
+    "cf:deploy:beta": "npx --yes wrangler deploy --env beta",
+    "cf:tail:beta": "npx --yes wrangler tail --env beta",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

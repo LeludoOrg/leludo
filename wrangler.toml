@@ -42,3 +42,37 @@ new_sqlite_classes = ["LudoRoomDO", "AdmissionDO", "MatchmakingDO"]
 [[routes]]
 pattern = "mp.leludo.org"
 custom_domain = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Beta environment — a SEPARATE Worker (`leludo-mp-beta`, the `name` suffix is
+# automatic) with its OWN Durable Object namespaces, so beta rooms + admission
+# counters are fully isolated from production. Deploy with:
+#     npm run cf:deploy:beta      (= wrangler deploy --env beta)
+# The beta SITE (beta.leludo.org) dials this via BETA_SERVER_URL in
+# scripts/net/net-client.js. Still $0: all Workers share the account-wide free
+# bucket and these caps (tighter than prod) keep beta well under it.
+#
+# wrangler gotcha: `vars` and `durable_objects` are NON-inheritable — they must
+# be repeated here. `[[migrations]]` IS shared from the top level, so the beta
+# Worker's DOs get the same v1 SQLite classes (do NOT redeclare it).
+[env.beta.vars]
+MAX_CONCURRENT_GAMES = "20"
+MAX_GAMES_PER_DAY = "100"
+RECONNECT_GRACE_MS = "60000"
+MATCH_FILL_MS = "20000"
+
+[[env.beta.durable_objects.bindings]]
+name = "ROOM"
+class_name = "LudoRoomDO"
+
+[[env.beta.durable_objects.bindings]]
+name = "ADMISSION"
+class_name = "AdmissionDO"
+
+[[env.beta.durable_objects.bindings]]
+name = "MATCH"
+class_name = "MatchmakingDO"
+
+[[env.beta.routes]]
+pattern = "mp-beta.leludo.org"
+custom_domain = true

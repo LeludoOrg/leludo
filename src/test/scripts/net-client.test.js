@@ -24,6 +24,13 @@ describe('resolveServerUrl', () => {
         expect(resolveServerUrl()).toBe('wss://mp.leludo.org');
     });
 
+    // The beta site must hit the ISOLATED beta backend, not production — beta
+    // testers share neither rooms nor admission caps with real players.
+    it('points the beta site at the separate beta Worker', () => {
+        stubHost('beta.leludo.org');
+        expect(resolveServerUrl()).toBe('wss://mp-beta.leludo.org');
+    });
+
     it('honours an explicit override verbatim', () => {
         stubHost('leludo.org');
         expect(resolveServerUrl('wss://leludo-mp.acme.workers.dev'))
