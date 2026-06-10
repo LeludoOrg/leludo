@@ -79,6 +79,10 @@ const PRECACHE = [
   'scripts/net/transport/mock-network-channel.js',
   'assets/icons/favicon.svg',
   'assets/sounds/capture.m4a',
+  'assets/fonts/instrument-serif-latin-400-normal.woff2',
+  'assets/fonts/instrument-serif-latin-400-italic.woff2',
+  'assets/fonts/dm-sans-latin-variable.woff2',
+  'assets/fonts/jetbrains-mono-latin-variable.woff2',
 ];
 
 self.addEventListener('install', (event) => {

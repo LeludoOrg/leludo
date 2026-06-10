@@ -1,4 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted fonts (latin subset). Replaces the old render-blocking
+   @import from fonts.googleapis.com, which forced two cross-origin
+   handshakes (googleapis -> gstatic) on every cold load and was invisible
+   to the HTML preload scanner. These woff2 files live under assets/fonts/,
+   are precached by the service worker, and the home-screen faces are
+   <link rel="preload">ed in index.html. DM Sans and JetBrains Mono are
+   variable fonts — one file covers the whole weight range. */
+@font-face {
+    font-family: "Instrument Serif";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../assets/fonts/instrument-serif-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Instrument Serif";
+    font-style: italic;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../assets/fonts/instrument-serif-latin-400-italic.woff2") format("woff2");
+}
+@font-face {
+    font-family: "DM Sans";
+    font-style: normal;
+    font-weight: 400 600;
+    font-display: swap;
+    src: url("../assets/fonts/dm-sans-latin-variable.woff2") format("woff2");
+}
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400 500;
+    font-display: swap;
+    src: url("../assets/fonts/jetbrains-mono-latin-variable.woff2") format("woff2");
+}
 
 /* ============================================================
    Design tokens
