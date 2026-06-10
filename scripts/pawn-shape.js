@@ -12,9 +12,21 @@ export const PAWN_BODY =
 
 let _gradUid = 0;
 
-// Build the full layered pawn <svg>. `svgClass` selects the overlay's
-// CSS (drop-shadow); `uidPrefix` namespaces this instance's gradient ids.
-export function pawnSVG(color, size, svgClass, uidPrefix) {
+// Build the layered pawn <svg>. `svgClass` selects the overlay's CSS
+// (drop-shadow); `uidPrefix` namespaces this instance's gradient ids. Pass
+// `{ flat: true }` for a gradient-free single-fill silhouette — used for the
+// launch trail ghosts (formerly a hand-copied ghostSVG that could drift).
+export function pawnSVG(color, size, svgClass, uidPrefix, opts) {
+    if (opts && opts.flat) {
+        return (
+            '<svg class="' + svgClass + '" viewBox="0 0 100 100" ' +
+            'width="' + size + '" height="' + size + '">' +
+                '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
+                '<path d="' + PAWN_BODY + '" fill="' + color + '"/>' +
+                '<circle cx="50" cy="24" r="16" fill="' + color + '"/>' +
+            '</svg>'
+        );
+    }
     const uid = uidPrefix + (++_gradUid);
     return (
         '<svg class="' + svgClass + '" viewBox="0 0 100 100" ' +

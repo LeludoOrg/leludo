@@ -3,12 +3,14 @@
  * Tested directly. Consumed by game-events.js.
  */
 
+import { YARD, FINISH } from "./board-constants.js";
+
 /**
  * @param {number[]} tokenPositions  4 positions for one player
  * @returns {boolean}
  */
 export function isPlayerFinished(tokenPositions) {
-    return tokenPositions.every(tp => tp === 56);
+    return tokenPositions.every(tp => tp === FINISH);
 }
 
 /**
@@ -16,7 +18,7 @@ export function isPlayerFinished(tokenPositions) {
  * @returns {boolean}
  */
 export function allTokensInHome(tokenPositions) {
-    return tokenPositions.every(p => p === -1);
+    return tokenPositions.every(p => p === YARD);
 }
 
 /**
@@ -25,7 +27,7 @@ export function allTokensInHome(tokenPositions) {
  */
 export function getFinishedCount(tokenPositions) {
     if (!tokenPositions) return 0;
-    return tokenPositions.filter(p => p === 56).length;
+    return tokenPositions.filter(p => p === FINISH).length;
 }
 
 /**
@@ -38,6 +40,22 @@ export function selectStartingPlayer(playerTypes) {
     return playerTypes.includes('PLAYER')
         ? 2
         : playerTypes.findIndex(t => t !== undefined);
+}
+
+/**
+ * Does the moving player get to roll again? A 6, a capture, or completing a
+ * token's trip grants another turn — UNLESS that same move finished the
+ * player's last token (nothing left to move), in which case the turn must
+ * advance. Shared by the live game (command-handler) and the headless driver
+ * (game-driver) so the two turn state machines can't diverge.
+ * @param {number} diceRoll
+ * @param {number} captureCount
+ * @param {boolean} tripComplete
+ * @param {boolean} playerFinished  did this move finish the player's last token?
+ * @returns {boolean}
+ */
+export function grantsAnotherTurn(diceRoll, captureCount, tripComplete, playerFinished) {
+    return (diceRoll === 6 || captureCount > 0 || tripComplete) && !playerFinished;
 }
 
 /**

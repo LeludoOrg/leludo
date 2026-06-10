@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { startGame } from './helpers.js';
 
 // Regression: browser back / Android hardware back used to leave the site
 // entirely because no history.pushState / popstate handling existed. Now
@@ -23,9 +24,7 @@ test.describe('Back button', () => {
 
     test('mid-game → back opens pause menu, does NOT exit game', async ({ page }) => {
         const positions = '55,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
         await expect(page.locator('wc-board')).not.toHaveClass(/hidden/);
 
         await page.goBack();
@@ -37,9 +36,7 @@ test.describe('Back button', () => {
 
     test('pause overlay → back closes pause + resumes game', async ({ page }) => {
         const positions = '55,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
         await page.goBack();
         await expect(page.locator('#pause-menu')).not.toHaveClass(/hidden/);
 
@@ -62,9 +59,7 @@ test.describe('Back button', () => {
 
     test('game-end → back returns to home WITHOUT a full page reload', async ({ page }) => {
         const positions = '55,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
 
         // Sentinel survives only if no full navigation happened.
         await page.evaluate(() => { window.__backSpecSentinel = 'kept'; });
@@ -96,9 +91,7 @@ test.describe('Back button', () => {
 
     test('exit-to-home clears the ludo-save key so no Resume card appears', async ({ page }) => {
         const positions = '55,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
         // Game-start emits GAME_STARTED → persistence-listener writes save.
         await expect.poll(async () =>
             page.evaluate(() => localStorage.getItem('ludo-save') !== null)

@@ -1,6 +1,7 @@
 import {
     htmlToElement
 } from "./index.js"
+import { ICON_SETTINGS } from "./wc-icons.js"
 import {
     dispatch,
     COMMANDS,
@@ -38,7 +39,7 @@ const BOARD_HTML = /*html*/ `
             <div id="turn-counter" class="turn-counter">Turn 0</div>
             <div style="flex:1"></div>
             <button id="g-settings-btn" class="icon-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM19.4 13.5a7.6 7.6 0 000-3l2-1.6-2-3.5-2.4.8a7.5 7.5 0 00-2.6-1.5l-.4-2.5h-4l-.4 2.5a7.5 7.5 0 00-2.6 1.5l-2.4-.8-2 3.5 2 1.6a7.6 7.6 0 000 3l-2 1.6 2 3.5 2.4-.8a7.5 7.5 0 002.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 002.6-1.5l2.4.8 2-3.5-2-1.6z"/></svg>
+                ${ICON_SETTINGS}
             </button>
         </div>
 

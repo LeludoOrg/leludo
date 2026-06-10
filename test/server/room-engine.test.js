@@ -388,6 +388,50 @@ function gameWith(sessions) {
     return { fake, clock, engine };
 }
 
+// The five active-seat scans share one `_seatsWhere` helper + named predicates.
+// Construct a fixed in-game state and assert each one reports exactly the seats
+// it always did, so a future predicate tweak can't silently shift semantics.
+describe('RoomEngine — active-seat predicates', () => {
+    function configured() {
+        const { engine } = gameWith(['h', 'g', 'k', 'j']); // 4 humans in-game
+        // Seat 0: live human, mid-board.        -> active human, connected
+        // Seat 1: disconnected human, mid-board -> active human, NOT connected
+        // Seat 2: human who has FINISHED        -> not active (finished)
+        // Seat 3: forfeited (no pawns)          -> not in game at all
+        engine.positions = [[5, -1, -1, -1], [10, -1, -1, -1], [56, 56, 56, 56], null];
+        engine.playerTypes = ['PLAYER', 'PLAYER', 'PLAYER', undefined];
+        engine.seats[0].connected = true;
+        engine.seats[1].connected = false;
+        engine.seats[2].connected = true;
+        return engine;
+    }
+
+    it('_activeInGameSeats counts any seat still holding pawns, finished included', () => {
+        // Seat 2 is finished but still on the board, so it counts here.
+        expect(configured()._activeInGameSeats()).toEqual([0, 1, 2]);
+    });
+
+    it('_seatedActiveHumans excludes finished + forfeited seats, link-agnostic', () => {
+        expect(configured()._seatedActiveHumans()).toEqual([0, 1]);
+    });
+
+    it('_disconnectedActiveHumans is only the unfinished humans whose link is down', () => {
+        expect(configured()._disconnectedActiveHumans()).toEqual([1]);
+    });
+
+    it('_isDisconnectedHuman / _anyoneCanAct track those same seats', () => {
+        const engine = configured();
+        expect(engine._isDisconnectedHuman(1)).toBe(true);
+        expect(engine._isDisconnectedHuman(0)).toBe(false); // connected
+        expect(engine._isDisconnectedHuman(2)).toBe(false); // finished
+        expect(engine._anyoneCanAct()).toBe(true);          // seat 0 is live
+
+        // Knock the only live human's link out: now nobody can act.
+        engine.seats[0].connected = false;
+        expect(engine._anyoneCanAct()).toBe(false);
+    });
+});
+
 describe('RoomEngine — disconnect grace', () => {
     it('skips the current player when they drop so the others keep playing', () => {
         const { fake, engine } = gameWith(['h', 'g']);

@@ -26,9 +26,9 @@
  * the engine, so the alarm only fires for the simultaneous-drop edge.)
  */
 import { RoomEngine } from '../room-engine.js';
-import { clampSeats, numEnv, randomSeed, safeSend, wsReject } from './cf-utils.js';
-
-const ADMISSION_NAME = 'global';
+import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
+import { MSG } from '../../scripts/net-protocol.js';
+import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
 
 export class LudoRoomDO {
     constructor(state, env) {
@@ -38,32 +38,14 @@ export class LudoRoomDO {
         this.roomId = null;
         this.admitted = false;   // this room has consumed an admission slot
         this.released = false;   // ...and given it back (idempotent)
-        this.sockets = new Map();    // sessionId -> Set<WebSocket>
+        // sessionId -> Set<WebSocket>. CF sends pre-stringified frames, so the
+        // injected primitive stringifies before the error-swallowing safeSend.
+        this.sockets = new SessionSockets((ws, msg) => safeSend(ws, JSON.stringify(msg)));
         this.graceMs = numEnv(env.RECONNECT_GRACE_MS, 60_000);
     }
 
     _admissionStub() {
         return this.env.ADMISSION.get(this.env.ADMISSION.idFromName(ADMISSION_NAME));
-    }
-
-    /** The {broadcast, send, release} the engine expects, backed by live sockets. */
-    _transport() {
-        const sockets = this.sockets;
-        return {
-            broadcast: (msg) => {
-                const s = JSON.stringify(msg);
-                for (const set of sockets.values()) for (const ws of set) safeSend(ws, s);
-            },
-            send: (seat, msg) => {
-                const sid = this.engine?.seats[seat]?.sessionId;
-                if (!sid) return;
-                const set = sockets.get(sid);
-                if (!set) return;
-                const s = JSON.stringify(msg);
-                for (const ws of set) safeSend(ws, s);
-            },
-            release: () => { this._release(); },
-        };
     }
 
     _ensureEngine(cfg) {
@@ -76,24 +58,19 @@ export class LudoRoomDO {
             // Fresh per-room dice stream — prod must NOT be the fixed seed the dev
             // harness uses, or every game would roll an identical sequence.
             seed: randomSeed(),
-            transport: this._transport(),
+            transport: engineTransport(this.sockets, () => this.engine, () => this._release()),
         });
     }
 
     async fetch(request) {
-        const url = new URL(request.url);
-        if (request.headers.get('Upgrade') !== 'websocket') {
-            return new Response('expected a websocket upgrade', { status: 426 });
-        }
+        const notWs = requireWebsocket(request);
+        if (notWs) return notWs;
 
-        const q = url.searchParams;
-        this.roomId = (q.get('room') || 'default').toUpperCase();
-        const sessionId = q.get('session') || `anon-${crypto.randomUUID()}`;
-        const name = q.get('name') || '';
-        const colorRaw = q.get('color');
-        const color = colorRaw == null || colorRaw === '' ? null : Number(colorRaw);
-        const pool = q.get('pool') || undefined;
-        const size = clampSeats(q.get('size') ?? q.get('humans'), 2);
+        const p = parseConnParams(new URL(request.url).searchParams);
+        this.roomId = p.room.toUpperCase();
+        const sessionId = p.session || `anon-${crypto.randomUUID()}`;
+        const { name, color, pool } = p;
+        const size = clampSeats(p.sizeRaw, 2);
 
         // First connection to this room consumes an admission slot; later joiners
         // ride the already-open room (Admission treats a re-admit of a live room
@@ -103,7 +80,7 @@ export class LudoRoomDO {
                 `https://do/admit?room=${encodeURIComponent(this.roomId)}`,
             );
             const verdict = await res.json();
-            if (!verdict.ok) return wsReject({ t: 'busy', reason: verdict.reason });
+            if (!verdict.ok) return wsReject({ t: MSG.BUSY, reason: verdict.reason });
             this.admitted = true;
             this.released = false;
         }
@@ -117,11 +94,10 @@ export class LudoRoomDO {
         // A new connection cancels any pending zero-connection cleanup.
         this.state.storage.deleteAlarm().catch(() => {});
 
-        if (!this.sockets.has(sessionId)) this.sockets.set(sessionId, new Set());
-        this.sockets.get(sessionId).add(server);
+        this.sockets.add(sessionId, server);
 
         const joined = this.engine.handleJoin(sessionId, name, color);
-        if (!joined.ok) safeSend(server, JSON.stringify({ t: 'error', error: joined.error }));
+        if (!joined.ok) safeSend(server, JSON.stringify({ t: MSG.ERROR, error: joined.error }));
 
         server.addEventListener('message', (ev) => {
             let msg;
@@ -136,30 +112,11 @@ export class LudoRoomDO {
     }
 
     _onMessage(sessionId, msg) {
-        const e = this.engine;
-        if (!e) return;
-        switch (msg.t) {
-            case 'roll': e.handleRoll(sessionId); break;
-            case 'move': e.handleMove(sessionId, msg.token); break;
-            case 'join': e.handleJoin(sessionId, msg.name, msg.color); break;
-            // host-only lobby controls (the engine enforces NOT_HOST / NOT_IN_LOBBY)
-            case 'lobby_size': e.handleSetSize(sessionId, msg.n); break;
-            case 'lobby_seat': e.handleSetSeat(sessionId, msg.seat, msg.seatType); break;
-            case 'lobby_kick': e.handleKick(sessionId, msg.seat); break;
-            case 'lobby_start': e.handleStart(sessionId); break;
-            default: break;
-        }
+        if (this.engine) dispatchIntent(this.engine, sessionId, msg);
     }
 
     _onClose(sessionId, ws) {
-        const set = this.sockets.get(sessionId);
-        if (set) {
-            set.delete(ws);
-            if (set.size === 0) {
-                this.sockets.delete(sessionId);
-                this.engine?.handleDisconnect(sessionId);
-            }
-        }
+        if (this.sockets.remove(sessionId, ws)) this.engine?.handleDisconnect(sessionId);
         // Last socket gone → arm the leak-guard alarm (see header). If a fully
         // empty room hasn't already ended+released synchronously, the alarm
         // releases the slot once the grace window lapses with nobody back.

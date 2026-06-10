@@ -27,6 +27,8 @@ import { RoomEngine } from './room-engine.js';
 import { Matchmaker } from './matchmaker.js';
 import { mintRoomCode } from '../scripts/room-code.js';
 import { spreadSeatPlan } from '../scripts/seat-allocation.js';
+import { MSG, REASON, BUSY } from '../scripts/net-protocol.js';
+import { SessionSockets, engineTransport, dispatchIntent, parseConnParams, clampSeats } from './transport-shell.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
 const TEST_HOOKS = process.env.DEV_TEST_HOOKS === '1';
@@ -44,25 +46,7 @@ function safeSend(ws, msg) {
 }
 
 function makeRoom(roomId, cfg) {
-    const socketsBySession = new Map();
-
-    const transport = {
-        broadcast(msg) {
-            for (const set of socketsBySession.values()) {
-                for (const ws of set) safeSend(ws, msg);
-            }
-        },
-        send(seat, msg) {
-            const sid = engine.seats[seat]?.sessionId;
-            if (!sid) return;
-            const set = socketsBySession.get(sid);
-            if (set) for (const ws of set) safeSend(ws, msg);
-        },
-        release() {
-            admission.release(roomId);
-            rooms.delete(roomId);
-        },
-    };
+    const sockets = new SessionSockets(safeSend);
 
     const engine = new RoomEngine({
         roomId,
@@ -72,10 +56,13 @@ function makeRoom(roomId, cfg) {
         seed: cfg.seed,
         graceMs: cfg.graceMs,
         botNamePool: cfg.botNamePool,
-        transport,
+        transport: engineTransport(sockets, () => engine, () => {
+            admission.release(roomId);
+            rooms.delete(roomId);
+        }),
     });
 
-    const room = { engine, socketsBySession };
+    const room = { engine, sockets };
     rooms.set(roomId, room);
     return room;
 }
@@ -87,10 +74,9 @@ function mintCode() {
 /** Attach an (already open) connection to a room and seat its player. */
 function bindConnToRoom(conn, room) {
     conn.room = room;
-    if (!room.socketsBySession.has(conn.sessionId)) room.socketsBySession.set(conn.sessionId, new Set());
-    room.socketsBySession.get(conn.sessionId).add(conn.ws);
+    room.sockets.add(conn.sessionId, conn.ws);
     const joined = room.engine.handleJoin(conn.sessionId, conn.name, conn.color);
-    if (!joined.ok) safeSend(conn.ws, { t: 'error', error: joined.error });
+    if (!joined.ok) safeSend(conn.ws, { t: MSG.ERROR, error: joined.error });
 }
 
 // Public matchmaking: form a room for a batch of queued players (+ bots on fill).
@@ -100,7 +86,7 @@ const matchmaker = new Matchmaker({
         const code = mintCode();
         const verdict = admission.tryAdmit(code);
         if (!verdict.ok) {
-            for (const e of entries) safeSend(e.ws, { t: 'busy', reason: verdict.reason });
+            for (const e of entries) safeSend(e.ws, { t: MSG.BUSY, reason: verdict.reason });
             return;
         }
         const humans = entries.length;
@@ -112,7 +98,7 @@ const matchmaker = new Matchmaker({
         // Public matches auto-start once everyone is seated (no host wait).
         const room = makeRoom(code, { size, seatPlan, autoStart: true });
         for (const e of entries) {
-            safeSend(e.ws, { t: 'matched', room: code });
+            safeSend(e.ws, { t: MSG.MATCHED, room: code });
             bindConnToRoom(e.conn, room);
         }
     },
@@ -138,16 +124,10 @@ const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws, req) => {
     const q = new URL(req.url, 'http://localhost').searchParams;
+    // `name`/`color`/`pool`/`mode`/`sizeRaw` are the cross-runtime fields; the
+    // session fallback (and prod room-id casing) are runtime-specific.
+    const { name, color, pool, mode, room: roomId, sizeRaw } = parseConnParams(q);
     const sessionId = q.get('session') || `anon-${Math.random().toString(36).slice(2)}`;
-    const name = q.get('name') || '';
-    const mode = q.get('mode');
-    const roomId = q.get('room') || 'default';
-    // Preferred seat colour (0..3); the engine honours it when that seat is free.
-    const colorRaw = q.get('color');
-    const color = colorRaw == null || colorRaw === '' ? null : Number(colorRaw);
-    // Host's bot-name pool preference (e.g. "english"/"hindi"); read only when the
-    // room is created so its bots get cheeky names like the offline game.
-    const pool = q.get('pool') || undefined;
 
     // Per-connection state. `room` is null until bound (immediately for private
     // rooms, on match-form for public matchmaking).
@@ -156,17 +136,17 @@ wss.on('connection', (ws, req) => {
     // Test-only deterministic busy: exercises the client busy overlay without
     // depending on global counters (so it stays parallel-safe in CI).
     if (TEST_HOOKS && (roomId === '__busy__' || q.get('forceBusy') === '1')) {
-        safeSend(ws, { t: 'busy', reason: 'BUSY_CONCURRENT' });
+        safeSend(ws, { t: MSG.BUSY, reason: BUSY.CONCURRENT });
         ws.close();
         return;
     }
 
     if (mode === 'public') {
         // Public random match: join a per-size queue; bound when a match forms.
-        const size = Math.max(2, clampSeats(q.get('size'), 2));
+        const size = Math.max(2, clampSeats(sizeRaw, 2));
         conn.size = size;
         const res = matchmaker.enqueue({ id: sessionId, size, name, ws, conn });
-        if (res.queued) safeSend(ws, { t: 'queued', size, waiting: res.waiting });
+        if (res.queued) safeSend(ws, { t: MSG.QUEUED, size, waiting: res.waiting });
         // else: matched synchronously — formMatch already sent 'matched' + seated.
     } else {
         // Private room (by code): find or create, admit, bind immediately.
@@ -174,13 +154,13 @@ wss.on('connection', (ws, req) => {
         if (!room) {
             const verdict = admission.tryAdmit(roomId);
             if (!verdict.ok) {
-                safeSend(ws, { t: 'busy', reason: verdict.reason });
+                safeSend(ws, { t: MSG.BUSY, reason: verdict.reason });
                 ws.close();
                 return;
             }
             // `size` is the host's chosen seat count; `humans` is accepted as an
             // alias for the dev harness. The creator becomes host on join.
-            const size = Math.max(2, clampSeats(q.get('size') ?? q.get('humans'), 2));
+            const size = Math.max(2, clampSeats(sizeRaw, 2));
             room = makeRoom(roomId, {
                 size,
                 botNamePool: pool,
@@ -194,46 +174,22 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (raw) => {
         let msg;
         try { msg = JSON.parse(raw.toString()); } catch { return; }
-        if (msg.t === 'queue_cancel') {
+        if (msg.t === MSG.QUEUE_CANCEL) {
             matchmaker.cancel(sessionId);
-            safeSend(ws, { t: 'queue_left' });
+            safeSend(ws, { t: MSG.QUEUE_LEFT });
             return;
         }
         if (!conn.room) return; // not seated in a room yet
-        const { engine } = conn.room;
-        switch (msg.t) {
-            case 'roll': engine.handleRoll(sessionId); break;
-            case 'move': engine.handleMove(sessionId, msg.token); break;
-            case 'join': engine.handleJoin(sessionId, msg.name, msg.color); break;
-            // host-only lobby controls (the engine enforces NOT_HOST / NOT_IN_LOBBY)
-            case 'lobby_size': engine.handleSetSize(sessionId, msg.n); break;
-            case 'lobby_seat': engine.handleSetSeat(sessionId, msg.seat, msg.seatType); break;
-            case 'lobby_kick': engine.handleKick(sessionId, msg.seat); break;
-            case 'lobby_start': engine.handleStart(sessionId); break;
-            default: break;
-        }
+        dispatchIntent(conn.room.engine, sessionId, msg);
     });
 
     ws.on('close', () => {
         matchmaker.cancel(sessionId); // no-op if not queued
         if (!conn.room) return;
-        const { engine, socketsBySession } = conn.room;
-        const set = socketsBySession.get(sessionId);
-        if (set) {
-            set.delete(ws);
-            if (set.size === 0) {
-                socketsBySession.delete(sessionId);
-                engine.handleDisconnect(sessionId);
-            }
-        }
+        const { engine, sockets } = conn.room;
+        if (sockets.remove(sessionId, ws)) engine.handleDisconnect(sessionId);
     });
 });
-
-function clampSeats(raw, fallback) {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0, Math.min(4, Math.floor(n)));
-}
 
 httpServer.listen(PORT, () => {
     console.log(`Leludo multiplayer server on http://localhost:${PORT} (ws://localhost:${PORT})`);

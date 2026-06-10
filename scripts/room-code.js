@@ -8,6 +8,8 @@
  * easy to read aloud and type.
  */
 
+import { pick } from './rng-util.js';
+
 export const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const ROOM_CODE_LENGTH = 4;
 
@@ -22,7 +24,7 @@ export function mintRoomCode(isTaken) {
     do {
         code = '';
         for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-            code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+            code += pick(ROOM_CODE_CHARS);
         }
     } while (isTaken && isTaken(code));
     return code;

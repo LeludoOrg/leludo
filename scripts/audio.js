@@ -1,4 +1,6 @@
-const SOUND_MUTED_KEY = "sound-muted";
+import { STORAGE_KEYS } from "./storage-keys.js";
+
+const SOUND_MUTED_KEY = STORAGE_KEYS.SOUND_MUTED;
 let _soundMuted = localStorage.getItem(SOUND_MUTED_KEY) === "true";
 
 export function isSoundMuted() {
@@ -13,31 +15,28 @@ export function setSoundMuted(muted) {
 let audioCtx = null;
 function getAudioCtx() {
     if (!audioCtx) audioCtx = new AudioContext();
+    // Browsers start the context suspended until a user gesture; resume so the
+    // first game sounds aren't silently dropped. Fire-and-forget (returns a
+    // promise we don't need to await).
+    if (audioCtx.state === "suspended") audioCtx.resume();
     return audioCtx;
 }
 
-function playBeep({ startFreq, endFreq, startGain, duration }) {
-    if (_soundMuted) return;
-    const ctx = getAudioCtx();
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(startFreq, t);
-    if (endFreq !== undefined) {
-        osc.frequency.exponentialRampToValueAtTime(endFreq, t + duration * 0.8);
-    }
-    gain.gain.setValueAtTime(startGain, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.start(t);
-    osc.stop(t + duration);
+// Fill a mono buffer of `seconds` with white noise [-1, 1). Shared by the
+// filtered-noise primitive and the inline dice-rattle synth.
+function makeWhiteNoiseBuffer(ctx, seconds) {
+    const len = Math.ceil(ctx.sampleRate * seconds);
+    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buffer;
 }
 
-// Like playBeep but supports a scheduled delay, waveform, and a short
-// attack — used to build the multi-note launch/finish jingles.
+// Single-oscillator note: a scheduled delay, waveform, and short attack.
+// Used both for one-shot blips (click/step) and the multi-note
+// launch/finish jingles. The mute guard lives at the public SFX entry
+// points, so this primitive runs unconditionally.
 function playTone({ startFreq, endFreq, startGain, duration, delay = 0, type = "sine" }) {
-    if (_soundMuted) return;
     const ctx = getAudioCtx();
     const t = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
@@ -73,7 +72,6 @@ function playVoice({
     vibratoRate = 0,
     vibratoDepth = 0,
 }) {
-    if (_soundMuted) return;
     const ctx = getAudioCtx();
     const t = ctx.currentTime + delay;
     const end = t + duration;
@@ -127,18 +125,12 @@ function playVoice({
 // Filtered-noise gust: a band-passed swept noise burst. Used for the
 // launch whoosh and the finish shimmer/cymbal swell.
 function playNoise({ duration, startGain, delay = 0, lpStart, lpEnd, hpFreq = 300, Q = 0.6 }) {
-    if (_soundMuted) return;
     const ctx = getAudioCtx();
     const t = ctx.currentTime + delay;
     const end = t + duration;
 
-    const len = Math.ceil(ctx.sampleRate * duration);
-    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-
     const src = ctx.createBufferSource();
-    src.buffer = buffer;
+    src.buffer = makeWhiteNoiseBuffer(ctx, duration);
 
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
@@ -164,7 +156,8 @@ function playNoise({ duration, startGain, delay = 0, lpStart, lpEnd, hpFreq = 30
 }
 
 export function playClickSound() {
-    playBeep({ startFreq: 1200, endFreq: 800, startGain: 0.06, duration: 0.05 });
+    if (_soundMuted) return;
+    playTone({ startFreq: 1200, endFreq: 800, startGain: 0.06, duration: 0.05 });
 }
 
 // Pawn leaving the yard — a clean, joyful "pop & zip": a soft rounded pop
@@ -221,7 +214,8 @@ export function playFinishSound() {
 }
 
 export function playStepSound() {
-    playBeep({ startFreq: 600, startGain: 0.08, duration: 0.06 });
+    if (_soundMuted) return;
+    playTone({ startFreq: 600, startGain: 0.08, duration: 0.06 });
 }
 
 let captureBuffer = null;
@@ -259,10 +253,7 @@ export function playDiceSound() {
     const ctx = getAudioCtx();
     const t = ctx.currentTime;
 
-    const bufferLen = Math.ceil(ctx.sampleRate * 0.06);
-    const noiseBuffer = ctx.createBuffer(1, bufferLen, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferLen; i++) data[i] = Math.random() * 2 - 1;
+    const noiseBuffer = makeWhiteNoiseBuffer(ctx, 0.06);
 
     const burstCount = 7 + Math.floor(Math.random() * 5);
     let offset = 0;

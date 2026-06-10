@@ -190,11 +190,13 @@ wc-game-end .ge-hero-text {
     min-width: 0;
 }
 
+/* Extends the shared .eyebrow recipe (styles/base.css). The faint look comes
+   from --ge-fg-faint (full opacity), so reset the base opacity to 1. */
 wc-game-end .ge-eyebrow {
     font-size: 10.5px;
     letter-spacing: 0.2em;
-    text-transform: uppercase;
     color: var(--ge-fg-faint);
+    opacity: 1;
     font-weight: 600;
 }
 
@@ -225,7 +227,7 @@ wc-game-end .ge-card {
     background: var(--ge-surface);
     border: 1px solid var(--ge-surface-border);
     border-left-width: 3px;
-    border-radius: 14px;
+    border-radius: var(--card-radius);
 }
 
 /* Border-left color picks up the player seat color. Specificity beats
@@ -289,7 +291,7 @@ wc-game-end .ge-store {
     text-align: left;
     background: color-mix(in srgb, hsl(22 67% 56%) 12%, transparent);
     border: 1px solid color-mix(in srgb, hsl(22 67% 56%) 32%, transparent);
-    border-radius: 14px;
+    border-radius: var(--card-radius);
     cursor: pointer;
     font-family: inherit;
     color: var(--ge-fg);
@@ -356,8 +358,8 @@ wc-game-end .ge-footer {
 
 wc-game-end .ge-cta {
     width: 100%;
-    height: 54px;
-    border-radius: 27px;
+    height: var(--cta-h-sm);
+    border-radius: var(--cta-radius-sm);
     border: 0;
     background: var(--ge-cta-bg);
     color: var(--ge-cta-fg);

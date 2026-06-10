@@ -17,6 +17,7 @@ import { dispatch, subscribe, EVENTS } from './game-store.js';
 import { COMMANDS } from './command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
 import { setDimmedPlayers, clearPresence } from './net-overlay.js';
+import { MSG, REASON, DISCONNECT_END_REASONS } from './net-protocol.js';
 
 let _started = false;
 let _chain = Promise.resolve();
@@ -71,10 +72,6 @@ export function startOnlineGame({ net, seat, state }) {
     }));
 }
 
-// Server end reasons that are NOT driven by a local finishing move — the end
-// screen must be mounted explicitly (handleAfterTokenMove never ran).
-const DISCONNECT_END_REASONS = new Set(['opponent-left', 'abandoned', 'no-active-players']);
-
 /** Dim the opponents who are mid-reconnect (un-dims the rest) from a snapshot. */
 function updateDimming(state) {
     const dim = (state.disconnects || [])
@@ -99,7 +96,7 @@ function ranksToLocal(ranks) {
 /** Feed a server broadcast into the renderer. */
 export function handleOnlineMessage(msg) {
     if (!_started) return;
-    if (msg.t === 'state') {
+    if (msg.t === MSG.STATE) {
         if (!msg.state.started) return;
         // Dim opponents who are mid-reconnect (the game plays on without them).
         updateDimming(msg.state);
@@ -112,20 +109,20 @@ export function handleOnlineMessage(msg) {
             playerIndex: toLocal(msg.state.currentPlayerIndex),
         }));
         // A roll happened iff the broadcast carries a fresh dice result.
-        if (msg.reason === 'rolled' || msg.reason === 'no-move' || msg.reason === 'three-sixes') {
+        if (msg.reason === REASON.ROLLED || msg.reason === REASON.NO_MOVE || msg.reason === REASON.THREE_SIXES) {
             const value = msg.state.dice;
             enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_ROLL, value }));
         }
-    } else if (msg.t === 'moved') {
+    } else if (msg.t === MSG.MOVED) {
         enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: toLocal(msg.p), tokenIndex: msg.token }));
-    } else if (msg.t === 'dropped') {
+    } else if (msg.t === MSG.DROPPED) {
         // A player's reconnect window elapsed: pull their pawns off the board.
         if (msg.state) updateDimming(msg.state);
         enqueue(() => dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) }));
-    } else if (msg.t === 'ended') {
+    } else if (msg.t === MSG.ENDED) {
         // A finish-driven end already mounted the end screen via the normal move
         // path; only disconnect-driven ends need it mounted here.
-        if (DISCONNECT_END_REASONS.has(msg.reason)) {
+        if (DISCONNECT_END_REASONS.includes(msg.reason)) {
             clearPresence();
             const { local, winnerIndex } = ranksToLocal(msg.ranks);
             enqueue(() => dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex }));

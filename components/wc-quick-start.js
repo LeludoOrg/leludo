@@ -6,6 +6,9 @@ import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../script
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
+import {MSG} from "../scripts/net-protocol.js";
+import {STORAGE_KEYS} from "../scripts/storage-keys.js";
+import {SCREENS} from "../scripts/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/room-code.js";
 import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
 // The online flow lives in two sibling components this controller mounts and
@@ -74,13 +77,16 @@ class QuickStart extends HTMLElement {
     }
 
     connectedCallback() {
-        document.addEventListener("bot-name-pool-changed", () => this._reshuffleBotNames())
+        // AbortController so the global pool-change listener is removed on
+        // disconnect instead of leaking across re-mounts.
+        this._abort = new AbortController()
+        document.addEventListener("bot-name-pool-changed", () => this._reshuffleBotNames(), { signal: this._abort.signal })
         // Register screen closers before any first navigation so back works even
         // when we boot straight into the online flow via a shared invite link.
-        registerScreenHandler('setup', () => this.showHomeScreen())
-        registerScreenHandler('online', () => { this._leaveOnline(); this.showHomeScreen() })
-        registerScreenHandler('online-search', () => { this._leaveOnline(); this.showOnlineScreen() })
-        registerScreenHandler('online-lobby', () => { this._leaveOnline(); this.showOnlineScreen() })
+        registerScreenHandler(SCREENS.SETUP, () => this.showHomeScreen())
+        registerScreenHandler(SCREENS.ONLINE, () => { this._leaveOnline(); this.showHomeScreen() })
+        registerScreenHandler(SCREENS.ONLINE_SEARCH, () => { this._leaveOnline(); this.showOnlineScreen() })
+        registerScreenHandler(SCREENS.ONLINE_LOBBY, () => { this._leaveOnline(); this.showOnlineScreen() })
 
         // Deep link: opened via a shared "?join=CODE" invite → go straight into
         // the online flow; otherwise the normal home screen.
@@ -142,13 +148,13 @@ class QuickStart extends HTMLElement {
         el.querySelector(".play-offline-btn").addEventListener("click", () => {
             playClickSound()
             this.showSetupScreen()
-            goTo('setup')
+            goTo(SCREENS.SETUP)
         })
 
         el.querySelector(".play-online-btn").addEventListener("click", () => {
             playClickSound()
             this.showOnlineScreen()
-            goTo('online')
+            goTo(SCREENS.ONLINE)
         })
 
         const resumeEl = el.querySelector(".resume-card")
@@ -206,13 +212,15 @@ class QuickStart extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this._abort?.abort()
+        this._abort = null
         this._stopHomeDieCycle()
         this._leaveOnline()
     }
 
     _readSavedGame() {
         try {
-            const raw = localStorage.getItem('ludo-save')
+            const raw = localStorage.getItem(STORAGE_KEYS.SAVE)
             if (!raw) return null
             const parsed = JSON.parse(raw)
             if (!parsed || !Array.isArray(parsed.positions)) return null
@@ -324,7 +332,7 @@ class QuickStart extends HTMLElement {
                         </div>
                         <div class="seat-body">
                             <label class="seat-name-wrap">
-                                <input class="seat-name" type="text" name="ludo-seat-${i}" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${(seat.name || '').replace(/"/g, '&quot;')}" maxlength="${NAME_MAX}" spellcheck="false" />
+                                <input class="seat-name" type="text" name="ludo-seat-${i}" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${escapeHtml(seat.name || '')}" maxlength="${NAME_MAX}" spellcheck="false" />
                                 <span class="seat-name-pencil">${ICON_PENCIL}</span>
                                 <span class="seat-char-count hidden" style="color:${colorVar};">${charLen}/${NAME_MAX}</span>
                             </label>
@@ -541,7 +549,7 @@ class QuickStart extends HTMLElement {
         } catch { /* non-browser */ }
 
         this.showOnlineScreen()
-        goTo('online')
+        goTo(SCREENS.ONLINE)
         if (getUsername()) this._enterLobby(code, { create: false })
         else this._playOnline?.prefillJoin(code)
     }
@@ -593,23 +601,23 @@ class QuickStart extends HTMLElement {
         // Once the game has started, every message drives the board.
         if (this._inGame) { handleOnlineMessage(msg); return }
         switch (msg.t) {
-            case 'queued':
+            case MSG.QUEUED:
                 this._setSearchStatus(`Searching for a ${msg.size}-player match…`)
                 break
-            case 'matched':
+            case MSG.MATCHED:
                 this._roomCode = msg.room
                 this._mountGameRoom(msg.room)
-                replaceTo('online-lobby') // replace the search entry so back → menu
+                replaceTo(SCREENS.ONLINE_LOBBY) // replace the search entry so back → menu
                 // Public matches auto-start the instant seats fill, so cover the
                 // brief lobby flash with a "Match found!" announcement.
                 if (this._isPublic) this._showMatchStarting()
                 break
-            case 'seated':
+            case MSG.SEATED:
                 // Host-ness is derived from state.hostSeat in <wc-game-room>;
                 // we only need our own seat index here.
                 this._mySeat = msg.playerIndex
                 break
-            case 'state':
+            case MSG.STATE:
                 this._gameRoom?.renderLobby(msg.state, this._mySeat)
                 if (msg.state.started) {
                     // Hand off to the real board, server-driven from here on.
@@ -618,7 +626,7 @@ class QuickStart extends HTMLElement {
                     startOnlineGame({ net: this._net, seat: this._mySeat, state: msg.state })
                     const menu = document.getElementById('main-menu')
                     if (menu) menu.classList.add('hidden')
-                    replaceTo('game')
+                    replaceTo(SCREENS.GAME)
                     // The board is now live under the announcement (if any). Reveal
                     // it once the minimum window has elapsed; private rooms have no
                     // overlay so this hides nothing.
@@ -626,13 +634,13 @@ class QuickStart extends HTMLElement {
                     else this._hideMatchStarting()
                 }
                 break
-            case 'kicked':
+            case MSG.KICKED:
                 this._leaveOnline()
                 this.showOnlineScreen()
-                replaceTo('online')
+                replaceTo(SCREENS.ONLINE)
                 this._setOnlineStatus('The host removed you from the room.')
                 break
-            case 'busy':
+            case MSG.BUSY:
                 this._gameRoom?.onBusy()
                 this._setSearchStatus('Servers are busy right now — please try again in a few minutes.')
                 break
@@ -691,14 +699,14 @@ class QuickStart extends HTMLElement {
         // Navigate setup → room: mount <wc-game-room>, then wire the socket. The
         // 'online-lobby' history entry means back returns to <wc-play-online>.
         this._mountGameRoom(code)
-        goTo('online-lobby')
+        goTo(SCREENS.ONLINE_LOBBY)
         this._connect({ room: code, params })
     }
 
     _enterMatchmaking(size) {
         this._isPublic = true
         this.showOnlineSearch(size)
-        goTo('online-search')
+        goTo(SCREENS.ONLINE_SEARCH)
         this._connect({ room: undefined, params: { mode: 'public', size: String(size) } })
     }
 

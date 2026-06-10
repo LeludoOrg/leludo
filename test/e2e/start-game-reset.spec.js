@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { startGame as bootGame } from './helpers.js';
 
 /**
  * Regression for "brand new game starts in a broken state".
@@ -19,9 +20,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Start game DOM reset', () => {
     test('startGame clears stale tokens, re-homes the dice, resets turn counter', async ({ page }) => {
-        await page.goto('/');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await bootGame(page);
         await expect(page.locator('wc-board:not(.hidden)')).toBeVisible();
         await page.locator('#h-0-0').waitFor();
 

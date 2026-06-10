@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { startGame } from './helpers.js';
 
 test.describe('Home screen', () => {
     test('renders title and the offline / online paths', async ({ page }) => {
@@ -61,9 +62,7 @@ test.describe('Game start (URL overrides)', () => {
         // 4 humans, P0's first token at 55 (one away from finishing), P0 starts.
         // Smoke-tests handleGameStart override path without scripted gameplay.
         const positions = '55,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
         // Board should be visible (not hidden).
         await expect(page.locator('wc-board')).not.toHaveClass(/hidden/);
     });
@@ -75,9 +74,7 @@ test.describe('Game start (URL overrides)', () => {
         // After fix, init-position tokens are appended directly to their
         // target container with no animation in flight.
         const positions = '50,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=0`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=0`);
         const token = page.locator('#p-0-0');
         await expect(token).toBeVisible();
         const parentId = await token.evaluate(el => el.parentElement?.id);
@@ -101,9 +98,7 @@ test.describe('Game start (URL overrides)', () => {
         // Bot 1 starts with a token already on track so the first roll has
         // movable tokens → bot autoplay flows through selectToken.
         const positions = '-1,-1,-1,-1,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1';
-        await page.goto(`/?positions=${positions}&player=1`);
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await startGame(page, `?positions=${positions}&player=1`);
         await expect(page.locator('wc-board')).not.toHaveClass(/hidden/);
 
         await page.waitForTimeout(3500);

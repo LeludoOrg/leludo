@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { PORTS } from './tools/ports.mjs';
 
-const PORT = 8889;
+const PORT = PORTS.E2E_STATIC;
 const BASE_URL = `http://localhost:${PORT}`;
-const MP_PORT = 8890; // multiplayer ws server (server/local-server.mjs)
+const MP_PORT = PORTS.MP_SERVER; // multiplayer ws server (server/local-server.mjs)
 
 export default defineConfig({
     testDir: './test/e2e',

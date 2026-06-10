@@ -8,6 +8,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readVersion } from './read-version.mjs';
 
 export const MAX_LEN = 500;
 
@@ -80,10 +81,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   const here = dirname(fileURLToPath(import.meta.url));
   const root = resolve(here, '..');
 
-  const versionSrc = await readFile(resolve(root, 'version.js'), 'utf8');
-  const vMatch = versionSrc.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
-  if (!vMatch) throw new Error('VERSION constant not found in version.js');
-  const version = vMatch[1];
+  const version = await readVersion(root);
 
   const changelog = await readFile(resolve(root, 'changelog.html'), 'utf8');
   const bullets = extractBullets(changelog, version);

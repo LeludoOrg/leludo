@@ -54,10 +54,10 @@ wc-game-room .online-seat-name {
     white-space: nowrap;
 }
 
+/* Extends the shared .eyebrow recipe (styles/base.css) — uppercase comes
+   from there; tracking + opacity differ so they stay as overrides. */
 wc-game-room .online-seat-status {
-    font-size: 11px;
     letter-spacing: 0.1em;
-    text-transform: uppercase;
     opacity: 0.5;
     flex-shrink: 0;
 }

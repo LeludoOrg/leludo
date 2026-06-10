@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { startGame as bootGame } from './helpers.js';
 
 /**
  * Regression for pawn-launch overlay.
@@ -29,9 +30,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Pawn launch overlay', () => {
     test('keeps yard seat ring visible while the launch overlay plays', async ({ page }) => {
         // Start a normal game; positions default to all-in-yard.
-        await page.goto('/?player=0');
-        await page.locator('.new-game-btn').click();
-        await page.locator('.start-btn').click();
+        await bootGame(page, '?player=0');
         await expect(page.locator('wc-board:not(.hidden)')).toBeVisible();
         await page.locator('#h-0-0').waitFor();
 

@@ -1,3 +1,11 @@
+import {
+    YARD,
+    ENTRY_SQUARE,
+    LAST_TRACK_SQUARE,
+    FINISH,
+    rawMarkIndex,
+} from "./board-constants.js";
+
 export const SAFE_SQUARES = [0, 8, 13, 21, 26, 34, 39, 47];
 
 export const HUMAN_PREFERRED_POSITIONS = [2, 0, 1, 3];
@@ -9,11 +17,11 @@ export const HUMAN_PREFERRED_POSITIONS = [2, 0, 1, 3];
  * @return {boolean}
  */
 export function isTokenMovable(tokenPosition, diceRoll) {
-    if (diceRoll === 6 && tokenPosition === -1) {
+    if (diceRoll === 6 && tokenPosition === YARD) {
         return true
     }
 
-    return tokenPosition >= 0 && (tokenPosition + diceRoll) <= 56
+    return tokenPosition >= 0 && (tokenPosition + diceRoll) <= FINISH
 }
 
 /**
@@ -22,11 +30,11 @@ export function isTokenMovable(tokenPosition, diceRoll) {
  * @returns {undefined|number}
  */
 export function getMarkIndex(playerIndex, tokenPosition) {
-    if (tokenPosition === -1 || tokenPosition > 50) {
+    if (tokenPosition === YARD || tokenPosition > LAST_TRACK_SQUARE) {
         return undefined
     }
 
-    return (tokenPosition + (13 * playerIndex)) % 52;
+    return rawMarkIndex(playerIndex, tokenPosition);
 }
 
 
@@ -36,7 +44,7 @@ export function getMarkIndex(playerIndex, tokenPosition) {
  * @returns {boolean}
  */
 export function isSafePosition(tokenPosition) {
-    return SAFE_SQUARES.includes(tokenPosition) || tokenPosition > 50;
+    return SAFE_SQUARES.includes(tokenPosition) || tokenPosition > LAST_TRACK_SQUARE;
 }
 
 /**
@@ -109,8 +117,8 @@ export function rollDiceWithPity(noMoveStreak, hasTokenAtHome, randomFn = Math.r
  * @returns {number}
  */
 export function getTokenNewPosition(currentPosition, diceRoll) {
-    if (currentPosition === -1) {
-        return 0;
+    if (currentPosition === YARD) {
+        return ENTRY_SQUARE;
     }
 
     return currentPosition + diceRoll
@@ -162,7 +170,7 @@ export function findCapturedOpponents(playerIndex, tokenPosition, tokenPositions
  * @returns {boolean}
  */
 export function isTripComplete(tokenPosition) {
-    return tokenPosition === 56;
+    return tokenPosition === FINISH;
 }
 
 /**

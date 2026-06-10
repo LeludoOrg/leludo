@@ -9,6 +9,7 @@
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PORTS } from './ports.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -30,8 +31,8 @@ function run(label, cmd, args, env) {
 // e2e suite relies on. Playwright reuses an already-running dev server locally
 // (reuseExistingServer), so without this the reused server silently ignores
 // ?grace=/seed=/__busy__ and those e2e specs fail only on dev machines, never CI.
-run('static-server', 'npx', ['five-server', '--port=8888', '--open=/']);
-run('mp-server', 'node', [resolve(root, 'server/local-server.mjs'), '8890'], { DEV_TEST_HOOKS: '1' });
+run('static-server', 'npx', ['five-server', `--port=${PORTS.DEV_STATIC}`, '--open=/']);
+run('mp-server', 'node', [resolve(root, 'server/local-server.mjs'), String(PORTS.MP_SERVER)], { DEV_TEST_HOOKS: '1' });
 
 let down = false;
 const shutdown = () => {

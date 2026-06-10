@@ -15,6 +15,7 @@
  */
 
 import { initialGameState, PHASES } from './game-state.js';
+import { YARD, HOME_STRETCH_START, FINISH } from './board-constants.js';
 
 export const EVENTS = Object.freeze({
     GAME_STARTED: 'GAME_STARTED',
@@ -41,6 +42,20 @@ export const EVENTS = Object.freeze({
     NET_GAME_ENDED: 'NET_GAME_ENDED',
 });
 
+// Reset seat `i`'s per-game highlight-reel stats to their "nothing happened
+// yet" defaults. Identical across a fresh start, a resume, and a full clear, so
+// it lives in one place (the -1s are "turn not reached yet" sentinels, not
+// board positions). Shared by resetArraysInPlace + GAME_STARTED + GAME_RESUMED.
+function resetPlayerStats(state, i) {
+    state.sentHomeCount[i] = 0;
+    state.firstHomeStretchTurn[i] = -1;
+    state.firstFinishTurn[i] = -1;
+    state.distanceTraveled[i] = 0;
+    state.pawnsAtBaseAtTurn20[i] = -1;
+    state.bestDiceStreak[i] = null;
+    state.noMoveStreak[i] = 0;
+}
+
 function resetArraysInPlace(state) {
     for (let i = 0; i < 4; i++) {
         state.playerNames[i] = '';
@@ -50,13 +65,7 @@ function resetArraysInPlace(state) {
         state.playerRanks[i] = 0;
         state.playerTimes[i] = 0;
         state.playerCaptures[i] = 0;
-        state.sentHomeCount[i] = 0;
-        state.firstHomeStretchTurn[i] = -1;
-        state.firstFinishTurn[i] = -1;
-        state.distanceTraveled[i] = 0;
-        state.pawnsAtBaseAtTurn20[i] = -1;
-        state.bestDiceStreak[i] = null;
-        state.noMoveStreak[i] = 0;
+        resetPlayerStats(state, i);
     }
     state.currentDiceStreak = null;
 }
@@ -79,13 +88,7 @@ export function reducer(state, event) {
                 state.playerRanks[i] = 0;
                 state.playerTimes[i] = 0;
                 state.playerCaptures[i] = 0;
-                state.sentHomeCount[i] = 0;
-                state.firstHomeStretchTurn[i] = -1;
-                state.firstFinishTurn[i] = -1;
-                state.distanceTraveled[i] = 0;
-                state.pawnsAtBaseAtTurn20[i] = -1;
-                state.bestDiceStreak[i] = null;
-                state.noMoveStreak[i] = 0;
+                resetPlayerStats(state, i);
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
@@ -112,13 +115,7 @@ export function reducer(state, event) {
                 state.playerRanks[i] = event.playerRanks[i] ?? 0;
                 state.playerTimes[i] = event.playerTimes[i] ?? 0;
                 state.playerCaptures[i] = event.playerCaptures[i] ?? 0;
-                state.sentHomeCount[i] = 0;
-                state.firstHomeStretchTurn[i] = -1;
-                state.firstFinishTurn[i] = -1;
-                state.distanceTraveled[i] = 0;
-                state.pawnsAtBaseAtTurn20[i] = -1;
-                state.bestDiceStreak[i] = null;
-                state.noMoveStreak[i] = 0;
+                resetPlayerStats(state, i);
                 state.playerTokenPositions[i] = event.playerTokenPositions[i]
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
@@ -193,22 +190,22 @@ export function reducer(state, event) {
             const pi = event.playerIndex;
             if (event.fromPosition >= 0 && event.toPosition >= 0) {
                 state.distanceTraveled[pi] += event.toPosition - event.fromPosition;
-            } else if (event.fromPosition === -1 && event.toPosition >= 0) {
+            } else if (event.fromPosition === YARD && event.toPosition >= 0) {
                 state.distanceTraveled[pi] += 1;
             }
-            if (event.fromPosition < 51 && event.toPosition >= 51 && event.toPosition <= 56) {
+            if (event.fromPosition < HOME_STRETCH_START && event.toPosition >= HOME_STRETCH_START && event.toPosition <= FINISH) {
                 if (state.firstHomeStretchTurn[pi] === -1) {
                     state.firstHomeStretchTurn[pi] = state.turnCount;
                 }
             }
-            if (event.toPosition === 56 && state.firstFinishTurn[pi] === -1) {
+            if (event.toPosition === FINISH && state.firstFinishTurn[pi] === -1) {
                 state.firstFinishTurn[pi] = state.turnCount;
             }
             return state;
         }
 
         case EVENTS.TOKEN_CAPTURED: {
-            state.playerTokenPositions[event.capturedPlayerIndex][event.capturedTokenIndex] = -1;
+            state.playerTokenPositions[event.capturedPlayerIndex][event.capturedTokenIndex] = YARD;
             state.playerCaptures[event.byPlayerIndex]++;
             state.sentHomeCount[event.capturedPlayerIndex]++;
             return state;
@@ -249,7 +246,7 @@ export function reducer(state, event) {
                     if (state.pawnsAtBaseAtTurn20[i] !== -1) continue;
                     if (!state.playerTypes[i] || !state.playerTokenPositions[i]) continue;
                     state.pawnsAtBaseAtTurn20[i] =
-                        state.playerTokenPositions[i].filter(p => p === -1).length;
+                        state.playerTokenPositions[i].filter(p => p === YARD).length;
                 }
             }
             return state;

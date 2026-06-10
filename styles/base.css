@@ -76,8 +76,16 @@
 
     /* Controls */
     --icon-btn-size: 38px;
-    --cta-h: 60px;
-    --cta-h-sm: 48px;
+    --cta-h: 56px;
+    --cta-radius: 28px;
+    --cta-h-sm: 54px;
+    --cta-radius-sm: 27px;
+
+    /* Shared shadow / divider / card tokens (dedupe repeated literals) */
+    --shadow-tint: 31 27 20;
+    --hairline: color-mix(in srgb, var(--color-fg) 5%, transparent);
+    --card-pad: 14px;
+    --card-radius: 14px;
 }
 
 .dark {
@@ -256,7 +264,7 @@ table td {
 .pulse-chip {
     line-height: 0;
     padding: 10px;
-    border-radius: 14px;
+    border-radius: var(--card-radius);
     background: color-mix(in srgb, var(--color-fg) 6%, transparent);
     animation: home-die-pulse 1.6s ease-in-out infinite;
     --pulse-color: color-mix(in srgb, var(--color-fg) 22%, transparent);
@@ -378,8 +386,8 @@ table td {
 
 .cta-primary {
     width: 100%;
-    height: 56px;
-    border-radius: 28px;
+    height: var(--cta-h);
+    border-radius: var(--cta-radius);
     background: var(--cta-bg);
     color: var(--cta-fg);
     font-weight: 600;
@@ -390,7 +398,7 @@ table td {
     align-items: center;
     justify-content: center;
     gap: 10px;
-    box-shadow: 0 8px 22px -8px rgba(31, 27, 20, 0.4);
+    box-shadow: 0 8px 22px -8px rgb(var(--shadow-tint) / 0.4);
     transition: opacity 150ms ease;
 }
 
@@ -405,8 +413,8 @@ table td {
 
 .cta-secondary {
     width: 100%;
-    height: 54px;
-    border-radius: 27px;
+    height: var(--cta-h-sm);
+    border-radius: var(--cta-radius-sm);
     background: transparent;
     color: var(--color-fg);
     font-weight: 500;
@@ -422,13 +430,22 @@ table td {
 
 /* Display text + section labels */
 
-.display-title {
+/* Shared 40px serif title. .settings-title (wc-settings.css) and
+   .static-page-title (changelog.css) reuse this rule — the only genuine
+   difference is .display-title's own padding, kept in a separate block so
+   the two reusers don't inherit it. */
+.display-title,
+.settings-title,
+.static-page-title {
     font-family: var(--font-display);
     font-size: 40px;
     line-height: 1;
     letter-spacing: -0.025em;
-    padding: var(--space-2) var(--space-1);
     margin: 0;
+}
+
+.display-title {
+    padding: var(--space-2) var(--space-1);
 }
 
 .body-helper {
@@ -439,11 +456,29 @@ table td {
     margin: 0;
 }
 
-.section-label {
+/* Uppercase eyebrow recipe — the small, tracked, low-opacity caps label
+   reused across the app. The base captures the common values (11px / 0.14em /
+   uppercase / weight 500 / opacity 0.4); reusers in other stylesheets join
+   this selector list and override only the values that genuinely differ
+   (font-size, letter-spacing, opacity/color, weight). See .pm-upnext,
+   .pm-type (wc-pause-menu.css), .online-seat-status (wc-game-room.css),
+   .ge-eyebrow (wc-game-end.css), .cl-entry-date (changelog.css).
+   .resume-eyebrow stays separate — it is NOT uppercase. */
+.eyebrow,
+.section-label,
+.cl-entry-date,
+.pm-upnext,
+.pm-type,
+.online-seat-status,
+.ge-eyebrow {
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     opacity: 0.4;
+}
+
+/* .section-label is the only base-list member that bumps the weight. */
+.section-label {
     font-weight: 500;
 }
 
@@ -457,10 +492,6 @@ table td {
     background: var(--color-surface);
     border-radius: var(--radius-2xl);
     border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
-}
-
-.surface-card-padded {
-    padding: 14px;
 }
 
 /* ============================================================

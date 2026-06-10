@@ -59,6 +59,32 @@ describe('selectHighlights', () => {
         expect(ko.body).toMatch(/You/);
     });
 
+    // Tie-break guard: when two players share the top capture count, the
+    // game winner is credited (knockout king's tieToWinner rule). Refactor
+    // moved this into argmaxPlayer({ tieToWinner }) — keep the behaviour pinned.
+    it('Knockout king credits the WINNER when capture counts tie', () => {
+        const cards = selectHighlights({
+            stats: emptyStats({ playerCaptures: [3, 0, 3, 0] }),
+            seats: seats4(),
+            winnerIndex: 2,
+        });
+        const ko = cards.find(c => c.title === 'Knockout king');
+        expect(ko).toBeTruthy();
+        expect(ko.playerIndex).toBe(2); // winner wins the tie, not the lower index
+        expect(ko.stat).toBe('3×');
+    });
+
+    it('Knockout king keeps the strict leader even if the winner ties lower', () => {
+        const cards = selectHighlights({
+            stats: emptyStats({ playerCaptures: [4, 0, 2, 0] }),
+            seats: seats4(),
+            winnerIndex: 2,
+        });
+        const ko = cards.find(c => c.title === 'Knockout king');
+        expect(ko.playerIndex).toBe(0); // strict max beats the winner's lower count
+        expect(ko.stat).toBe('4×');
+    });
+
     it('Knockout king does NOT trigger at 1 capture', () => {
         const cards = selectHighlights({
             stats: emptyStats({ playerCaptures: [1, 0, 0, 0] }),

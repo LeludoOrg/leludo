@@ -95,12 +95,6 @@ async function waitVisible(page, sel) {
     await page.waitForSelector(sel, { state: 'visible', timeout: 10000 });
 }
 
-async function setTheme(page, theme) {
-    await page.addInitScript((t) => {
-        localStorage.setItem('theme', t);
-    }, theme);
-}
-
 async function main() {
     await mkdir(outDir, { recursive: true });
 

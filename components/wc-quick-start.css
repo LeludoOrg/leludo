@@ -41,7 +41,7 @@ wc-quick-start .home-die {
     line-height: 0;
     margin-bottom: var(--space-5);
     padding: 8px;
-    border-radius: 14px;
+    border-radius: var(--card-radius);
     background-color: hsl(var(--player-0));
     --pulse-color: hsl(var(--player-0) / 0.55);
     animation: home-die-pulse 2s ease-in-out infinite;
@@ -96,7 +96,7 @@ wc-quick-start .resume-card {
     background: color-mix(in srgb, var(--color-surface) 70%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
     border-radius: 18px;
-    padding: 14px;
+    padding: var(--card-pad);
     color: var(--color-fg);
     display: flex;
     align-items: center;
@@ -151,12 +151,14 @@ wc-quick-start .resume-dot {
     border-radius: 4px;
 }
 
+/* Resume-card play button mirrors the primary CTA palette so the
+   two share the same espresso/cream pair. */
 wc-quick-start .resume-play {
     width: 36px;
     height: 36px;
     border-radius: 18px;
-    background: var(--color-fg);
-    color: var(--color-bg);
+    background: var(--cta-bg);
+    color: var(--cta-fg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -164,13 +166,6 @@ wc-quick-start .resume-play {
 }
 
 /* ----- Footer + CTAs ----- */
-
-/* Resume-card play button mirrors the primary CTA palette so the
-   two share the same espresso/cream pair. */
-wc-quick-start .resume-play {
-    background: var(--cta-bg);
-    color: var(--cta-fg);
-}
 
 wc-quick-start .home-version {
     font-size: 11px;
@@ -188,8 +183,8 @@ wc-quick-start .home-cta-stack .cta-secondary {
 }
 
 wc-quick-start .home-online-cta {
-    height: 56px;
-    border-radius: 28px;
+    height: var(--cta-h);
+    border-radius: var(--cta-radius);
     font-size: 16px;
     font-weight: 600;
 }

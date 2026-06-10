@@ -11,15 +11,8 @@
     <link rel="icon" href="assets/icons/favicon.svg" sizes="any" type="image/svg+xml"/>
     <title>Privacy · Leludo</title>
 
-    <script>
-        (function () {
-            var stored = localStorage.getItem('theme') || 'system';
-            var resolved = stored === 'system'
-                ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-                : stored;
-            document.documentElement.classList.add(resolved);
-        })();
-    </script>
+    <!-- Apply the saved theme before first paint (no FOUC). Classic sync script. -->
+    <script src="theme-boot.js"></script>
 
     <script type="module">
         import { initAnalytics, trackScreen } from './scripts/analytics.js';
@@ -46,7 +39,7 @@
                 <div class="static-page-sub">Effective June 8, 2026</div>
             </div>
 
-            <div class="static-page-content" style="gap: var(--space-5);">
+            <div class="static-page-content static-page-content--tight">
                 <section>
                     <div class="section-label cl-section-label">The short version</div>
                     <div class="surface-card privacy-card">

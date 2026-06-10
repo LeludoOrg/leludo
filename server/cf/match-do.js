@@ -18,9 +18,8 @@
  */
 import { Matchmaker } from '../matchmaker.js';
 import { mintRoomCode } from '../../scripts/room-code.js';
-import { clampSeats, numEnv, safeSend } from './cf-utils.js';
-
-const ADMISSION_NAME = 'global';
+import { clampSeats, numEnv, safeSend, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
+import { MSG } from '../../scripts/net-protocol.js';
 
 export class MatchmakingDO {
     constructor(state, env) {
@@ -38,11 +37,9 @@ export class MatchmakingDO {
     }
 
     async fetch(request) {
-        const url = new URL(request.url);
-        if (request.headers.get('Upgrade') !== 'websocket') {
-            return new Response('expected a websocket upgrade', { status: 426 });
-        }
-        const q = url.searchParams;
+        const notWs = requireWebsocket(request);
+        if (notWs) return notWs;
+        const q = new URL(request.url).searchParams;
         const sessionId = q.get('session') || `anon-${crypto.randomUUID()}`;
         const name = q.get('name') || '';
         const size = Math.max(2, clampSeats(q.get('size'), 2));
@@ -54,14 +51,14 @@ export class MatchmakingDO {
         this.bySocket.set(server, { id: sessionId });
 
         const res = this.matchmaker.enqueue({ id: sessionId, size, name, ws: server });
-        if (res.queued) safeSend(server, JSON.stringify({ t: 'queued', size, waiting: res.waiting }));
+        if (res.queued) safeSend(server, JSON.stringify({ t: MSG.QUEUED, size, waiting: res.waiting }));
 
         server.addEventListener('message', (ev) => {
             let msg;
             try { msg = JSON.parse(ev.data); } catch { return; }
-            if (msg.t === 'queue_cancel') {
+            if (msg.t === MSG.QUEUE_CANCEL) {
                 this.matchmaker.cancel(sessionId);
-                safeSend(server, JSON.stringify({ t: 'queue_left' }));
+                safeSend(server, JSON.stringify({ t: MSG.QUEUE_LEFT }));
             }
         });
         const leave = () => { this.matchmaker.cancel(sessionId); this.bySocket.delete(server); };
@@ -79,8 +76,8 @@ export class MatchmakingDO {
             const res = await this._admissionStub().fetch(`https://do/admit?room=${code}`);
             const verdict = await res.json();
             for (const e of entries) {
-                if (!verdict.ok) { safeSend(e.ws, JSON.stringify({ t: 'busy', reason: verdict.reason })); continue; }
-                safeSend(e.ws, JSON.stringify({ t: 'matched', room: code }));
+                if (!verdict.ok) { safeSend(e.ws, JSON.stringify({ t: MSG.BUSY, reason: verdict.reason })); continue; }
+                safeSend(e.ws, JSON.stringify({ t: MSG.MATCHED, room: code }));
                 try { e.ws.close(1000, 'matched'); } catch { /* already gone */ }
             }
         })();

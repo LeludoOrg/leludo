@@ -18,6 +18,7 @@ const SHIPPED = [
   'manifest.json',
   'sw.js',
   'version.js',
+  'theme-boot.js',
   'styles',
   'components',
   'scripts',

@@ -1,4 +1,12 @@
 import { SAFE_SQUARES as SAFE_SQUARES_ARR, DICE_WEIGHTS } from "./game-logic.js";
+import {
+    YARD,
+    ENTRY_SQUARE,
+    TRACK_LEN,
+    LAST_TRACK_SQUARE,
+    FINISH,
+    rawMarkIndex,
+} from "./board-constants.js";
 
 const SAFE_SQUARES = new Set(SAFE_SQUARES_ARR);
 
@@ -29,21 +37,17 @@ function countAt(arr, pos) {
     return n;
 }
 
-function markIndex(playerIndex, tokenPosition) {
-    return (tokenPosition + 13 * playerIndex) % 52;
-}
-
 function threatCount(myPi, myTi, positions) {
     const p = positions[myPi][myTi];
-    if (p < 0 || p > 50 || SAFE_SQUARES.has(p)) return 0;
-    const myMark = markIndex(myPi, p);
+    if (p < ENTRY_SQUARE || p > LAST_TRACK_SQUARE || SAFE_SQUARES.has(p)) return 0;
+    const myMark = rawMarkIndex(myPi, p);
     let n = 0;
     for (let pi = 0; pi < 4; pi++) {
         if (!positions[pi] || pi === myPi) continue;
         for (let ti = 0; ti < 4; ti++) {
             const op = positions[pi][ti];
-            if (op < 0 || op > 50) continue;
-            const d = (myMark - markIndex(pi, op) + 52) % 52;
+            if (op < ENTRY_SQUARE || op > LAST_TRACK_SQUARE) continue;
+            const d = (myMark - rawMarkIndex(pi, op) + TRACK_LEN) % TRACK_LEN;
             if (d >= 1 && d <= 6) n++;
         }
     }
@@ -64,10 +68,10 @@ export function evalState(playerIndex, positions, w) {
         const sign = pi === playerIndex ? 1 : -1;
         for (let ti = 0; ti < 4; ti++) {
             const p = positions[pi][ti];
-            if (p === -1) { score += sign * w.home; continue; }
-            if (p === 56) { score += sign * w.finished; continue; }
+            if (p === YARD) { score += sign * w.home; continue; }
+            if (p === FINISH) { score += sign * w.finished; continue; }
             score += sign * w.progress * p;
-            if (p > 50 || SAFE_SQUARES.has(p)) score += sign * w.safe;
+            if (p > LAST_TRACK_SQUARE || SAFE_SQUARES.has(p)) score += sign * w.safe;
             if (pi === playerIndex && countAt(positions[pi], p) >= 2) score += w.stack;
             if (sign === 1) score -= w.threat * threatCount(pi, ti, positions);
         }
@@ -83,20 +87,20 @@ function applyMove(playerIndex, tokenIndex, dice, positions) {
     const next = new Array(4);
     for (let i = 0; i < 4; i++) next[i] = positions[i] ? positions[i].slice() : positions[i];
     const cur = next[playerIndex][tokenIndex];
-    const np = cur === -1 ? 0 : cur + dice;
+    const np = cur === YARD ? ENTRY_SQUARE : cur + dice;
     next[playerIndex][tokenIndex] = np;
     let caps = 0;
-    if (np <= 50 && !SAFE_SQUARES.has(np)) {
-        const myMark = markIndex(playerIndex, np);
+    if (np <= LAST_TRACK_SQUARE && !SAFE_SQUARES.has(np)) {
+        const myMark = rawMarkIndex(playerIndex, np);
         for (let pi = 0; pi < 4; pi++) {
             if (!next[pi] || pi === playerIndex) continue;
             const hits = [];
             for (let ti = 0; ti < 4; ti++) {
                 const op = next[pi][ti];
-                if (op < 0 || op > 50) continue;
-                if (markIndex(pi, op) === myMark) hits.push(ti);
+                if (op < ENTRY_SQUARE || op > LAST_TRACK_SQUARE) continue;
+                if (rawMarkIndex(pi, op) === myMark) hits.push(ti);
             }
-            if (hits.length === 1) { next[pi][hits[0]] = -1; caps++; }
+            if (hits.length === 1) { next[pi][hits[0]] = YARD; caps++; }
         }
     }
     return { next, caps };
@@ -107,11 +111,11 @@ function legalMoves(playerIndex, dice, positions) {
     const seen = new Set();
     for (let ti = 0; ti < 4; ti++) {
         const p = positions[playerIndex][ti];
-        if (dice === 6 && p === -1) {
-            if (!seen.has(-1)) { seen.add(-1); moves.push(ti); }
+        if (dice === 6 && p === YARD) {
+            if (!seen.has(YARD)) { seen.add(YARD); moves.push(ti); }
             continue;
         }
-        if (p >= 0 && p + dice <= 56 && !seen.has(p)) { seen.add(p); moves.push(ti); }
+        if (p >= ENTRY_SQUARE && p + dice <= FINISH && !seen.has(p)) { seen.add(p); moves.push(ti); }
     }
     return moves;
 }
@@ -119,7 +123,7 @@ function legalMoves(playerIndex, dice, positions) {
 function nextActivePlayerIndex(pi, positions) {
     for (let k = 1; k <= 4; k++) {
         const j = (pi + k) % 4;
-        if (positions[j] && positions[j].some(p => p !== 56)) return j;
+        if (positions[j] && positions[j].some(p => p !== FINISH)) return j;
     }
     return -1;
 }

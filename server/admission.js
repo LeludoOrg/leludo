@@ -12,6 +12,8 @@
  * than spending into a throttle / paid overage.
  */
 
+import { BUSY } from '../scripts/net-protocol.js';
+
 export const ADMISSION_DEFAULTS = Object.freeze({
     maxConcurrentGames: 40,   // simultaneous rooms (soft-realtime guard)
     maxGamesPerDay: 250,      // new games / UTC day — headroom under the request ceiling
@@ -59,10 +61,10 @@ export class Admission {
             return { ok: true, roomId, already: true };
         }
         if (this.activeRooms.size >= this.maxConcurrent) {
-            return { ok: false, reason: 'BUSY_CONCURRENT' };
+            return { ok: false, reason: BUSY.CONCURRENT };
         }
         if (this.gamesStartedToday >= this.maxPerDay) {
-            return { ok: false, reason: 'BUSY_DAILY' };
+            return { ok: false, reason: BUSY.DAILY };
         }
         this.activeRooms.add(roomId);
         this.gamesStartedToday++;

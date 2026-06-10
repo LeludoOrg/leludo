@@ -28,7 +28,7 @@
 .seat-row {
     background: var(--color-surface);
     border-radius: var(--radius-2xl);
-    padding: var(--space-3) 14px;
+    padding: var(--space-3) var(--card-pad);
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -40,7 +40,7 @@
 .seat-row-empty {
     background: color-mix(in srgb, var(--color-surface) 40%, transparent);
     border-radius: var(--radius-2xl);
-    padding: var(--space-3) 14px;
+    padding: var(--space-3) var(--card-pad);
     display: flex;
     align-items: center;
     gap: var(--space-3);
