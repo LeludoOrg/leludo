@@ -137,8 +137,9 @@ class QuickStart extends HTMLElement {
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
                 <div class="frame-footer home-cta-stack">
-                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline">${ICON_DEVICE}<span>${saved ? 'New offline game' : 'Play offline'}</span></button>
-                    <button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online">${ICON_GLOBE}<span>Play online</span></button>
+                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline"><span>New game</span></button>
+                    <!-- TEMP(beta-merge): Play online hidden until multiplayer ships. Restore in beta after merge. -->
+                    <button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online" hidden style="display:none">${ICON_GLOBE}<span>Play online</span></button>
                 </div>
             </div>
         `
