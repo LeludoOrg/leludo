@@ -40,6 +40,7 @@ export const EVENTS = Object.freeze({
     NET_TURN_SYNCED: 'NET_TURN_SYNCED',
     NET_PLAYER_DROPPED: 'NET_PLAYER_DROPPED',
     NET_GAME_ENDED: 'NET_GAME_ENDED',
+    NET_RECONCILED: 'NET_RECONCILED',
 });
 
 // Reset seat `i`'s per-game highlight-reel stats to their "nothing happened
@@ -280,6 +281,25 @@ export function reducer(state, event) {
             state.playerTokenPositions[i] = undefined;
             state.botPersonalities[i] = null;
             state.playerRanks[i] = 0;
+            return state;
+        }
+
+        // Online only: snap the local board back onto the server's authoritative
+        // positions. The client renders by REPLAYING the server's roll/move
+        // deltas, but it re-derives captures and never ingests the full snapshot
+        // the server stamps on every frame — so one dropped/throttled delta (a
+        // backgrounded tab, a 1s socket blip) leaves the board permanently
+        // diverged. Folding the snapshot back in after each delta keeps replay for
+        // the animation but makes the server the source of truth for the result.
+        // Only overwrites a seat both sides still consider active (activation
+        // changes flow through NET_PLAYER_DROPPED / NET_GAME_ENDED).
+        case EVENTS.NET_RECONCILED: {
+            for (let i = 0; i < 4; i++) {
+                const target = event.positions[i];
+                if (target && state.playerTokenPositions[i]) {
+                    state.playerTokenPositions[i] = target.slice();
+                }
+            }
             return state;
         }
 

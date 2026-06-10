@@ -906,22 +906,33 @@ export function updateCornerWidgets() {
     });
 }
 
-export function updateTurnCounter() {
-    turnCount++;
+// Single place the "Turn N" label is written — every counter mutation paints
+// through here so the DOM never drifts from the variable.
+function renderTurnCount() {
     const el = document.getElementById('turn-counter');
     if (el) el.textContent = `Turn ${turnCount}`;
 }
 
+export function updateTurnCounter() {
+    turnCount++;
+    renderTurnCount();
+}
+
 export function resetTurnCount() {
     turnCount = 0;
+    renderTurnCount();
 }
 
 export function getTurnCount() {
     return turnCount;
 }
 
+// Force the counter to an exact value and repaint. Used by resume (restore the
+// saved turn) and online play (the server is authoritative for the turn number,
+// so every client shows the same one).
 export function setTurnCount(n) {
     turnCount = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    renderTurnCount();
 }
 
 export function moveDice() {

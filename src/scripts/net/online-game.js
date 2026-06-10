@@ -80,6 +80,31 @@ function updateDimming(state) {
     setDimmedPlayers(dim);
 }
 
+/**
+ * Map the server's seat-indexed board onto this client's local board indexes.
+ * The per-token position VALUES are player-relative (0 = that seat's own
+ * home-start), so they're identical across the remap — only the player slot
+ * moves, exactly like buildSeatLayout. Returns a 4-slot array (undefined for
+ * empty seats) suitable for NET_RECONCILE.
+ */
+function positionsToLocal(positions) {
+    const local = new Array(4).fill(undefined);
+    if (!Array.isArray(positions)) return local;
+    for (let s = 0; s < 4; s++) {
+        if (positions[s]) local[toLocal(s)] = positions[s].slice();
+    }
+    return local;
+}
+
+/**
+ * Fold the server's authoritative board snapshot back into the local render.
+ * Enqueued AFTER the frame's delta so it runs once the move animation settles;
+ * a no-op unless the replay drifted (see netReconcile in command-handler).
+ */
+function reconcile(state) {
+    enqueue(() => dispatch({ type: COMMANDS.NET_RECONCILE, positions: positionsToLocal(state.positions) }));
+}
+
 /** Map the server's seat-indexed ranks onto local board positions. */
 function ranksToLocal(ranks) {
     const local = [0, 0, 0, 0];
@@ -100,21 +125,32 @@ export function handleOnlineMessage(msg) {
         if (!msg.state.started) return;
         // Dim opponents who are mid-reconnect (the game plays on without them).
         updateDimming(msg.state);
-        // The server is authoritative for whose turn it is. The seat→board
-        // mapping is diagonal-first (not a pure rotation), so the local engine's
-        // own round-robin can drift from the server's — re-sync currentPlayerIndex
-        // from every broadcast before replaying anything.
+        // The server is authoritative for whose turn it is AND for the turn
+        // number. The seat→board mapping is diagonal-first (not a pure rotation),
+        // so the local engine's own round-robin can drift from the server's —
+        // re-sync currentPlayerIndex (and the "Turn N" count, which a client's own
+        // replay would otherwise undercount on a missed turn) from every broadcast.
         enqueue(() => dispatch({
             type: COMMANDS.NET_SYNC_TURN,
             playerIndex: toLocal(msg.state.currentPlayerIndex),
+            turnCount: msg.state.turn,
         }));
         // A roll happened iff the broadcast carries a fresh dice result.
         if (msg.reason === REASON.ROLLED || msg.reason === REASON.NO_MOVE || msg.reason === REASON.THREE_SIXES) {
             const value = msg.state.dice;
             enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_ROLL, value }));
         }
+        // Snap to the authoritative board. Critical on reason=RECONNECT, whose
+        // snapshot is the ONLY catch-up for the `moved` frames missed while the
+        // socket was down — but harmless (and self-healing) on every frame.
+        reconcile(msg.state);
     } else if (msg.t === MSG.MOVED) {
         enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: toLocal(msg.p), tokenIndex: msg.token }));
+        // The move's captures are re-derived locally from this client's board, so
+        // any prior drift makes the wrong pawns go home (or none). Reconcile to the
+        // server's post-move positions — which already reflect its authoritative
+        // captures — so the result converges even when the replay diverged.
+        reconcile(msg.state);
     } else if (msg.t === MSG.DROPPED) {
         // A player's reconnect window elapsed: pull their pawns off the board.
         if (msg.state) updateDimming(msg.state);

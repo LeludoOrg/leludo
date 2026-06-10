@@ -137,6 +137,12 @@ export class RoomEngine {
         this.botPersonalities = [null, null, null, null];
         this.currentPlayerIndex = 0;
         this.currentDiceRoll = 0;
+        // Authoritative turn counter — the number of completed turn passes, sent
+        // to clients so the "Turn N" label is identical on every screen instead
+        // of each client tallying its own replay (which drifts when a delta is
+        // missed). Mirrors the offline display counter: 0 at the opening turn,
+        // +1 on every advance (move-pass, no-move, three-sixes, skip/forfeit).
+        this.turnCount = 0;
         this.consecutiveSixes = 0;
         // Consecutive no-move turns per seat — feeds the pity-six rule so an
         // online player can't get stranded in the yard either.
@@ -406,6 +412,7 @@ export class RoomEngine {
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
         this.consecutiveSixes = 0;
+        this.turnCount = 0;
         this.noMoveStreak = [0, 0, 0, 0];
         this.currentPlayerIndex = this._firstActive();
         this.started = true;
@@ -708,6 +715,7 @@ export class RoomEngine {
         if (next === -1) return this._end(REASON.NO_ACTIVE_PLAYERS);
         this.currentPlayerIndex = next;
         this.consecutiveSixes = 0;
+        this.turnCount++;
         this._beginTurn();
     }
 
@@ -755,6 +763,7 @@ export class RoomEngine {
             hostSeat: this._hostSeat(),
             size: this._activeCount(),
             currentPlayerIndex: this.currentPlayerIndex,
+            turn: this.turnCount,
             dice: this.currentDiceRoll,
             legalMoves: this.legalMoves.slice(),
             playerTypes: this.seats.map(s => s.type ?? null),

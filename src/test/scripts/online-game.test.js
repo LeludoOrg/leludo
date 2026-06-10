@@ -1,6 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { buildSeatLayout } from '../../scripts/net/online-game.js';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Capture every command the online driver dispatches without running the real
+// (DOM-heavy) command handler. Partial mock: only `dispatch` is stubbed so the
+// rest of the store wiring (setCommandHandler, EVENTS, subscribe) stays intact.
+const recorded = vi.hoisted(() => []);
+vi.mock('../../scripts/state/game-store.js', async (importOriginal) => ({
+    ...(await importOriginal()),
+    dispatch: (cmd) => { recorded.push(cmd); },
+}));
+
+import { buildSeatLayout, startOnlineGame, handleOnlineMessage } from '../../scripts/net/online-game.js';
 import { clearOnline } from '../../scripts/net/online-state.js';
+import { COMMANDS } from '../../scripts/state/command-handler.js';
+import { MSG, REASON } from '../../scripts/net/net-protocol.js';
+
+/** Flush the online driver's promise queue (enqueue chains on microtasks). */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+const ofType = (t) => recorded.filter((c) => c.type === t);
 
 /**
  * buildSeatLayout maps a server snapshot onto this client's board positions.
@@ -66,5 +82,82 @@ describe('buildSeatLayout (online seat → board layout)', () => {
         expect([...view.colorMap].sort()).toEqual([0, 1, 2, 3]);
         // Self is server seat 2 → board pos 2 in seat 2's colour.
         expect(view.colorMap[2]).toBe(2);
+    });
+});
+
+/**
+ * Server reconciliation. The online client RENDERS by replaying the server's
+ * roll/move deltas, but it re-derives captures locally and never ingested the
+ * authoritative `positions` the server stamps on every frame — so one dropped
+ * `moved` (a backgrounded tab, a 1s socket blip, a swallowed animation error)
+ * left the board permanently diverged from the server and the other player. The
+ * driver must now fold the snapshot back in: every `moved` and every `state`
+ * frame (critically reason=RECONNECT, the only catch-up for moves missed while
+ * offline) must enqueue NET_RECONCILE with the server board mapped to LOCAL
+ * indexes. These tests FAIL before that wiring exists.
+ */
+describe('online reconciliation (server positions fold back into the render)', () => {
+    // 2-player match on adjacent server seats 0 & 1, viewed from the host (seat 0).
+    // The diagonal arrangement maps server seat 0 → local pos 2, seat 1 → local 0.
+    const twoPlayerState = (positions, extra = {}) => ({
+        started: true,
+        playerTypes: ['PLAYER', 'PLAYER', null, null],
+        playerNames: ['Host', 'Guest', '', ''],
+        positions,
+        currentPlayerIndex: 0,
+        dice: 0,
+        disconnects: [],
+        ...extra,
+    });
+
+    beforeEach(() => {
+        recorded.length = 0;
+        clearOnline();
+        startOnlineGame({ net: {}, seat: 0, state: twoPlayerState([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null]) });
+        recorded.length = 0; // drop the NET_START_GAME from mount
+    });
+
+    it('a `moved` frame reconciles to the server board, mapped to local indexes', async () => {
+        // Server seat 1 captured: its token0 is home (-1) on the server. A lagging
+        // client would still show it on the track; the reconcile must carry the
+        // server truth, remapped: seat 0 → local 2, seat 1 → local 0.
+        const serverPositions = [[5, -1, -1, -1], [-1, 3, -1, -1], null, null];
+        handleOnlineMessage({ t: MSG.MOVED, p: 0, token: 0, caps: [{ playerIndex: 1, tokenIndex: 0 }], state: twoPlayerState(serverPositions) });
+        await flush();
+
+        const reconciles = ofType(COMMANDS.NET_RECONCILE);
+        expect(reconciles).toHaveLength(1);
+        expect(reconciles[0].positions[2]).toEqual([5, -1, -1, -1]);  // server seat 0
+        expect(reconciles[0].positions[0]).toEqual([-1, 3, -1, -1]);  // server seat 1 (captured token home)
+        expect(reconciles[0].positions[1]).toBeUndefined();
+        expect(reconciles[0].positions[3]).toBeUndefined();
+
+        // It must run AFTER the move delta, so the snap settles on the final board.
+        const moveIdx = recorded.findIndex((c) => c.type === COMMANDS.NET_APPLY_MOVE);
+        const recIdx = recorded.findIndex((c) => c.type === COMMANDS.NET_RECONCILE);
+        expect(moveIdx).toBeGreaterThanOrEqual(0);
+        expect(recIdx).toBeGreaterThan(moveIdx);
+    });
+
+    it('forwards the server turn count to NET_SYNC_TURN so every client shows the same "Turn N"', async () => {
+        // The displayed turn number is server-authoritative; a client must not tally
+        // its own replay (which undercounts a missed turn — the live 218-vs-214 gap).
+        handleOnlineMessage({ t: MSG.STATE, reason: REASON.TURN, state: twoPlayerState([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null], { turn: 217 }) });
+        await flush();
+        const syncs = ofType(COMMANDS.NET_SYNC_TURN);
+        expect(syncs.length).toBeGreaterThanOrEqual(1);
+        expect(syncs[syncs.length - 1].turnCount).toBe(217);
+    });
+
+    it('a reconnect `state` snapshot reconciles the board (catch-up for missed moves)', async () => {
+        // Reconnect is the ONLY signal carrying the moves made while we were gone.
+        const serverPositions = [[20, 14, -1, -1], [8, -1, -1, -1], null, null];
+        handleOnlineMessage({ t: MSG.STATE, reason: REASON.RECONNECT, state: twoPlayerState(serverPositions) });
+        await flush();
+
+        const reconciles = ofType(COMMANDS.NET_RECONCILE);
+        expect(reconciles).toHaveLength(1);
+        expect(reconciles[0].positions[2]).toEqual([20, 14, -1, -1]); // server seat 0 → local 2
+        expect(reconciles[0].positions[0]).toEqual([8, -1, -1, -1]);  // server seat 1 → local 0
     });
 });

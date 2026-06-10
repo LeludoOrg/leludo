@@ -300,6 +300,31 @@ describe('RoomEngine — rules fidelity', () => {
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
     });
 
+    it('counts turn passes authoritatively and exposes them in the snapshot', () => {
+        // The turn number is server-owned so every client renders the same "Turn N"
+        // instead of tallying its own replay (which drifts on a missed delta).
+        const { engine } = started2();
+        expect(engine.turnCount).toBe(0);
+        expect(engine._publicState().turn).toBe(0);
+
+        // A move that does NOT play again advances the turn → +1.
+        engine.positions = [[10, -1, -1, -1], [-1, -1, -1, -1], null, null];
+        engine.rng = () => 0.7; // dice 5, forced single move, no replay
+        engine.handleRoll('h');
+        expect(engine.currentPlayerIndex).toBe(1);
+        expect(engine.turnCount).toBe(1);
+        expect(engine._publicState().turn).toBe(1);
+    });
+
+    it('a play-again (six) does not advance the turn count', () => {
+        const { engine } = started2();
+        engine.positions = [[10, 56, 56, 56], [-1, -1, -1, -1], null, null];
+        engine.rng = () => 0.85; // dice 6 → plays again, no turn pass
+        engine.handleRoll('h');
+        expect(engine.currentPlayerIndex).toBe(0);
+        expect(engine.turnCount).toBe(0);
+    });
+
     it('loses the turn after three consecutive sixes', () => {
         const { engine } = started2();
         engine.rng = () => 0.85; // every roll is a 6
