@@ -1,0 +1,99 @@
+/**
+ * Single source of truth for the multiplayer wire protocol.
+ *
+ * Every socket frame is `{ t, ... }`. These enums name every `t` value, every
+ * `reason` code, and every rejection/error code that crosses the wire. They are
+ * imported by the browser client (net-client, online-game, wc-quick-start), the
+ * Node dev server (local-server), the runtime-agnostic engine (room-engine,
+ * matchmaker, admission), and the Cloudflare Durable Objects (room-do, match-do,
+ * worker). Client and server type these independently, so a bare-string typo
+ * would silently desync them — import the constants instead of re-typing.
+ *
+ * Plain ESM with no dependencies, so it loads in the browser, Node and the
+ * Cloudflare Workers runtime alike.
+ */
+
+/** `t` — the frame type on every socket message. */
+export const MSG = Object.freeze({
+    // client → server intents
+    JOIN: 'join',
+    ROLL: 'roll',
+    MOVE: 'move',
+    LOBBY_SIZE: 'lobby_size',
+    LOBBY_SEAT: 'lobby_seat',
+    LOBBY_KICK: 'lobby_kick',
+    LOBBY_START: 'lobby_start',
+    QUEUE_CANCEL: 'queue_cancel',
+    // server → client broadcasts
+    SEATED: 'seated',
+    STATE: 'state',
+    MOVED: 'moved',
+    DROPPED: 'dropped',
+    ENDED: 'ended',
+    KICKED: 'kicked',
+    REJECTED: 'rejected',
+    ERROR: 'error',
+    // matchmaking
+    BUSY: 'busy',
+    MATCHED: 'matched',
+    QUEUED: 'queued',
+    QUEUE_LEFT: 'queue_left',
+});
+
+/**
+ * `reason` — why a `moved` frame resolved the turn, or why a `state` / `ended`
+ * frame fired (a player left or the game is over).
+ */
+export const REASON = Object.freeze({
+    // turn-resolution reasons on a `moved`/`state` frame
+    ROLLED: 'rolled',
+    NO_MOVE: 'no-move',
+    THREE_SIXES: 'three-sixes',
+    // game-over reasons on an `ended` frame
+    OPPONENT_LEFT: 'opponent-left',
+    ABANDONED: 'abandoned',
+    NO_ACTIVE_PLAYERS: 'no-active-players',
+    FINISHED: 'finished',
+    // informational reasons tagging why a `state` snapshot was broadcast
+    RECONNECT: 'reconnect',
+    JOIN: 'join',
+    LOBBY: 'lobby',
+    DISCONNECT: 'disconnect',
+    WAITING: 'waiting',
+    TURN: 'turn',
+    AGAIN: 'again',
+});
+
+/** End reasons that mean "the game ended because the other side left". */
+export const DISCONNECT_END_REASONS = Object.freeze([
+    REASON.OPPONENT_LEFT,
+    REASON.ABANDONED,
+    REASON.NO_ACTIVE_PLAYERS,
+]);
+
+/** `error` — rejection codes the server sends on a `rejected` / `error` frame. */
+export const ERR = Object.freeze({
+    ROOM_FULL: 'ROOM_FULL',
+    NOT_SEATED: 'NOT_SEATED',
+    NOT_HOST: 'NOT_HOST',
+    NOT_YOUR_TURN: 'NOT_YOUR_TURN',
+    ILLEGAL_MOVE: 'ILLEGAL_MOVE',
+    NOT_AWAITING_ROLL: 'NOT_AWAITING_ROLL',
+    NOT_AWAITING_MOVE: 'NOT_AWAITING_MOVE',
+    NOT_IN_LOBBY: 'NOT_IN_LOBBY',
+    BAD_SEAT: 'BAD_SEAT',
+    BAD_TYPE: 'BAD_TYPE',
+    CANT_CHANGE_HOST: 'CANT_CHANGE_HOST',
+    CANT_KICK_HOST: 'CANT_KICK_HOST',
+    CANT_SHRINK: 'CANT_SHRINK',
+    MIN_TWO: 'MIN_TWO',
+    NEED_TWO_PLAYERS: 'NEED_TWO_PLAYERS',
+    NOTHING_TO_KICK: 'NOTHING_TO_KICK',
+    NOT_A_HUMAN_SEAT: 'NOT_A_HUMAN_SEAT',
+});
+
+/** Admission-gate reasons, sent on a `busy` frame. */
+export const BUSY = Object.freeze({
+    CONCURRENT: 'BUSY_CONCURRENT',
+    DAILY: 'BUSY_DAILY',
+});

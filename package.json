@@ -1,17 +1,25 @@
 {
   "name": "leludo",
-  "version": "0.7.0",
+  "version": "0.20.4",
   "description": "Ludo board game — browser + Android via Capacitor",
   "license": "GPL-3.0-or-later",
   "author": "Vishal Gidwani",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node tools/dev.mjs",
+    "mp:server": "node src/server/local-server.mjs 8890",
+    "cf:dev": "npx --yes wrangler dev",
+    "cf:deploy": "npx --yes wrangler deploy",
+    "cf:tail": "npx --yes wrangler tail",
+    "cf:deploy:beta": "npx --yes wrangler deploy --env beta",
+    "cf:tail:beta": "npx --yes wrangler tail --env beta",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:online": "node tools/clear-recordings.mjs && playwright test online-multiplayer-sessions --workers=2",
     "build:www": "node tools/build-www.mjs",
     "version:sync": "node tools/sync-android-version.mjs",
     "icons:generate": "node tools/generate-icons.mjs",
@@ -22,10 +30,11 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.4",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "1.60.0",
     "five-server": "^0.5.0",
     "happy-dom": "^20.9.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "ws": "^8.21.0"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

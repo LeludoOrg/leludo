@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const outDir = resolve(root, 'screenshots');
+const outDir = resolve(root, 'dev-assets/screenshots');
 const BASE = process.env.BASE_URL || 'http://localhost:8888';
 
 // Pixel 9a: 1080x2424 hw, ~422 ppi → logical 412x924, DPR 2.625
@@ -95,12 +95,6 @@ async function waitVisible(page, sel) {
     await page.waitForSelector(sel, { state: 'visible', timeout: 10000 });
 }
 
-async function setTheme(page, theme) {
-    await page.addInitScript((t) => {
-        localStorage.setItem('theme', t);
-    }, theme);
-}
-
 async function main() {
     await mkdir(outDir, { recursive: true });
 
@@ -143,7 +137,7 @@ async function main() {
     await browser.close();
 
     // Copy logo alongside screenshots.
-    const logoSrc = resolve(root, 'design/icon-512.png');
+    const logoSrc = resolve(root, 'dev-assets/design/icon-512.png');
     const logoDst = resolve(outDir, 'logo.png');
     await copyFile(logoSrc, logoDst);
     console.log(`✓ logo.png`);

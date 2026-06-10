@@ -3,12 +3,12 @@
 // PNG variant the app + Android build consumes.
 //
 // Outputs:
-//   design/icon.png             1024×1024  master icon, full-bleed
-//   design/icon-512.png          512×512   master icon, 512px
-//   design/icon-foreground.png  1024×1024  adaptive foreground (transparent)
-//   design/icon-background.png  1024×1024  solid cream background
-//   design/splash.png           2732×2732  centered mark on cream
-//   design/splash-dark.png      2732×2732  centered mark on dark espresso
+//   dev-assets/design/icon.png             1024×1024  master icon, full-bleed
+//   dev-assets/design/icon-512.png          512×512   master icon, 512px
+//   dev-assets/design/icon-foreground.png  1024×1024  adaptive foreground (transparent)
+//   dev-assets/design/icon-background.png  1024×1024  solid cream background
+//   dev-assets/design/splash.png           2732×2732  centered mark on cream
+//   dev-assets/design/splash-dark.png      2732×2732  centered mark on dark espresso
 //
 //   android/.../mipmap-<density>/
 //     ic_launcher.png              square launcher (cream bg + mark)
@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
-const designDir = resolve(root, 'design');
+const designDir = resolve(root, 'dev-assets/design');
 const androidRes = resolve(root, 'android/app/src/main/res');
 
 const PALETTE = {
@@ -139,7 +139,7 @@ async function renderPng(page, svg, width, height, outPath, { background = null 
 }
 
 async function generateDesignSet(page) {
-    console.log('design/ master assets…');
+    console.log('dev-assets/design/ master assets…');
     await renderPng(page,
         markSvg({ size: 1024, bg: PALETTE.cream }),
         1024, 1024,

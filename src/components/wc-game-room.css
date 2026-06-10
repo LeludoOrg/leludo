@@ -1,0 +1,100 @@
+/* ============================================================
+   wc-game-room — online lobby (room code + live seats + start)
+   ============================================================ */
+
+/* Live seats render into a shared .seat-list (components/seat-list.css) reusing
+   the offline seat-row look; the shared .online-status line lives there too.
+   Only the room-specific extras live here. */
+
+wc-game-room .online-room-banner {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: var(--space-6);
+}
+
+wc-game-room .online-code-display {
+    font-family: var(--font-mono);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    margin: var(--space-2) 0 var(--space-1);
+    padding-left: 0.18em;
+}
+
+wc-game-room .online-room-share {
+    font-size: 13px;
+    opacity: 0.6;
+    max-width: 280px;
+}
+
+/* Invite share button — fires the OS share sheet (or copies the link). Sized to
+   its content and centered under the code, not a full-width CTA. */
+wc-game-room .online-share-btn {
+    width: auto;
+    height: auto;
+    margin-top: var(--space-4);
+    padding: 9px 18px;
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Live-seat label/status sit inside a shared .seat-row (with a pawn chip). */
+wc-game-room .online-seat-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Extends the shared .eyebrow recipe (styles/base.css) — uppercase comes
+   from there; tracking + opacity differ so they stay as overrides. */
+wc-game-room .online-seat-status {
+    letter-spacing: 0.1em;
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+/* The `hidden` attribute must win even when a class sets `display` (e.g.
+   .cta-primary { display:flex }). Scoped type+attr selector beats a class. */
+wc-game-room [hidden] {
+    display: none !important;
+}
+
+/* Host lobby controls (per-seat add-bot / kick / open) */
+wc-game-room .online-seat-btn {
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--color-fg) 20%, transparent);
+    background: transparent;
+    color: var(--color-fg);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+
+wc-game-room .online-seat-btn:hover {
+    background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+}
+
+wc-game-room .online-seat-btn--danger {
+    border-color: color-mix(in srgb, hsl(0 70% 55%) 45%, transparent);
+    color: hsl(0 70% 60%);
+}
+
+wc-game-room .online-start-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+}

@@ -1,0 +1,158 @@
+/* ============================================================
+   wc-play-online — online setup screen (name + join / create)
+   ============================================================ */
+
+/* Layout mirrors the home screen for a continuous transition: a centered
+   identity hero (your name) fills the body, and the actions (create + join,
+   split by a separator) sit at the bottom like home's CTA stack. */
+
+wc-play-online .online-setup-body {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ----- Identity hero (centered, fills the body like home's hero) ----- */
+
+wc-play-online .online-identity {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-4);
+}
+
+/* Colour picker — four tiles in a 2×2 grid echoing the app's logo. The
+   selected tile is the player's chosen colour (sent as a preferred seat at
+   connect). Tapping a tile picks it. */
+wc-play-online .online-color-picker {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 6px;
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+}
+
+wc-play-online .online-color-tile {
+    width: 46px;
+    height: 46px;
+    border-radius: var(--radius-md);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    background: var(--tile);
+    opacity: 0.45;
+    transform: scale(0.9);
+    transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+wc-play-online .online-color-tile:hover {
+    opacity: 0.75;
+}
+
+wc-play-online .online-color-tile.is-selected {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--tile);
+}
+
+/* Centered, underlined name input (shares the shared .seat-name look). The
+   pencil is positioned out of flow so the name sits dead-centre under the
+   tiles instead of being nudged left by the pencil's width. */
+wc-play-online .online-identity-name {
+    position: relative;
+    width: 100%;
+    max-width: 240px;
+    justify-content: center;
+}
+
+wc-play-online .online-identity-name .seat-name {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+wc-play-online .online-identity-name .seat-name-pencil {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+wc-play-online .online-identity-hint {
+    font-size: 13px;
+    opacity: 0.5;
+}
+
+wc-play-online .online-status {
+    text-align: center;
+}
+
+/* ----- Bottom actions (join + separator + create) ----- */
+
+wc-play-online .online-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+wc-play-online .online-join-row {
+    display: flex;
+    gap: var(--space-2);
+}
+
+wc-play-online .online-code-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--color-fg);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    outline: 0;
+}
+
+wc-play-online .online-code-input::placeholder {
+    opacity: 0.35;
+    letter-spacing: 0.22em;
+}
+
+wc-play-online .online-join-btn {
+    width: auto;
+    flex-shrink: 0;
+    height: auto;
+    padding: 0 22px;
+    border-radius: var(--radius-lg);
+}
+
+wc-play-online .online-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--color-fg);
+    opacity: 0.4;
+    font-size: 12px;
+    margin: 0;
+}
+
+wc-play-online .online-divider::before,
+wc-play-online .online-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: color-mix(in srgb, var(--color-fg) 15%, transparent);
+}
+
+wc-play-online .online-create-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+}

@@ -86,7 +86,7 @@ jobs:
         run: npm ci
 
       - name: Read VERSION
-        run: node -e "import('./version.js').then(m => console.log('VERSION =', m.VERSION))"
+        run: node -e "import('./src/version.js').then(m => console.log('VERSION =', m.VERSION))"
 
       - name: Build www/
         run: npm run build:www

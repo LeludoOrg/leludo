@@ -22,7 +22,7 @@ jobs:
       - name: Read VERSION from version.js
         id: read
         run: |
-          VERSION=$(node -e "import('./version.js').then(m => process.stdout.write(m.VERSION))")
+          VERSION=$(node -e "import('./src/version.js').then(m => process.stdout.write(m.VERSION))")
           if [ -z "$VERSION" ]; then
             echo "Failed to read VERSION from version.js" >&2
             exit 1
@@ -50,6 +50,41 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
+
+  deploy-worker:
+    name: Deploy multiplayer Worker
+    needs: [detect-version, test]
+    runs-on: ubuntu-latest
+    # Deploys server/cf/* (the Cloudflare multiplayer backend) from wrangler.toml.
+    # Runs only after tests pass, in parallel with the gh-pages publish — the
+    # Worker is decoupled from the web bundle, same as Android. Requires repo
+    # secrets CLOUDFLARE_API_TOKEN (scoped: Workers Scripts + Durable Objects
+    # edit) and CLOUDFLARE_ACCOUNT_ID. If either is absent the job no-ops with a
+    # notice instead of failing the release.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check Cloudflare credentials
+        id: creds
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set — skipping Worker deploy."
+          fi
+
+      - name: Deploy to Cloudflare Workers
+        if: steps.creds.outputs.present == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
 
   build-web:
     name: Build web

@@ -8,7 +8,7 @@ import { resolve, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, '..');
+const root = resolve(here, '..', 'src');
 const port = Number(process.argv[2] || process.env.PORT || 8888);
 
 const MIME = {
@@ -25,6 +25,8 @@ const MIME = {
     '.woff2':'font/woff2',
     '.ttf':  'font/ttf',
     '.mp3':  'audio/mpeg',
+    '.m4a':  'audio/mp4',
+    '.webm': 'video/webm',
     '.webmanifest':'application/manifest+json',
 };
 

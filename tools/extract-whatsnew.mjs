@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Extract the Highlights bullets for the current VERSION from changelog.html
-// and write them to distribution/whatsnew/whatsnew-en-US for the Play Store
+// and write them to dev-assets/distribution/whatsnew/whatsnew-en-US for the Play Store
 // upload step. The r0adkll/upload-google-play action strips the `whatsnew-`
 // prefix and treats the remainder as the locale code — no file extension.
 // Play Store caps each "What's new" locale at 500 chars.
@@ -8,6 +8,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readVersion } from './read-version.mjs';
 
 export const MAX_LEN = 500;
 
@@ -80,16 +81,13 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   const here = dirname(fileURLToPath(import.meta.url));
   const root = resolve(here, '..');
 
-  const versionSrc = await readFile(resolve(root, 'version.js'), 'utf8');
-  const vMatch = versionSrc.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
-  if (!vMatch) throw new Error('VERSION constant not found in version.js');
-  const version = vMatch[1];
+  const version = await readVersion(root);
 
-  const changelog = await readFile(resolve(root, 'changelog.html'), 'utf8');
+  const changelog = await readFile(resolve(root, 'src/changelog.html'), 'utf8');
   const bullets = extractBullets(changelog, version);
   const text = buildWhatsnewText(bullets);
 
-  const outDir = resolve(root, 'distribution/whatsnew');
+  const outDir = resolve(root, 'dev-assets/distribution/whatsnew');
   await mkdir(outDir, { recursive: true });
   const outPath = resolve(outDir, 'whatsnew-en-US');
   await writeFile(outPath, text);

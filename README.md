@@ -51,7 +51,7 @@ See [CLAUDE.md](CLAUDE.md) for the full repo map, pause model, cache-busting flo
 
 ## Contributing
 
-Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the house rules.
+Issues and PRs welcome. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the house rules.
 
 ## License
 
@@ -63,4 +63,4 @@ You can fork it, modify it, ship it. Derivative works (including web deployments
 
 ## Credits
 
-See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for fonts, libraries, and third-party assets.
+See [ATTRIBUTIONS.md](docs/ATTRIBUTIONS.md) for fonts, libraries, and third-party assets.

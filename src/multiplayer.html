@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leludo — Multiplayer (dev harness)</title>
+    <!--
+      DEV / TEST harness for server-authoritative multiplayer. This is NOT the
+      shipped game UI — it's a thin surface with stable data-testid hooks so the
+      Playwright e2e suite can drive two clients against one room and assert the
+      server is the single source of truth. The real wc-board integration is a
+      later phase (see docs/multiplayer-plan.md → "Client changes").
+    -->
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #14151a; color: #e8e8ea; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+        .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 13px; margin: 12px 0; }
+        .kv span:nth-child(odd) { color: #9aa0aa; }
+        code { font-family: ui-monospace, monospace; word-break: break-all; }
+        button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #3a3d46; background: #21242c; color: #e8e8ea; cursor: pointer; }
+        button:hover { background: #2b2f39; }
+        .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.78); text-align: center; padding: 24px; }
+        .overlay.show { display: flex; }
+        .overlay .card { background: #21242c; border: 1px solid #3a3d46; border-radius: 14px; padding: 28px; max-width: 320px; }
+        .turn-on { color: #6ee7a8; font-weight: 600; }
+        .turn-off { color: #9aa0aa; }
+    </style>
+</head>
+<body>
+    <h1>Leludo Multiplayer — dev harness</h1>
+
+    <div class="row">
+        <button data-testid="mp-start" type="button">Start</button>
+        <button data-testid="mp-roll" type="button">Roll</button>
+        <button data-testid="mp-move-0" type="button">Move 0</button>
+        <button data-testid="mp-move-1" type="button">Move 1</button>
+        <button data-testid="mp-move-2" type="button">Move 2</button>
+        <button data-testid="mp-move-3" type="button">Move 3</button>
+    </div>
+
+    <div class="kv">
+        <span>Connection</span><span data-testid="mp-connection" id="mp-connection">connecting…</span>
+        <span>Room</span><span data-testid="mp-room"><code id="mp-room"></code></span>
+        <span>Your seat</span><span data-testid="mp-seat" id="mp-seat">—</span>
+        <span>Host</span><span data-testid="mp-is-host" id="mp-is-host">false</span>
+        <span>Your turn</span><span data-testid="mp-your-turn" id="mp-your-turn">false</span>
+        <span>Started</span><span data-testid="mp-started" id="mp-started">false</span>
+        <span>Phase</span><span data-testid="mp-phase" id="mp-phase">—</span>
+        <span>Current player</span><span data-testid="mp-current-player" id="mp-current-player">—</span>
+        <span>Dice</span><span data-testid="mp-dice" id="mp-dice">0</span>
+        <span>Legal moves</span><span data-testid="mp-legal"><code id="mp-legal">[]</code></span>
+        <span>Positions</span><span data-testid="mp-positions"><code id="mp-positions">[]</code></span>
+        <span>Captures</span><span data-testid="mp-captures"><code id="mp-captures">[]</code></span>
+        <span>Ranks</span><span data-testid="mp-ranks"><code id="mp-ranks">[]</code></span>
+        <span>Last rejected</span><span data-testid="mp-rejected" id="mp-rejected">—</span>
+        <span>Status</span><span data-testid="mp-status" id="mp-status">init</span>
+    </div>
+
+    <div class="overlay" data-testid="mp-busy" id="mp-busy">
+        <div class="card">
+            <h2>Servers are busy</h2>
+            <p>Please try again in a few minutes.</p>
+            <p>Reason: <code data-testid="mp-busy-reason" id="mp-busy-reason"></code></p>
+        </div>
+    </div>
+
+    <div class="overlay" data-testid="mp-ended" id="mp-ended">
+        <div class="card">
+            <h2>Game over</h2>
+            <p>Final ranks: <code data-testid="mp-ended-ranks" id="mp-ended-ranks"></code></p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { NetClient } from './scripts/net/net-client.js';
+
+        const params = new URLSearchParams(location.search);
+        const room = params.get('room') || 'dev';
+        const name = params.get('name') || 'Player';
+        // session: explicit param wins (deterministic e2e); else persist a random one.
+        let session = params.get('session');
+        if (!session) {
+            session = localStorage.getItem('mp-session') || `s-${Math.random().toString(36).slice(2)}`;
+            localStorage.setItem('mp-session', session);
+        }
+
+        const extra = {};
+        for (const k of ['humans', 'bots', 'seed', 'forceBusy']) {
+            if (params.get(k) != null) extra[k] = params.get(k);
+        }
+
+        const $ = (id) => document.getElementById(id);
+        const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+        $('mp-room').textContent = room;
+
+        let mySeat = -1;
+
+        function renderState(s) {
+            set('mp-started', String(s.started));
+            set('mp-phase', s.phase);
+            set('mp-current-player', String(s.currentPlayerIndex));
+            set('mp-dice', String(s.dice));
+            set('mp-legal', JSON.stringify(s.legalMoves));
+            set('mp-positions', JSON.stringify(s.positions));
+            set('mp-captures', JSON.stringify(s.captures));
+            set('mp-ranks', JSON.stringify(s.ranks));
+            const myTurn = s.started && mySeat === s.currentPlayerIndex && s.phase !== 'ENDED';
+            const el = $('mp-your-turn');
+            el.textContent = String(myTurn);
+            el.className = myTurn ? 'turn-on' : 'turn-off';
+        }
+
+        const client = new NetClient({
+            url: params.get('server') || undefined,
+            room, session, name, params: extra,
+            onOpen() { set('mp-connection', 'open'); set('mp-status', 'connected'); },
+            onClose() { set('mp-connection', 'closed'); },
+            onMessage(msg) {
+                set('mp-status', msg.t);
+                switch (msg.t) {
+                    case 'seated':
+                        mySeat = msg.playerIndex;
+                        set('mp-seat', String(mySeat));
+                        set('mp-is-host', String(!!msg.isHost));
+                        break;
+                    case 'state':
+                    case 'moved':
+                        if (msg.state) {
+                            renderState(msg.state);
+                            set('mp-is-host', String(msg.state.hostSeat === mySeat));
+                        }
+                        break;
+                    case 'kicked':
+                        set('mp-status', 'kicked');
+                        break;
+                    case 'ended':
+                        if (msg.state) renderState(msg.state);
+                        set('mp-ended-ranks', JSON.stringify(msg.ranks));
+                        $('mp-ended').classList.add('show');
+                        break;
+                    case 'rejected':
+                        set('mp-rejected', msg.error);
+                        break;
+                    case 'busy':
+                        set('mp-busy-reason', msg.reason);
+                        $('mp-busy').classList.add('show');
+                        set('mp-connection', 'busy');
+                        break;
+                    default:
+                        break;
+                }
+            },
+        }).connect();
+
+        document.querySelector('[data-testid="mp-start"]').addEventListener('click', () => client.start());
+        document.querySelector('[data-testid="mp-roll"]').addEventListener('click', () => client.roll());
+        document.querySelectorAll('[data-testid^="mp-move-"]').forEach((btn) => {
+            const token = Number(btn.getAttribute('data-testid').split('-').pop());
+            btn.addEventListener('click', () => client.move(token));
+        });
+
+        window.__mp = { client, get seat() { return mySeat; } };
+    </script>
+</body>
+</html>

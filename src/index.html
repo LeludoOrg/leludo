@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="theme-color" content="#EFE9DC"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+    <!-- Apply the saved theme before first paint (no FOUC). Classic sync script. -->
+    <script src="theme-boot.js"></script>
+
+    <!-- Preload the above-the-fold self-hosted fonts so the home title and body
+         text paint without a flash. Same-origin, but fonts always fetch in CORS
+         mode, so crossorigin is required or the preload is ignored / doubled. -->
+    <link rel="preload" href="assets/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin/>
+    <link rel="preload" href="assets/fonts/dm-sans-latin-variable.woff2" as="font" type="font/woff2" crossorigin/>
+
+    <!-- BUILD:MODULEPRELOAD — tools/build-www.mjs injects <link rel="modulepreload">
+         for the whole ES-module graph here so the deployed (gh-pages) build fetches
+         all modules in parallel instead of discovering them level by level. Left as
+         a bare marker in dev (localhost is fast and the graph would drift). -->
+
+    <script type="module" src="components/index.js"></script>
+    <script type="module" src="scripts/index.js"></script>
+
+    <link rel="stylesheet" href="styles/base.css"/>
+    <link rel="stylesheet" href="components/wc-board.css"/>
+    <link rel="stylesheet" href="components/seat-list.css"/>
+    <link rel="stylesheet" href="components/wc-quick-start.css"/>
+    <link rel="stylesheet" href="components/wc-play-online.css"/>
+    <link rel="stylesheet" href="components/wc-game-room.css"/>
+    <link rel="stylesheet" href="components/wc-settings.css"/>
+    <link rel="stylesheet" href="components/wc-game-end.css"/>
+    <link rel="stylesheet" href="components/wc-dice.css"/>
+    <link rel="stylesheet" href="components/wc-token.css"/>
+    <link rel="stylesheet" href="components/wc-pause-menu.css"/>
+
+    <link rel="manifest" href="manifest.json"/>
+
+    <script>
+        if ('serviceWorker' in navigator
+            && location.hostname !== 'localhost'
+            && location.hostname !== '127.0.0.1') {
+            window.addEventListener('load', () =>
+                navigator.serviceWorker.register('./sw.js', { type: 'module' })
+            );
+        }
+    </script>
+
+    <link rel="icon" href="assets/icons/favicon.svg" sizes="any" type="image/svg+xml"/>
+    <title>Leludo</title>
+</head>
+
+<body>
+
+<div id="root" class="page">
+    <div id="game-container">
+        <wc-quick-start id="main-menu"></wc-quick-start>
+        <wc-board id="game" class="hidden"></wc-board>
+    </div>
+</div>
+
+<div id="pause-menu" class="frame-overlay hidden">
+    <div class="frame">
+        <div class="top-bar">
+            <div class="icon-btn-spacer"></div>
+            <div class="top-bar-title"></div>
+            <div class="icon-btn-spacer"></div>
+        </div>
+
+        <div class="frame-body pause-body">
+            <h2 class="display-title">Take a breather</h2>
+            <p class="body-helper">The board's right where you left it.<br>Resume when you're ready, or bow out to the menu.</p>
+
+            <div class="pause-standings">
+                <div>
+                    <div class="pause-standings-head">
+                        <div class="section-label">Standings</div>
+                        <div id="pm-turn-count" class="section-label">Turn 0</div>
+                    </div>
+                    <div id="pm-scoreboard" class="surface-card pause-scoreboard"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="frame-footer">
+            <button id="pm-resume" class="cta-primary">Resume</button>
+            <button class="restart-game cta-secondary">Exit to menu</button>
+        </div>
+    </div>
+</div>
+
+<div id="match-starting" class="frame-overlay hidden">
+    <div class="frame">
+        <div class="frame-body match-starting-body">
+            <div class="match-starting-chip pulse-chip"></div>
+            <h2 class="display-title">Match found!</h2>
+            <p class="body-helper" data-testid="match-starting-status">Setting up the board…</p>
+        </div>
+    </div>
+</div>
+
+<div id="net-reconnect-banner" class="net-reconnect-banner hidden" data-testid="net-reconnect-banner"></div>
+
+</body>
+
+</html>

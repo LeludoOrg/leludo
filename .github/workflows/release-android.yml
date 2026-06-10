@@ -22,7 +22,7 @@ jobs:
       - name: Read VERSION from version.js
         id: read
         run: |
-          VERSION=$(node -e "import('./version.js').then(m => process.stdout.write(m.VERSION))")
+          VERSION=$(node -e "import('./src/version.js').then(m => process.stdout.write(m.VERSION))")
           if [ -z "$VERSION" ]; then
             echo "Failed to read VERSION from version.js" >&2
             exit 1
@@ -154,7 +154,7 @@ jobs:
           releaseFiles: android-dist/ludo-v${{ needs.detect-version.outputs.version }}.aab
           tracks: internal
           status: completed
-          whatsNewDirectory: distribution/whatsnew
+          whatsNewDirectory: dev-assets/distribution/whatsnew
 
   release:
     name: Publish release (Android)

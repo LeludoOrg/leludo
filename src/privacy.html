@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="theme-color" content="#EFE9DC"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+    <link rel="stylesheet" href="styles/base.css"/>
+    <link rel="stylesheet" href="changelog.css"/>
+    <link rel="icon" href="assets/icons/favicon.svg" sizes="any" type="image/svg+xml"/>
+    <title>Privacy · Leludo</title>
+
+    <!-- Apply the saved theme before first paint (no FOUC). Classic sync script. -->
+    <script src="theme-boot.js"></script>
+
+    <script type="module">
+        import { initAnalytics, trackScreen } from './scripts/platform/analytics.js';
+        initAnalytics();
+        trackScreen('privacy');
+    </script>
+</head>
+
+<body>
+
+<div class="page">
+    <div class="frame">
+        <div class="top-bar">
+            <a href="index.html" class="icon-btn" aria-label="Back">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </a>
+            <div class="top-bar-title">Privacy</div>
+            <div class="icon-btn-spacer"></div>
+        </div>
+
+        <div class="static-page-body">
+            <div class="static-page-intro">
+                <h1 class="static-page-title">Privacy policy</h1>
+                <div class="static-page-sub">Effective June 8, 2026</div>
+            </div>
+
+            <div class="static-page-content static-page-content--tight">
+                <section>
+                    <div class="section-label cl-section-label">The short version</div>
+                    <div class="surface-card privacy-card">
+                        Leludo runs on your device. We never sell or share your data. We use anonymous
+                        Google Analytics to count screens viewed and game events &mdash; no names, no save
+                        state, no individual moves. No accounts, no advertising, no other third-party
+                        trackers.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">What stays on your device</div>
+                    <div class="surface-card privacy-card">
+                        The game uses your browser&rsquo;s local storage to remember:
+                        <ul class="privacy-list-spaced">
+                            <li>Theme choice (Paper / Dusk / System)</li>
+                            <li>Assist toggles (auto-roll, auto-move)</li>
+                            <li>Bot name pool preference</li>
+                            <li>Names you&rsquo;ve typed for seats</li>
+                            <li>Your in-progress saved game</li>
+                        </ul>
+                        <p class="privacy-paragraph-spaced">None of this ever leaves your device.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Anonymous analytics</div>
+                    <div class="surface-card privacy-card">
+                        We use Google Analytics 4 to understand which screens get used, whether games
+                        start and finish, and roughly where the build is running (Play Store APK, the
+                        leludo.org website, an installed PWA, or an embed on a portal like itch.io). This
+                        helps us decide what to improve next.
+                        <p class="privacy-paragraph-spaced"><strong>What gets sent:</strong></p>
+                        <ul class="privacy-list-spaced">
+                            <li>Screen names (home, board, settings, pause, etc.)</li>
+                            <li>Generic game events (game start, game end, capture, store-nudge click)</li>
+                            <li>App version</li>
+                            <li>Platform &amp; source (android, web, itch, pwa, &hellip;)</li>
+                            <li>Browser / device metadata supplied automatically by Google Analytics, including IP-derived approximate location (typically country)</li>
+                        </ul>
+                        <p class="privacy-paragraph-spaced"><strong>What is never sent:</strong></p>
+                        <ul class="privacy-list-spaced">
+                            <li>Player names you type for seats</li>
+                            <li>Your saved game, the board state, or any individual move you make</li>
+                            <li>Any value that could identify you personally</li>
+                        </ul>
+                        <p class="privacy-paragraph-spaced"><strong>Cookie:</strong> Google Analytics sets a <code>_ga</code> cookie to count distinct visitors. No advertising cookies.</p>
+                        <p class="privacy-paragraph-spaced"><strong>Opt out:</strong> install the
+                            <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener" class="privacy-link">Google Analytics opt-out add-on</a>,
+                            enable your browser&rsquo;s tracking-prevention or Do-Not-Track setting, or use a
+                            tracker-blocking extension. Analytics is also disabled during local
+                            development.</p>
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">What we don&rsquo;t do</div>
+                    <div class="surface-card privacy-card">
+                        No advertising SDKs. No fingerprinting. No cross-site tracking. No remote
+                        servers receive your seat names, save state, or individual moves. The only
+                        third-party service we contact is Google Analytics, scoped as described above.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">External links</div>
+                    <div class="surface-card privacy-card">
+                        The home screen links to the project&rsquo;s GitHub repository. Following that link takes you to
+                        github.com, which has its own privacy policy. We have no insight into what GitHub does with
+                        that visit.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Android app</div>
+                    <div class="surface-card privacy-card">
+                        The Android build is the same app packaged with Capacitor. It requests no
+                        special permissions and makes no network calls beyond the anonymous Google
+                        Analytics events described above and links you tap yourself.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Clearing your data</div>
+                    <div class="surface-card privacy-card">
+                        In a browser: clear site data for this domain in your browser settings.
+                        On Android: clear app storage in system settings, or uninstall the app.
+                        Either action wipes every preference and saved game listed above.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Children</div>
+                    <div class="surface-card privacy-card">
+                        The game is suitable for all ages. Because we collect nothing, there is nothing child-specific
+                        to disclose under COPPA, GDPR-K, or similar regimes.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Changes</div>
+                    <div class="surface-card privacy-card">
+                        If this policy ever changes, the effective date at the top of this page updates with it.
+                        Material changes will be called out in the project changelog on GitHub.
+                    </div>
+                </section>
+
+                <section>
+                    <div class="section-label cl-section-label">Contact</div>
+                    <div class="surface-card privacy-card">
+                        Questions or concerns: open an issue at
+                        <a href="https://github.com/LeludoOrg/leludo/issues" target="_blank" rel="noopener" class="privacy-link">github.com/LeludoOrg/leludo</a>.
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+
+</html>

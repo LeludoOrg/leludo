@@ -1,0 +1,120 @@
+/* ============================================================
+   Shared static-page chrome (changelog.html, privacy.html)
+   ============================================================ */
+
+.static-page-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.static-page-intro {
+    padding: var(--space-2) var(--space-3) 0;
+}
+
+/* .static-page-title inherits the shared 40px serif rule from styles/base.css
+   (.display-title selector list). No overrides needed here. */
+
+.static-page-sub {
+    font-size: 12px;
+    opacity: 0.5;
+    margin-top: var(--space-3);
+}
+
+.static-page-content {
+    padding: var(--space-6) var(--space-2) var(--space-8);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+/* Tighter section gap — used by privacy.html (was an inline gap override). */
+.static-page-content--tight {
+    gap: var(--space-5);
+}
+
+/* Privacy & changelog cards share visuals */
+.cl-card,
+.privacy-card {
+    padding: var(--space-4);
+    font-size: 14px;
+    line-height: 1.6;
+    opacity: 0.85;
+}
+
+.cl-card ul,
+.privacy-card ul {
+    list-style: disc;
+    padding-left: 20px;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cl-card--paragraphs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.cl-emph {
+    font-weight: 500;
+}
+
+.cl-emph--pt {
+    padding-top: 4px;
+}
+
+.privacy-card .privacy-list-spaced {
+    margin-top: var(--space-2);
+}
+
+.privacy-card .privacy-paragraph-spaced {
+    margin-top: var(--space-3);
+}
+
+/* Changelog-specific entry header */
+
+.cl-entry {
+    margin: 0;
+}
+
+.cl-entry-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    padding: 0 var(--space-1);
+}
+
+.cl-entry-version {
+    font-family: var(--font-display);
+    font-size: 22px;
+    letter-spacing: -0.025em;
+}
+
+/* .cl-entry-date inherits the shared eyebrow recipe from styles/base.css
+   (.eyebrow selector list). No overrides needed here. */
+
+.cl-entry-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.cl-section-label {
+    margin-bottom: var(--space-2);
+}
+
+/* Privacy underlined links */
+
+.privacy-link {
+    text-decoration: underline;
+    opacity: 0.9;
+    transition: opacity 150ms ease;
+}
+
+.privacy-link:hover {
+    opacity: 1;
+}

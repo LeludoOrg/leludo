@@ -6,14 +6,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readVersion } from './read-version.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 
-const versionSrc = await readFile(resolve(root, 'version.js'), 'utf8');
-const match = versionSrc.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
-if (!match) throw new Error('VERSION constant not found in version.js');
-const version = match[1];
+const version = await readVersion(root);
 
 const semver = version.match(/^(\d+)\.(\d+)\.(\d+)/);
 if (!semver) throw new Error('VERSION not semver: ' + version);

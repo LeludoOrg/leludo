@@ -14,19 +14,21 @@ node_modules/
 npm-debug.log*
 
 # Test artifacts
-coverage/
-test-results/
 playwright-report/
 .playwright/
+
+# Local-only generated junk (coverage, test-results, e2e recordings,
+# signed release artifacts) — all corralled under one parent dir.
+.local/
 
 # Capacitor web shipping dir (built from root)
 www/
 
-# Generated Play Store release notes
-distribution/whatsnew/
+# Cloudflare Wrangler local state
+.wrangler/
 
-# Local release artifacts (signed AAB/APK)
-release/
+# Generated Play Store release notes
+dev-assets/distribution/whatsnew/
 
 # Capacitor / Android build artifacts
 android/.gradle/
@@ -42,6 +44,3 @@ android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 *.jks
 android/keystore.properties
-
-# itch.io upload staging
-itch-assets/
