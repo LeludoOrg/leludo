@@ -38,7 +38,7 @@ export async function startGame(page, query = '') {
  */
 export async function openOnline(page, name, query = '') {
     await page.goto(`/${query}`);
-    await page.getByTestId('home-play-online').dispatchEvent('click');
+    await page.getByTestId('home-play-online').click();
     await page.getByTestId('online-name').fill(name);
 }
 

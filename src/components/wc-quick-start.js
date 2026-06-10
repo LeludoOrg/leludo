@@ -8,6 +8,7 @@ import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scri
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
 import {MSG} from "../scripts/net/net-protocol.js";
 import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
+import {isOnlineEnabled} from "../scripts/platform/feature-flags.js";
 import {SCREENS} from "../scripts/platform/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
 import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
@@ -107,6 +108,13 @@ class QuickStart extends HTMLElement {
         if (this.querySelector('#seat-list')) this._renderSeats()
     }
 
+    // Re-render the home screen if it's the screen currently showing. Used when
+    // the online feature flag is toggled in settings so the CTA stack updates
+    // without a full reload. No-op mid-game or on any other screen.
+    refreshHomeIfShowing() {
+        if (!this._inGame && this.querySelector('.home-frame')) this.showHomeScreen()
+    }
+
     showHomeScreen() {
         // Returning home (incl. exiting an online game, whose driver already
         // closed the socket): drop any stale online references.
@@ -119,6 +127,10 @@ class QuickStart extends HTMLElement {
         this.innerHTML = ""
 
         const saved = this._readSavedGame()
+        // Online is gated behind the dev/beta feature flag. When off (prod /
+        // APK) the home shows a single "New game" button; when on, the original
+        // "Play offline" / "Play online" pair.
+        const online = isOnlineEnabled()
 
         const html = /*html*/ `
             <div class="frame home-frame${saved ? ' home-frame--in-progress' : ''}">
@@ -137,9 +149,8 @@ class QuickStart extends HTMLElement {
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
                 <div class="frame-footer home-cta-stack">
-                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline"><span>New game</span></button>
-                    <!-- TEMP(beta-merge): Play online hidden until multiplayer ships. Restore in beta after merge. -->
-                    <button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online" hidden style="display:none">${ICON_GLOBE}<span>Play online</span></button>
+                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline">${online ? `${ICON_DEVICE}<span>${saved ? 'New offline game' : 'Play offline'}</span>` : `<span>New game</span>`}</button>
+                    ${online ? `<button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online">${ICON_GLOBE}<span>Play online</span></button>` : ''}
                 </div>
             </div>
         `
@@ -152,7 +163,7 @@ class QuickStart extends HTMLElement {
             goTo(SCREENS.SETUP)
         })
 
-        el.querySelector(".play-online-btn").addEventListener("click", () => {
+        el.querySelector(".play-online-btn")?.addEventListener("click", () => {
             playClickSound()
             this.showOnlineScreen()
             goTo(SCREENS.ONLINE)
