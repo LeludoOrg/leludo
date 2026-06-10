@@ -24,7 +24,7 @@ import {
 import {trackEvent} from "../scripts/platform/analytics.js";
 import {isOnlineActive, onlineLocalSelf, toServer} from "../scripts/net/online-state.js";
 import {MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT} from "../scripts/render/pawn-mini.js";
-import {shareGameEnd} from "../scripts/render/share-image.js";
+import {shareGameEnd, primeShareImage} from "../scripts/render/share-image.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
 const CONFETTI_COUNT = 18;
@@ -198,6 +198,10 @@ class GameEnd extends HTMLElement {
         const winText = isSelfWinner ? 'You won.' : `${winnerName} won.`;
 
         const highlights = buildHighlights(winnerIndex);
+
+        // Start rendering the shareable recap PNG now, while the user reads the
+        // screen, so tapping Share opens the OS sheet without a render stall.
+        primeShareImage(winnerIndex, winText, highlights);
 
         const cardsHTML = highlights.map(h => `
             <div class="ge-card player-border-${h.playerIndex}">

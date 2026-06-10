@@ -190,15 +190,27 @@ function isShareCancel(e) {
     return /cancel/i.test(e?.message || '');
 }
 
+// The recap PNG is the slow part of a share (canvas paint + encode). Build it
+// the moment the end screen renders — while the user reads the result — so the
+// tap on Share opens the OS sheet instantly instead of stalling on the render.
+let _primed = null; // Promise<Blob|null>, resolved/in-flight ahead of the tap
+
+export function primeShareImage(winnerIndex, winText, highlights) {
+    _primed = buildShareImage(winnerIndex, winText, highlights).catch(() => null);
+    return _primed;
+}
+
 export async function shareGameEnd(winnerIndex, winText, highlights) {
     const shareText = `${winText} The recap from my Leludo game.`;
     const shareUrl = window.location.origin;
     let blob = null;
     try {
-        blob = await buildShareImage(winnerIndex, winText, highlights);
+        // Reuse the image primed at render time; only build now if it wasn't.
+        blob = await (_primed || buildShareImage(winnerIndex, winText, highlights));
     } catch (e) {
         // fall through to text-only share
     }
+    _primed = null; // consume — the next recap re-primes its own image
 
     if (isCapacitorNative() && await shareNative(blob, shareText, shareUrl)) return;
 

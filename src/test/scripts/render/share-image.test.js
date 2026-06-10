@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const h = vi.hoisted(() => ({ native: false }));
 vi.mock('../../../scripts/platform/platform.js', () => ({ isCapacitorNative: () => h.native }));
 
-import { shareGameEnd } from '../../../scripts/render/share-image.js';
+import { shareGameEnd, primeShareImage } from '../../../scripts/render/share-image.js';
 
 const HIGHLIGHTS = [{ playerIndex: 0, title: 'KO king', body: 'most captures', stat: '3' }];
 
@@ -37,19 +37,21 @@ function setNavigatorCanShare(value) {
     Object.defineProperty(globalThis.navigator, 'canShare', { value, configurable: true, writable: true });
 }
 
-let shareMock, writeFileMock;
+let shareMock, writeFileMock, toBlobSpy;
 
 beforeEach(() => {
     h.native = false;
 
     // Make buildShareImage resolve to a real Blob without a real canvas/Image.
+    // toBlob is the tail of buildShareImage, so its call count = images rendered.
     vi.stubGlobal('Image', class {
         set src(_v) { Promise.resolve().then(() => this.onload && this.onload()); }
     });
     globalThis.URL.createObjectURL = () => 'blob:fake';
     globalThis.URL.revokeObjectURL = () => {};
     HTMLCanvasElement.prototype.getContext = () => fakeCtx();
-    HTMLCanvasElement.prototype.toBlob = function toBlob(cb) { cb(new Blob(['png'], { type: 'image/png' })); };
+    toBlobSpy = vi.fn(function toBlob(cb) { cb(new Blob(['png'], { type: 'image/png' })); });
+    HTMLCanvasElement.prototype.toBlob = toBlobSpy;
 
     shareMock = vi.fn(() => Promise.resolve());
     writeFileMock = vi.fn(() => Promise.resolve({ uri: 'file:///cache/leludo-result.png' }));
@@ -109,5 +111,30 @@ describe('shareGameEnd native routing', () => {
         expect(navigator.share).toHaveBeenCalledTimes(1);
         expect(shareMock).not.toHaveBeenCalled();
         expect(writeFileMock).not.toHaveBeenCalled();
+    });
+});
+
+// The slowness fix: the recap image is rendered when the end screen mounts, so
+// the share tap reuses it instead of rendering on the click.
+describe('shareGameEnd image priming', () => {
+    it('reuses the primed image — the share tap does not re-render it', async () => {
+        await primeShareImage(0, 'Red wins!', HIGHLIGHTS);
+        expect(toBlobSpy).toHaveBeenCalledTimes(1); // rendered once, ahead of the tap
+
+        await shareGameEnd(0, 'Red wins!', HIGHLIGHTS);
+        expect(toBlobSpy).toHaveBeenCalledTimes(1); // tap reused it, no second render
+        expect(navigator.share).toHaveBeenCalledTimes(1); // and the image still shipped
+    });
+
+    it('renders on demand when nothing was primed', async () => {
+        await shareGameEnd(0, 'Red wins!', HIGHLIGHTS);
+        expect(toBlobSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('consumes the primed image once — a second share re-renders', async () => {
+        await primeShareImage(0, 'Red wins!', HIGHLIGHTS);
+        await shareGameEnd(0, 'Red wins!', HIGHLIGHTS);
+        await shareGameEnd(0, 'Red wins!', HIGHLIGHTS); // no prime this time
+        expect(toBlobSpy).toHaveBeenCalledTimes(2); // 1 primed + 1 on-demand
     });
 });
