@@ -13,10 +13,13 @@ import { openOnline } from './helpers.js';
  */
 
 test.describe('Home — offline / online split', () => {
+    // TEMP(beta-merge): online entry is hidden until multiplayer ships. The
+    // online flow below is still driven via dispatchEvent('click') on the
+    // hidden button. Revert with the wc-quick-start change.
     test('home shows both paths', async ({ page }) => {
         await page.goto('/');
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
-        await expect(page.getByTestId('home-play-online')).toBeVisible();
+        await expect(page.getByTestId('home-play-online')).toBeHidden();
     });
 
     test('offline path opens the local "who is playing" setup', async ({ page }) => {
@@ -33,7 +36,7 @@ test.describe('Home — offline / online split', () => {
     // later in room mode, NOT here. It must NOT show the public entry.
     test('online path offers the private-room seat setup only', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await expect(page.getByTestId('online-public')).toHaveCount(0);      // public hidden for launch
         await expect(page.getByTestId('online-create')).toBeVisible();        // create room (offered first)
         await expect(page.getByTestId('online-join')).toBeVisible();          // join by code
@@ -53,7 +56,7 @@ test.describe('Home — offline / online split', () => {
     // divider between, bottom-aligned).
     test('the setup screen centers the name above the create / join actions', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
 
         const name = await page.getByTestId('online-name').boundingBox();
         const create = await page.getByTestId('online-create').boundingBox();
@@ -69,7 +72,7 @@ test.describe('Home — offline / online split', () => {
     // pick → preferred-seat handoff end to end (client param → server seating).
     test('the picked colour becomes your seat in the created room', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await page.getByTestId('online-name').fill('Hue');
 
         await page.getByTestId('online-color-2').click();
@@ -85,7 +88,7 @@ test.describe('Home — offline / online split', () => {
 
     test('back from the online menu returns home', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await expect(page.getByTestId('online-create')).toBeVisible();
         await page.goBack();
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
@@ -97,7 +100,7 @@ test.describe('Home — offline / online split', () => {
     // returns to setup (not all the way home). Guards the split + its wiring.
     test('creating a room navigates from play-online to the game-room screen', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await page.getByTestId('online-name').fill('Hosty');
 
         // Setup screen: the play-online component, with join + no room code yet.
@@ -130,7 +133,7 @@ test.describe('Home — offline / online split', () => {
 test.describe('Online — username', () => {
     test('requires a name before going online', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await expect(page.getByTestId('online-name')).toHaveValue(''); // fresh device
         await page.getByTestId('online-create').click();
         // Blocked: no room is created, a prompt is shown.
@@ -141,7 +144,7 @@ test.describe('Online — username', () => {
     test('remembers the name for next time', async ({ page }) => {
         await openOnline(page, 'Zelda');
         await page.goBack(); // back home
-        await page.getByTestId('home-play-online').click();
+        await page.getByTestId('home-play-online').dispatchEvent('click');
         await expect(page.getByTestId('online-name')).toHaveValue('Zelda');
     });
 });

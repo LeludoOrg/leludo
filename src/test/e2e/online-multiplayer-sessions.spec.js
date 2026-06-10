@@ -64,7 +64,7 @@ async function makeUser(browser, { name }) {
 
     // Home → Play online → enter name (saves username, enabling invite-link auto-join).
     await page.goto('/');
-    await page.getByTestId('home-play-online').click();
+    await page.getByTestId('home-play-online').dispatchEvent('click');
     await page.getByTestId('online-name').fill(name);
     return user;
 }
@@ -310,7 +310,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const guest = await makeUser(browser, { name: 'Bob' });
             users.push(host, guest);
             await host.page.goto('/?grace=4000');
-            await host.page.getByTestId('home-play-online').click();
+            await host.page.getByTestId('home-play-online').dispatchEvent('click');
             await host.page.getByTestId('online-name').fill('Alice');
 
             const code = await createRoom(host, {});
