@@ -5,6 +5,7 @@
 // just render + wire.
 
 import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "./pawn-mini.js";
+import { isCapacitorNative } from "../platform/platform.js";
 
 function playerHsl(playerIndex) {
     const raw = getComputedStyle(document.documentElement).getPropertyValue(`--player-${playerIndex}`).trim();
@@ -133,6 +134,62 @@ async function buildShareImage(winnerIndex, winText, highlights) {
     return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 }
 
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = String(reader.result);
+            resolve(result.slice(result.indexOf(',') + 1)); // strip "data:...;base64," prefix
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+// Capacitor's Android WebView exposes no navigator.share, and an <a download>
+// click is a no-op there — the web path below dead-ends inside the APK. Route
+// through the Share plugin instead: the OS share sheet needs a file URI (not a
+// blob), so write the PNG to the cache dir via Filesystem and hand over the URI.
+// Returns true once the native bridge has handled it (even on user-cancel), so
+// the caller never falls through to the broken web fallbacks; false only when
+// the plugin is absent (un-synced build), letting the web paths still try.
+async function shareNative(blob, shareText, shareUrl) {
+    const cap = window.Capacitor;
+    const Share = cap?.Plugins?.Share;
+    if (!Share?.share) {
+        console.warn('Capacitor Share plugin missing — install @capacitor/share and re-sync');
+        return false;
+    }
+    const Filesystem = cap?.Plugins?.Filesystem;
+    if (blob && Filesystem?.writeFile) {
+        try {
+            const base64 = await blobToBase64(blob);
+            const { uri } = await Filesystem.writeFile({
+                path: 'leludo-result.png',
+                data: base64,
+                directory: 'CACHE', // Directory.Cache — string is the enum value over the bridge
+            });
+            await Share.share({ title: 'Leludo', text: shareText, files: [uri] });
+            return true;
+        } catch (e) {
+            if (isShareCancel(e)) return true;
+            // image share failed (not a cancel) — fall back to text+link below
+        }
+    }
+    try {
+        await Share.share({ title: 'Leludo', text: shareText, url: shareUrl });
+    } catch (e) {
+        // user cancelled or share unavailable; nothing better to fall back to in the WebView
+    }
+    return true;
+}
+
+// The Share plugin rejects with "Share canceled" when the user dismisses the
+// sheet — a cancel is a clean exit, not a reason to retry as text-only.
+function isShareCancel(e) {
+    return /cancel/i.test(e?.message || '');
+}
+
 export async function shareGameEnd(winnerIndex, winText, highlights) {
     const shareText = `${winText} The recap from my Leludo game.`;
     const shareUrl = window.location.origin;
@@ -142,6 +199,8 @@ export async function shareGameEnd(winnerIndex, winText, highlights) {
     } catch (e) {
         // fall through to text-only share
     }
+
+    if (isCapacitorNative() && await shareNative(blob, shareText, shareUrl)) return;
 
     if (blob && navigator.canShare) {
         const file = new File([blob], 'leludo-result.png', { type: 'image/png' });
