@@ -1,7 +1,7 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
-import { getSavedSeatName } from "../scripts/bot-names.js";
-import { getUsername, setUsername, getOnlineColor, setOnlineColor } from "../scripts/net-client.js";
+import { getSavedSeatName } from "../scripts/core/bot-names.js";
+import { getUsername, setUsername, getOnlineColor, setOnlineColor } from "../scripts/net/net-client.js";
 import { ICON_BACK, ICON_PLUS, ICON_PENCIL } from "./wc-icons.js";
 
 // Tiles laid out like the logo: top-left, top-right, bottom-left, bottom-right

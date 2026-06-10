@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isGodModeAvailable } from '../../scripts/god-mode.js';
+import { isGodModeAvailable } from '../../scripts/state/god-mode.js';
 
 describe('isGodModeAvailable', () => {
     let originalHostname;

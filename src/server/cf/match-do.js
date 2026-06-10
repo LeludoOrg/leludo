@@ -17,9 +17,9 @@
  *   remaining task to turn public matchmaking on.
  */
 import { Matchmaker } from '../matchmaker.js';
-import { mintRoomCode } from '../../scripts/room-code.js';
+import { mintRoomCode } from '../../scripts/core/room-code.js';
 import { clampSeats, numEnv, safeSend, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
-import { MSG } from '../../scripts/net-protocol.js';
+import { MSG } from '../../scripts/net/net-protocol.js';
 
 export class MatchmakingDO {
     constructor(state, env) {

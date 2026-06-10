@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { playKOCapture } from '../../scripts/ko-capture.js';
+import { playKOCapture } from '../../scripts/render/ko-capture.js';
 
 // happy-dom doesn't implement Element.animate. Stub it so the overlay's
 // keyframe calls become harmless no-ops in tests.

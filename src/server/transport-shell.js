@@ -6,7 +6,7 @@
  *
  * Plain ESM, no Node- or Workers-specific globals, so it loads in both runtimes.
  */
-import { MSG } from '../scripts/net-protocol.js';
+import { MSG } from '../scripts/net/net-protocol.js';
 
 /** Clamp a requested seat count to the legal 0..4 ring. */
 export function clampSeats(raw, fallback) {

@@ -27,7 +27,7 @@
  */
 import { RoomEngine } from '../room-engine.js';
 import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
-import { MSG } from '../../scripts/net-protocol.js';
+import { MSG } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
 
 export class LudoRoomDO {

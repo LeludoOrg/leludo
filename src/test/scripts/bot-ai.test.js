@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { evalState, pickBestMove, PERSONALITIES, randomPersonality } from '../../scripts/bot-ai.js';
+import { evalState, pickBestMove, PERSONALITIES, randomPersonality } from '../../scripts/core/bot-ai.js';
 
 const HOME = [-1, -1, -1, -1];
 const W = PERSONALITIES.balanced;

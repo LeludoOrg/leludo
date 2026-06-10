@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { runGame, makeRng } from '../../scripts/game-driver.js';
-import { createMockNetworkPair } from '../../scripts/transport/mock-network-channel.js';
-import { reducer, applyEvents } from '../../scripts/game-reducer.js';
-import { initialGameState } from '../../scripts/game-state.js';
+import { runGame, makeRng } from '../../scripts/core/game-driver.js';
+import { createMockNetworkPair } from '../../scripts/net/transport/mock-network-channel.js';
+import { reducer, applyEvents } from '../../scripts/state/game-reducer.js';
+import { initialGameState } from '../../scripts/state/game-state.js';
 
 /**
  * Phase F serialization proof: every event the game produces survives a

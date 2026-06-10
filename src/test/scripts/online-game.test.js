@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildSeatLayout } from '../../scripts/online-game.js';
-import { clearOnline } from '../../scripts/online-state.js';
+import { buildSeatLayout } from '../../scripts/net/online-game.js';
+import { clearOnline } from '../../scripts/net/online-state.js';
 
 /**
  * buildSeatLayout maps a server snapshot onto this client's board positions.

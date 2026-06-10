@@ -1,15 +1,15 @@
 import {htmlToElement} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
-import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/bot-names.js";
-import {HUMAN_PREFERRED_POSITIONS} from "../scripts/game-logic.js";
-import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/nav-history.js";
-import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net-client.js";
-import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/online-game.js";
-import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net-overlay.js";
-import {MSG} from "../scripts/net-protocol.js";
-import {STORAGE_KEYS} from "../scripts/storage-keys.js";
-import {SCREENS} from "../scripts/screens.js";
-import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/room-code.js";
+import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/core/bot-names.js";
+import {HUMAN_PREFERRED_POSITIONS} from "../scripts/core/game-logic.js";
+import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/platform/nav-history.js";
+import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net/net-client.js";
+import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
+import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
+import {MSG} from "../scripts/net/net-protocol.js";
+import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
+import {SCREENS} from "../scripts/platform/screens.js";
+import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
 import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
 // The online flow lives in two sibling components this controller mounts and
 // drives: <wc-play-online> (setup) and <wc-game-room> (lobby). Importing for

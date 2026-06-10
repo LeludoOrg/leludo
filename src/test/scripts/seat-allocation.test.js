@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ringDistance, spreadPick, spreadSeatPlan } from '../../scripts/seat-allocation.js';
+import { ringDistance, spreadPick, spreadSeatPlan } from '../../scripts/core/seat-allocation.js';
 
 describe('seat-allocation', () => {
     describe('ringDistance', () => {

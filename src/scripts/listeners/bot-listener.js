@@ -10,13 +10,13 @@
  * handleAfterDiceRoll / handleAfterTokenMove / handleDiceMoved.
  */
 
-import { EVENTS, subscribe, dispatch } from '../game-store.js';
-import { COMMANDS } from '../command-handler.js';
-import { state, PHASES } from '../game-state.js';
-import { scheduleTurn, isGameLogicPaused } from '../scheduler.js';
-import { pickBestMove, PERSONALITIES } from '../bot-ai.js';
+import { EVENTS, subscribe, dispatch } from '../state/game-store.js';
+import { COMMANDS } from '../state/command-handler.js';
+import { state, PHASES } from '../state/game-state.js';
+import { scheduleTurn, isGameLogicPaused } from '../platform/scheduler.js';
+import { pickBestMove, PERSONALITIES } from '../core/bot-ai.js';
 import { allTokensInHome, getUniqueTokenPositions } from '../index.js';
-import { isOnlineActive, onlineLocalSelf } from '../online-state.js';
+import { isOnlineActive, onlineLocalSelf } from '../net/online-state.js';
 
 const DICE_ROLL_DELAY = 600;
 const BOT_TOKEN_SELECT_DELAY = 400;

@@ -14,7 +14,7 @@ import {
     rollDiceWithPity,
     PITY_SIX_FLOOR,
     PITY_SIX_CEIL,
-} from '../../scripts/game-logic.js';
+} from '../../scripts/core/game-logic.js';
 
 describe('isTokenMovable', () => {
     it('home token immovable when roll < 6', () => {

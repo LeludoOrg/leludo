@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
     setOnline, clearOnline, isOnlineActive,
     toLocal, toServer, onlineLocalSelf, onlineSeat, SELF_LOCAL,
-} from '../../scripts/online-state.js';
-import { HUMAN_PREFERRED_POSITIONS } from '../../scripts/game-logic.js';
+} from '../../scripts/net/online-state.js';
+import { HUMAN_PREFERRED_POSITIONS } from '../../scripts/core/game-logic.js';
 
 /**
  * The online seat→board mapping always renders the local player bottom-right

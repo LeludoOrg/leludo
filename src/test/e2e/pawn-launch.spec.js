@@ -88,7 +88,7 @@ test.describe('Pawn launch overlay', () => {
         // resolved against the chip's own `color: #1a1410`.
         await page.goto('/');
         const colors = await page.evaluate(async () => {
-            const mod = await import('/scripts/pawn-launch.js');
+            const mod = await import('/scripts/render/pawn-launch.js');
             const root = document.createElement('div');
             root.style.cssText = 'position: fixed; inset: 0;';
             document.body.appendChild(root);
@@ -127,7 +127,7 @@ test.describe('Pawn launch overlay', () => {
         // viewBox, sized to one cell. These assertions pin both.
         await page.goto('/');
         const pawn = await page.evaluate(async () => {
-            const mod = await import('/scripts/pawn-launch.js');
+            const mod = await import('/scripts/render/pawn-launch.js');
             const root = document.createElement('div');
             root.style.cssText = 'position: fixed; inset: 0;';
             document.body.appendChild(root);

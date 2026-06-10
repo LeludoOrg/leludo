@@ -7,7 +7,7 @@
  * replays them through the normal command/event pipeline, and local authority
  * (dice RNG, bot autoplay, turn decisions) is suppressed or rerouted.
  */
-import { HUMAN_PREFERRED_POSITIONS } from './game-logic.js';
+import { HUMAN_PREFERRED_POSITIONS } from '../core/game-logic.js';
 
 let _active = false;
 let _net = null;        // NetClient

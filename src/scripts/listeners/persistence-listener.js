@@ -5,10 +5,10 @@
  * handleAfterTokenMove flow.
  */
 
-import { state } from '../game-state.js';
-import { EVENTS, subscribe } from '../game-store.js';
+import { state } from '../state/game-state.js';
+import { EVENTS, subscribe } from '../state/game-store.js';
 import { serializeGameState, getTurnCount } from '../index.js';
-import { STORAGE_KEYS } from '../storage-keys.js';
+import { STORAGE_KEYS } from '../platform/storage-keys.js';
 
 const SAVE_AFTER = new Set([
     EVENTS.GAME_STARTED,

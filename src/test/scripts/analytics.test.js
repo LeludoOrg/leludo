@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { detectPlatform } from '../../scripts/analytics.js';
+import { detectPlatform } from '../../scripts/platform/analytics.js';
 
 const originalMatchMedia = window.matchMedia;
 

@@ -21,10 +21,10 @@ import {
     isCapacitorNative,
     openPlayStore,
 } from "../scripts/index.js";
-import {trackEvent} from "../scripts/analytics.js";
-import {isOnlineActive, onlineLocalSelf, toServer} from "../scripts/online-state.js";
-import {MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT} from "../scripts/pawn-mini.js";
-import {shareGameEnd} from "../scripts/share-image.js";
+import {trackEvent} from "../scripts/platform/analytics.js";
+import {isOnlineActive, onlineLocalSelf, toServer} from "../scripts/net/online-state.js";
+import {MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT} from "../scripts/render/pawn-mini.js";
+import {shareGameEnd} from "../scripts/render/share-image.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
 const CONFETTI_COUNT = 18;

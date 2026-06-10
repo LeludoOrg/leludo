@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { playHomeArrival } from '../../scripts/home-arrival.js';
+import { playHomeArrival } from '../../scripts/render/home-arrival.js';
 
 // happy-dom doesn't implement Element.animate. Stub it so the overlay's
 // keyframe calls become harmless no-ops in tests.

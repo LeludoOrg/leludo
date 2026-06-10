@@ -17,7 +17,7 @@
  * the fact.
  */
 
-import { VERSION } from '../version.js';
+import { VERSION } from '../../version.js';
 import { isCapacitorNative } from './platform.js';
 
 export const GA_MEASUREMENT_ID = 'G-SY4NN1BV58';

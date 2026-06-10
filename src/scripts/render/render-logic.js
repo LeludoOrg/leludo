@@ -1,13 +1,13 @@
-import {getMarkIndex} from "./game-logic.js";
-import {YARD, ENTRY_SQUARE, LAST_TRACK_SQUARE} from "./board-constants.js";
-import { SCREENS } from "./screens.js";
+import {getMarkIndex} from "../core/game-logic.js";
+import {YARD, ENTRY_SQUARE, LAST_TRACK_SQUARE} from "../core/board-constants.js";
+import { SCREENS } from "../platform/screens.js";
 import { MINI_PAWN_BODY } from "./pawn-mini.js";
 import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
-import {replaceTo} from "./nav-history.js";
+import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
-import {requestWakeLock, releaseWakeLock} from "./wake-lock.js";
+import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
 // even though the wake-lock implementation now lives in its own module.

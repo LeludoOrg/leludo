@@ -46,8 +46,8 @@ import {
     setPlayerNames,
     setLastRoll,
     resetLastRolls,
-} from "./index.js";
-import { randomPersonality } from "./bot-ai.js";
+} from "../index.js";
+import { randomPersonality } from "../core/bot-ai.js";
 import {
     isPlayerFinished as isPlayerFinishedPure,
     getFinishedCount as getFinishedCountPure,
@@ -57,26 +57,26 @@ import {
     computeLeftoverRankOrder,
     deserializeGameState,
     grantsAnotherTurn,
-} from "./turn-rules.js";
+} from "../core/turn-rules.js";
 import { state, PHASES } from "./game-state.js";
 import { EVENTS } from "./game-reducer.js";
 import {
     pauseGameLogic,
     resumeGameLogic,
     isGameLogicPaused,
-} from "./scheduler.js";
-import { goTo, replaceTo, back as navBack, registerScreenHandler } from "./nav-history.js";
+} from "../platform/scheduler.js";
+import { goTo, replaceTo, back as navBack, registerScreenHandler } from "../platform/nav-history.js";
 import { dispatch } from "./game-store.js";
-import { isOnlineActive, onlineNet, onlineLocalSelf } from "./online-state.js";
-import { STORAGE_KEYS } from "./storage-keys.js";
-import { SCREENS, GAME_BACK_ACTION } from "./screens.js";
+import { isOnlineActive, onlineNet, onlineLocalSelf } from "../net/online-state.js";
+import { STORAGE_KEYS } from "../platform/storage-keys.js";
+import { SCREENS, GAME_BACK_ACTION } from "../platform/screens.js";
 
 export {
     pauseGameLogic,
     resumeGameLogic,
     isGameLogicPaused,
     _scheduleTurnForTest,
-} from "./scheduler.js";
+} from "../platform/scheduler.js";
 
 export const COMMANDS = Object.freeze({
     START_GAME: 'START_GAME',

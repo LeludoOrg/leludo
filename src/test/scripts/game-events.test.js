@@ -4,9 +4,9 @@ import {
     resumeGameLogic,
     isGameLogicPaused,
     _scheduleTurnForTest,
-} from '../../scripts/command-handler.js';
-import { reducer, EVENTS } from '../../scripts/game-reducer.js';
-import { initialGameState, PHASES } from '../../scripts/game-state.js';
+} from '../../scripts/state/command-handler.js';
+import { reducer, EVENTS } from '../../scripts/state/game-reducer.js';
+import { initialGameState, PHASES } from '../../scripts/state/game-state.js';
 
 beforeEach(() => {
     if (isGameLogicPaused()) resumeGameLogic();

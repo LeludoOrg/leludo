@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NetClient, resolveServerUrl } from '../../scripts/net-client.js';
+import { NetClient, resolveServerUrl } from '../../scripts/net/net-client.js';
 
 /**
  * Server-URL resolution. Regression guard: production used to derive

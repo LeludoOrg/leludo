@@ -20,18 +20,18 @@ import {
     findCapturedOpponents,
     isTripComplete,
     rollDiceWithPity,
-} from '../scripts/game-logic.js';
-import { pickBestMove, PERSONALITIES, randomPersonality } from '../scripts/bot-ai.js';
+} from '../scripts/core/game-logic.js';
+import { pickBestMove, PERSONALITIES, randomPersonality } from '../scripts/core/bot-ai.js';
 import {
     isPlayerFinished,
     getNextPlayerIndex,
     shouldEndGame,
     computeLeftoverRankOrder,
-} from '../scripts/turn-rules.js';
-import { makeRng } from '../scripts/game-driver.js';
-import { randomBotName } from '../scripts/bot-names.js';
-import { spreadPick } from '../scripts/seat-allocation.js';
-import { MSG, REASON, ERR } from '../scripts/net-protocol.js';
+} from '../scripts/core/turn-rules.js';
+import { makeRng } from '../scripts/core/game-driver.js';
+import { randomBotName } from '../scripts/core/bot-names.js';
+import { spreadPick } from '../scripts/core/seat-allocation.js';
+import { MSG, REASON, ERR } from '../scripts/net/net-protocol.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',

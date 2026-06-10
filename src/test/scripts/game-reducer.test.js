@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { reducer, applyEvents, EVENTS } from '../../scripts/game-reducer.js';
-import { initialGameState, PHASES } from '../../scripts/game-state.js';
-import { runGame, makeRng } from '../../scripts/game-driver.js';
+import { reducer, applyEvents, EVENTS } from '../../scripts/state/game-reducer.js';
+import { initialGameState, PHASES } from '../../scripts/state/game-state.js';
+import { runGame, makeRng } from '../../scripts/core/game-driver.js';
 
 describe('reducer', () => {
     it('GAME_STARTED initializes player slots and dice', () => {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { RoomEngine, PHASES } from '../../server/room-engine.js';
-import { PITY_SIX_CEIL } from '../../scripts/game-logic.js';
-import { BOT_NAME_POOLS } from '../../scripts/bot-names.js';
-import { PERSONALITIES } from '../../scripts/bot-ai.js';
+import { PITY_SIX_CEIL } from '../../scripts/core/game-logic.js';
+import { BOT_NAME_POOLS } from '../../scripts/core/bot-names.js';
+import { PERSONALITIES } from '../../scripts/core/bot-ai.js';
 
 /**
  * Authority + host-lobby tests. A fake transport collects every broadcast /

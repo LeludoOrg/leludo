@@ -25,9 +25,9 @@ import { WebSocketServer } from 'ws';
 import { Admission } from './admission.js';
 import { RoomEngine } from './room-engine.js';
 import { Matchmaker } from './matchmaker.js';
-import { mintRoomCode } from '../scripts/room-code.js';
-import { spreadSeatPlan } from '../scripts/seat-allocation.js';
-import { MSG, REASON, BUSY } from '../scripts/net-protocol.js';
+import { mintRoomCode } from '../scripts/core/room-code.js';
+import { spreadSeatPlan } from '../scripts/core/seat-allocation.js';
+import { MSG, REASON, BUSY } from '../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams, clampSeats } from './transport-shell.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);

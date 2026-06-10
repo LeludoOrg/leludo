@@ -9,7 +9,7 @@ import {
     isGodModeEnabled,
     setGodModeEnabled,
 } from "../scripts/index.js";
-import { goTo, back as navBack, registerScreenHandler } from "../scripts/nav-history.js";
+import { goTo, back as navBack, registerScreenHandler } from "../scripts/platform/nav-history.js";
 
 function setAssistFlag(flag, value) {
     dispatch({ type: COMMANDS.SET_ASSIST_FLAG, flag, value });
@@ -31,13 +31,13 @@ import {
     BOT_POOL_LABELS,
     getActivePoolKey,
     setActivePoolKey,
-} from "../scripts/bot-names.js";
+} from "../scripts/core/bot-names.js";
 import {
     htmlToElement,
     VERSION,
 } from "./index.js"
-import { STORAGE_KEYS } from "../scripts/storage-keys.js";
-import { SCREENS } from "../scripts/screens.js";
+import { STORAGE_KEYS } from "../scripts/platform/storage-keys.js";
+import { SCREENS } from "../scripts/platform/screens.js";
 import { ICON_BACK, ICON_SETTINGS } from "./wc-icons.js";
 
 const SETTINGS_HTML = /*html*/ `

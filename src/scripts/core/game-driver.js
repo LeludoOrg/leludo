@@ -18,7 +18,7 @@ import {
     computeLeftoverRankOrder,
     grantsAnotherTurn,
 } from './turn-rules.js';
-import { EVENTS } from './game-reducer.js';
+import { EVENTS } from '../state/game-reducer.js';
 
 /**
  * Seedable PRNG (mulberry32). Returns a function compatible with Math.random.

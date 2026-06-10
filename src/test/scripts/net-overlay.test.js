@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { setDimmedPlayers, showSelfReconnect, showSelfGaveUp, hideSelfBanner, clearPresence } from '../../scripts/net-overlay.js';
+import { setDimmedPlayers, showSelfReconnect, showSelfGaveUp, hideSelfBanner, clearPresence } from '../../scripts/net/net-overlay.js';
 
 /**
  * Disconnect presence: a dropped opponent is DIMMED on the board (corner widget,

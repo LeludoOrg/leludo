@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pick, randInt } from '../../scripts/rng-util.js';
+import { pick, randInt } from '../../scripts/core/rng-util.js';
 
 // A deterministic fake rng that yields a fixed sequence of 0..1 values,
 // cycling. Lets us assert exactly which index/element gets chosen.

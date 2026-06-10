@@ -3,7 +3,7 @@
 // copy-pasting an SVG string into a component (a drifting copy is a defect:
 // the home pawn rendering a different shape than a lobby pawn, etc.).
 
-import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "../scripts/pawn-mini.js";
+import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "../scripts/render/pawn-mini.js";
 
 export const DICE_SVG = (value, size = 56) => {
     const PIP_LAYOUTS = {

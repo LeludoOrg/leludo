@@ -15,7 +15,7 @@
  */
 
 import { initialGameState, PHASES } from './game-state.js';
-import { YARD, HOME_STRETCH_START, FINISH } from './board-constants.js';
+import { YARD, HOME_STRETCH_START, FINISH } from '../core/board-constants.js';
 
 export const EVENTS = Object.freeze({
     GAME_STARTED: 'GAME_STARTED',

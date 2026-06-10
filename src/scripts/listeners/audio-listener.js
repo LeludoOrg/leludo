@@ -4,8 +4,8 @@
  * loop.
  */
 
-import { EVENTS, subscribe } from '../game-store.js';
-import { playCaptureSound } from '../audio.js';
+import { EVENTS, subscribe } from '../state/game-store.js';
+import { playCaptureSound } from '../render/audio.js';
 
 export function installAudioListener() {
     subscribe((event) => {

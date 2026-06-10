@@ -6,8 +6,8 @@
  * count + personalities, winner index, ranks, durations.
  */
 
-import { EVENTS, subscribe } from '../game-store.js';
-import { trackEvent } from '../analytics.js';
+import { EVENTS, subscribe } from '../state/game-store.js';
+import { trackEvent } from '../platform/analytics.js';
 
 export function installAnalyticsListener() {
     subscribe((event, state) => {

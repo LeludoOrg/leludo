@@ -1,6 +1,6 @@
 // Cheeky bot name pools — harmless, region-flavoured.
 
-import { STORAGE_KEYS } from "./storage-keys.js";
+import { STORAGE_KEYS } from "../platform/storage-keys.js";
 import { pick } from "./rng-util.js";
 
 export const BOT_NAME_POOLS = {

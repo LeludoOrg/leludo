@@ -5,10 +5,10 @@
  * isGodModeAvailable() so it never ships to production users.
  */
 
-import { getTokenElement } from "./render-logic.js";
-import { isCapacitorNative } from "./platform.js";
-import { YARD, PLAYER_OFFSET, TRACK_LEN, LAST_TRACK_SQUARE } from "./board-constants.js";
-import { STORAGE_KEYS } from "./storage-keys.js";
+import { getTokenElement } from "../render/render-logic.js";
+import { isCapacitorNative } from "../platform/platform.js";
+import { YARD, PLAYER_OFFSET, TRACK_LEN, LAST_TRACK_SQUARE } from "../core/board-constants.js";
+import { STORAGE_KEYS } from "../platform/storage-keys.js";
 
 const STORAGE_KEY = STORAGE_KEYS.GOD_MODE;
 

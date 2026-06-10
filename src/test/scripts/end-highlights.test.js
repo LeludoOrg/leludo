@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectHighlights, selectHighlightsBySeat } from '../../scripts/end-highlights.js';
+import { selectHighlights, selectHighlightsBySeat } from '../../scripts/render/end-highlights.js';
 
 const seats4 = (names = ['You', 'Bot 1', 'Bot 2', 'Bot 3']) => [
     { name: names[0], type: 'PLAYER' },

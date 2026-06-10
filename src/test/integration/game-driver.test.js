@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runGame, makeRng } from '../../scripts/game-driver.js';
+import { runGame, makeRng } from '../../scripts/core/game-driver.js';
 
 describe('makeRng', () => {
     it('same seed produces same sequence', () => {

@@ -8,7 +8,7 @@ import {
     setPlayerNames,
     setLastRoll,
     resetLastRolls,
-} from '../../scripts/render-logic.js';
+} from '../../scripts/render/render-logic.js';
 
 describe('getContainerPath — forward movement', () => {
     it('builds per-step mark IDs from current+1 to new (inclusive)', () => {

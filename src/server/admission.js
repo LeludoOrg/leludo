@@ -12,7 +12,7 @@
  * than spending into a throttle / paid overage.
  */
 
-import { BUSY } from '../scripts/net-protocol.js';
+import { BUSY } from '../scripts/net/net-protocol.js';
 
 export const ADMISSION_DEFAULTS = Object.freeze({
     maxConcurrentGames: 40,   // simultaneous rooms (soft-realtime guard)

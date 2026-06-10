@@ -3,16 +3,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // runs installBotListener() once at module load, so the listener is already
 // subscribed — installing it again here would double every dispatch.
 import '../../../scripts/index.js';
-import { emit, dispatch, setCommandHandler } from '../../../scripts/game-store.js';
-import { EVENTS } from '../../../scripts/game-reducer.js';
-import { COMMANDS } from '../../../scripts/command-handler.js';
-import { state, PHASES } from '../../../scripts/game-state.js';
+import { emit, dispatch, setCommandHandler } from '../../../scripts/state/game-store.js';
+import { EVENTS } from '../../../scripts/state/game-reducer.js';
+import { COMMANDS } from '../../../scripts/state/command-handler.js';
+import { state, PHASES } from '../../../scripts/state/game-state.js';
 import {
     pauseGameLogic,
     resumeGameLogic,
     _resetSchedulerForTest,
-} from '../../../scripts/scheduler.js';
-import { setOnline, clearOnline, onlineLocalSelf } from '../../../scripts/online-state.js';
+} from '../../../scripts/platform/scheduler.js';
+import { setOnline, clearOnline, onlineLocalSelf } from '../../../scripts/net/online-state.js';
 
 // Fake command handler that records dispatched commands and mirrors the real
 // handler's *synchronous* phase transition: ROLL_DICE emits DICE_ROLL_STARTED

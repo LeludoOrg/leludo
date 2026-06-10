@@ -6,7 +6,7 @@ import {
     openPlayStore,
     PLAY_STORE_WEB_URL,
     PLAY_STORE_MARKET_URL,
-} from '../../scripts/platform.js';
+} from '../../scripts/platform/platform.js';
 
 const originalCapacitor = window.Capacitor;
 const realUA = navigator.userAgent;

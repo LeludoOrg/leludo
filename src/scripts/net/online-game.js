@@ -13,8 +13,8 @@
  * finishes before the following move renders, even when the server sends a
  * roll + forced move back-to-back.
  */
-import { dispatch, subscribe, EVENTS } from './game-store.js';
-import { COMMANDS } from './command-handler.js';
+import { dispatch, subscribe, EVENTS } from '../state/game-store.js';
+import { COMMANDS } from '../state/command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
 import { setDimmedPlayers, clearPresence } from './net-overlay.js';
 import { MSG, REASON, DISCONNECT_END_REASONS } from './net-protocol.js';

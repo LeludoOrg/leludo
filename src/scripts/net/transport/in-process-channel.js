@@ -19,7 +19,7 @@
  * onto dispatch/subscribe.
  */
 
-import { dispatch, subscribe } from '../game-store.js';
+import { dispatch, subscribe } from '../../state/game-store.js';
 import { makeEventHub } from './event-hub.js';
 
 export function createInProcessChannel() {

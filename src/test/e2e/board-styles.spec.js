@@ -188,7 +188,7 @@ test.describe('Token rendering inside cells', () => {
         await bootGame(page, '?positions=39,39,39,39&player=0');
 
         const data = await page.evaluate(async () => {
-            const mod = await import('/scripts/render-logic.js');
+            const mod = await import('/scripts/render/render-logic.js');
             const cell = document.getElementById('m39');
             mod.updateCellStacking(cell);
             const cellRect = cell.getBoundingClientRect();
@@ -264,7 +264,7 @@ test.describe('Capture animation', () => {
             return v && v.parentElement?.id === 'm20';
         });
         const result = await page.evaluate(async () => {
-            const mod = await import('/scripts/render-logic.js');
+            const mod = await import('/scripts/render/render-logic.js');
             mod.pinTokenForCapture(document.getElementById('p-1-0'));
             const anim = mod.animateCaptureToHome(1, 0, {
                 attackerPlayerIndex: 0,
@@ -318,7 +318,7 @@ test.describe('Capture animation', () => {
             return p0 && p1 && p0.parentElement?.id === 'm20' && p1.parentElement?.id === 'm20';
         });
         const result = await page.evaluate(async () => {
-            const mod = await import('/scripts/render-logic.js');
+            const mod = await import('/scripts/render/render-logic.js');
             const lander = document.getElementById('p-0-0');
             const victim = document.getElementById('p-1-0');
             // Pin victim as the real flow does, so updateCellStacking
@@ -349,7 +349,7 @@ test.describe('Capture animation', () => {
         await bootGame(page, '?positions=1&player=0');
         await page.waitForFunction(() => !!document.querySelector('#h-0-0 wc-token, #m1 wc-token'));
         const result = await page.evaluate(async () => {
-            const mod = await import('/scripts/render-logic.js');
+            const mod = await import('/scripts/render/render-logic.js');
             // Reuse P0's token 0 (positions=1 puts it at m1). Animate it
             // home as if captured.
             const token = document.getElementById('p-0-0');

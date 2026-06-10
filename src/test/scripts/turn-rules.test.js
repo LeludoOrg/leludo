@@ -9,7 +9,7 @@ import {
     computeLeftoverRankOrder,
     serializeGameState,
     deserializeGameState,
-} from '../../scripts/turn-rules.js';
+} from '../../scripts/core/turn-rules.js';
 
 const HOME = [-1, -1, -1, -1];
 const DONE = [56, 56, 56, 56];

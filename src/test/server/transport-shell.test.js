@@ -6,7 +6,7 @@ import {
     parseConnParams,
     clampSeats,
 } from '../../server/transport-shell.js';
-import { MSG } from '../../scripts/net-protocol.js';
+import { MSG } from '../../scripts/net/net-protocol.js';
 
 describe('clampSeats', () => {
     it('clamps to 0..4 and falls back on garbage', () => {
