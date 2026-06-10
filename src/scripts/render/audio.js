@@ -220,7 +220,7 @@ export function playStepSound() {
 
 let captureBuffer = null;
 let captureBufferLoading = null;
-const CAPTURE_URL = new URL("../assets/sounds/capture.m4a", import.meta.url).href;
+const CAPTURE_URL = new URL("../../assets/sounds/capture.m4a", import.meta.url).href;
 
 function loadCaptureBuffer() {
     if (captureBuffer) return Promise.resolve(captureBuffer);
