@@ -101,6 +101,7 @@ export const COMMANDS = Object.freeze({
     // mounts the end screen when the game ends on a disconnect (no local move
     // triggered it).
     NET_DROP_PLAYER: 'NET_DROP_PLAYER',
+    NET_RECONCILE: 'NET_RECONCILE',
     NET_END: 'NET_END',
 });
 
@@ -293,7 +294,13 @@ function netStartGame(payload, emit) {
 // when already in sync (the common case in 2- and 3-player games, where the
 // diagonal mapping happens to preserve turn order). Repositions the dice/corner
 // widgets onto the corrected seat.
-function netSyncTurn(playerIndex, emit) {
+function netSyncTurn(playerIndex, turnCount, emit) {
+    // The server owns the turn number. Apply it on EVERY frame — unconditionally,
+    // before the player-change early-return — so the "Turn N" label is identical
+    // on every client even when this client's own replay missed a turn pass (and
+    // even in the 2-3 player case where the diagonal mapping makes the player
+    // index a no-op but the count still advanced).
+    if (turnCount != null) setTurnCount(turnCount);
     if (playerIndex == null || playerIndex === state.currentPlayerIndex) return;
     emit({ type: EVENTS.NET_TURN_SYNCED, playerIndex });
     moveDice(state.currentPlayerIndex);
@@ -314,6 +321,45 @@ function netDropPlayer(playerIndex, emit) {
     }
     restack.forEach(cell => updateCellStacking(cell));
     emit({ type: EVENTS.NET_PLAYER_DROPPED, playerIndex });
+}
+
+// Online: reconcile the rendered board to the server's authoritative positions.
+// The online renderer replays the server's roll/move deltas through the local
+// engine; a dropped, rejected, or missed delta (a backgrounded tab throttling
+// rAF, a 1s socket blip dropping `moved` frames, a swallowed animation error)
+// would otherwise leave this client's board permanently diverged from the
+// server's — captures especially, since they're re-derived locally rather than
+// taken from the server's authoritative `caps`. Every server frame carries the
+// full positions, so after each delta we snap any drifted token back onto the
+// truth. No-op in the common case (the replay already matches), so it never
+// fights the in-flight move animation it runs after; on real drift it re-mounts
+// every token from the corrected state.
+//
+// `positions` is the server snapshot already mapped to LOCAL board indices by the
+// online driver. Activation changes (a seat that forfeited / finished while we
+// were away) flow through NET_DROP_PLAYER / NET_END, so a seat that's active on
+// only one side is left for those paths — here we only correct token positions of
+// seats both sides still consider in play.
+function netReconcile(positions, emit) {
+    if (!Array.isArray(positions)) return;
+    if (state.phase === PHASES.GAME_ENDED) return;
+
+    let drifted = false;
+    for (let pi = 0; pi < 4 && !drifted; pi++) {
+        const target = positions[pi];
+        const local = state.playerTokenPositions[pi];
+        if (!target || !local) continue; // activation mismatch — not our job
+        for (let ti = 0; ti < 4; ti++) {
+            if (target[ti] !== local[ti]) { drifted = true; break; }
+        }
+    }
+    if (!drifted) return;
+
+    emit({ type: EVENTS.NET_RECONCILED, positions });
+    // Re-render from the corrected state: drop every on-board token and re-mount
+    // from state.playerTokenPositions (now the server's truth).
+    removeGameTokens();
+    mountTokensFromState();
 }
 
 // Online: the server ended the game without a finishing move (an opponent left
@@ -759,13 +805,15 @@ export function commandHandler(currentState, command, services, emit) {
         case COMMANDS.NET_START_GAME:
             return netStartGame(command, emit);
         case COMMANDS.NET_SYNC_TURN:
-            return netSyncTurn(command.playerIndex, emit);
+            return netSyncTurn(command.playerIndex, command.turnCount, emit);
         case COMMANDS.NET_APPLY_ROLL:
             return rollDice(emit, command.value);
         case COMMANDS.NET_APPLY_MOVE:
             return selectToken(command.playerIndex, command.tokenIndex, emit);
         case COMMANDS.NET_DROP_PLAYER:
             return netDropPlayer(command.playerIndex, emit);
+        case COMMANDS.NET_RECONCILE:
+            return netReconcile(command.positions, emit);
         case COMMANDS.NET_END:
             return netEnd(command.playerRanks, command.winnerIndex, emit);
         case COMMANDS.ROLL_DICE:

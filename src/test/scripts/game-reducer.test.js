@@ -154,6 +154,50 @@ describe('reducer', () => {
         expect(state.movableTokenIndexes).toEqual([]);
     });
 
+    it('NET_RECONCILED snaps active seats onto the server board, leaves empty seats', () => {
+        // Online: the renderer replays move deltas and re-derives captures, so a
+        // dropped/throttled delta leaves the board diverged (the live bug: a
+        // captured pawn that went home on the server still showed on the board on
+        // a lagging client — "2 pawns home on one screen, 1 on the other"). The
+        // server stamps full positions on every frame; NET_RECONCILED folds them
+        // back in. Here seat 1's captured token is still on the track locally; the
+        // server says it's home (-1) → it must snap home.
+        const state = initialGameState();
+        state.playerTypes = ['PLAYER', 'PLAYER', undefined, undefined];
+        state.playerTokenPositions = [
+            [5, -1, -1, -1],   // local: matches server
+            [10, 3, -1, -1],   // local: token0 NOT yet sent home (drifted)
+            undefined,
+            undefined,
+        ];
+        reducer(state, {
+            type: EVENTS.NET_RECONCILED,
+            positions: [
+                [5, -1, -1, -1],
+                [-1, 3, -1, -1], // server truth: token0 was captured → home
+                undefined,
+                undefined,
+            ],
+        });
+        expect(state.playerTokenPositions[1]).toEqual([-1, 3, -1, -1]); // snapped home
+        expect(state.playerTokenPositions[0]).toEqual([5, -1, -1, -1]); // untouched
+        expect(state.playerTokenPositions[2]).toBeUndefined();           // empty seat left alone
+    });
+
+    it('NET_RECONCILED never resurrects a seat the client has deactivated', () => {
+        // A seat that forfeited/finished locally is undefined; even if the server
+        // snapshot still lists positions for it, NET_RECONCILED must not re-add it
+        // (activation changes flow through NET_PLAYER_DROPPED / NET_GAME_ENDED).
+        const state = initialGameState();
+        state.playerTypes = ['PLAYER', undefined, undefined, undefined];
+        state.playerTokenPositions = [[5, -1, -1, -1], undefined, undefined, undefined];
+        reducer(state, {
+            type: EVENTS.NET_RECONCILED,
+            positions: [[5, -1, -1, -1], [2, 2, 2, 2], undefined, undefined],
+        });
+        expect(state.playerTokenPositions[1]).toBeUndefined();
+    });
+
     it('ASSIST_FLAG_CHANGED toggles flag', () => {
         const state = initialGameState();
         reducer(state, { type: EVENTS.ASSIST_FLAG_CHANGED, flag: 'autoMoveSingleOption', value: true });
