@@ -6,7 +6,7 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["five-server", "--port=8888", "--open=/"],
       "port": 8888,
-      "cwd": "."
+      "cwd": "./src"
     }
   ]
 }

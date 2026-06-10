@@ -10,12 +10,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
 /**
- * Read and parse `export const VERSION = "x"` from version.js at the repo root.
+ * Read and parse `export const VERSION = "x"` from src/version.js.
  * Throws if the constant is missing so a malformed version.js fails loudly
  * rather than shipping an empty/undefined version.
  */
 export async function readVersion(root = repoRoot) {
-  const src = await readFile(resolve(root, 'version.js'), 'utf8');
+  const src = await readFile(resolve(root, 'src/version.js'), 'utf8');
   const match = src.match(/export\s+const\s+VERSION\s*=\s*["']([^"']+)["']/);
   if (!match) throw new Error('VERSION constant not found in version.js');
   return match[1];

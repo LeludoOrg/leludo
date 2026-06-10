@@ -1,5 +1,5 @@
 name = "leludo-mp"
-main = "server/cf/worker.js"
+main = "src/server/cf/worker.js"
 compatibility_date = "2025-06-01"
 
 # Operator-tunable capacity caps (see docs/multiplayer-plan.md → Budget). Sized to

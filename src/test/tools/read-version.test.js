@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readVersion } from '../../tools/read-version.mjs';
+import { readVersion } from '../../../tools/read-version.mjs';
 import { VERSION } from '../../version.js';
 
 /**

@@ -4,20 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Ludo
 
-Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, no Tailwind — ES modules and stylesheets load directly via `<script type="module">` / `<link rel="stylesheet">`. GitHub Pages serves the repo root as site root.
+Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, no Tailwind — ES modules and stylesheets load directly via `<script type="module">` / `<link rel="stylesheet">`. **All app code lives under `src/`.** `src/` is also the **web root** — the dev server serves `src/` (NOT the repo root), so the browser-loaded files (HTML, `sw.js`, `styles/`, `components/`, `scripts/`, `assets/`, …) sit directly in `src/`. The backend (`src/server/`) and tests (`src/test/`) live there too — not web-linked, but co-located so their relative imports into `src/scripts/` (e.g. `server/cf/room-do.js` → `../../scripts/net-protocol.js`) resolve. `tools/` stays at the repo root (build infra that resolves repo-root paths). Production (`leludo.org`) serves `gh-pages`, which is `src/`'s shipped files flattened into `www/` by `tools/build-www.mjs`.
 
 ## Repo Layout
 
 ```
 /
-├── index.html, changelog.html, privacy.html, manifest.json, CNAME
-├── styles/base.css      design tokens + reset + layout primitives + player color helpers
-├── changelog.css        shared chrome for changelog.html + privacy.html
-├── components/          Web Components (wc-*.js) + per-component CSS (wc-*.css)
-├── scripts/             game logic (game-events, game-logic, render-logic, bot-ai, bot-names)
-├── assets/              shipped fonts, icons, sounds
-├── test/                vitest + Playwright suites
-├── tools/               build helpers (all Node .mjs)
+├── src/                 ← ALL APP CODE + THE WEB ROOT (dev server serves this; shipped files flattened to www/ for prod)
+│   ├── index.html, changelog.html, privacy.html, multiplayer.html
+│   ├── manifest.json, CNAME, .nojekyll, sw.js, version.js, theme-boot.js
+│   ├── changelog.css        shared chrome for changelog.html + privacy.html
+│   ├── styles/base.css      design tokens + reset + layout primitives + player color helpers
+│   ├── components/          Web Components (wc-*.js) + per-component CSS (wc-*.css)
+│   ├── scripts/             game logic (game-events, game-logic, render-logic, bot-ai, bot-names)
+│   ├── assets/              shipped fonts, icons, sounds
+│   ├── server/             multiplayer backend (CF Worker + local dev ws server) — NOT web-served
+│   └── test/               vitest + Playwright suites — NOT web-served
+├── tools/               build helpers (all Node .mjs) — stays at repo root
 ├── docs/                internal docs (CONTRIBUTING, ATTRIBUTIONS, plans)
 ├── dev-assets/          dev/build-only sources — design/ (icon PNGs/SVGs),
 │                        screenshots/ (store shots), distribution/ (gen'd whatsnew).
@@ -27,6 +30,13 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 ├── www/                 (gitignored) Capacitor shipping dir, built by tools/build-www.mjs
 └── android/             Capacitor Android project
 ```
+
+Paths in the sections below that name `index.html`, `sw.js`, `styles/`,
+`components/`, `scripts/`, `assets/`, `server/`, `test/`, `version.js`,
+`theme-boot.js`, `manifest.json`, `changelog.css`, or the HTML pages are all
+**relative to `src/`** (e.g. `sw.js` → `src/sw.js`, `components/wc-board.js` →
+`src/components/wc-board.js`, `server/cf/worker.js` → `src/server/cf/worker.js`).
+`tools/` paths stay at the repo root.
 
 ## Dev Commands
 
@@ -115,7 +125,7 @@ runner refuse to launch with a loud, obvious error.
 
 ## Architecture
 
-Two top-level module trees at the repo root, each with an `index.*.js` barrel that re-exports its tree:
+Two module trees under `src/`, each with an `index.*.js` barrel that re-exports its tree:
 
 - **`components/`** — Web Components (`wc-board`, `wc-token`, `wc-dice`, `wc-quick-start`, `wc-settings`, `wc-game-end`, etc.) + shared `utils`. Each custom element registers itself on import via `customElements.define`. The components barrel re-exports all.
 - **`scripts/`** — Game state machine and rendering.
@@ -304,7 +314,7 @@ Aim for ≤450 to leave headroom; the script enforces 500.
 
 ## Android (Capacitor)
 
-Capacitor's `webDir` is `www/`, which is **built** from the root by `tools/build-www.mjs` (copies the three HTMLs + `changelog.css` + `manifest.json` + `sw.js` + `version.js` + the `styles/`, `components/`, `scripts/`, and `assets/` trees). `www/` is gitignored.
+Capacitor's `webDir` is `www/`, which is **built** from `src/` by `tools/build-www.mjs` (copies the three HTMLs + `changelog.css` + `manifest.json` + `sw.js` + `version.js` + `theme-boot.js` + the `styles/`, `components/`, `scripts/`, and `assets/` trees + `CNAME` + `.nojekyll`). `www/` is gitignored.
 
 Scripts in `package.json`:
 

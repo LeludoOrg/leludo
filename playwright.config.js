@@ -6,7 +6,7 @@ const BASE_URL = `http://localhost:${PORT}`;
 const MP_PORT = PORTS.MP_SERVER; // multiplayer ws server (server/local-server.mjs)
 
 export default defineConfig({
-    testDir: './test/e2e',
+    testDir: './src/test/e2e',
     testMatch: '**/*.spec.js',
     outputDir: './.local/test-results',
     fullyParallel: true,
@@ -31,8 +31,8 @@ export default defineConfig({
         {
             // Server-authoritative multiplayer runtime for the e2e suite.
             // DEV_TEST_HOOKS enables the deterministic seed + __busy__ room used
-            // by test/e2e/multiplayer.spec.js.
-            command: `DEV_TEST_HOOKS=1 node server/local-server.mjs ${MP_PORT}`,
+            // by src/test/e2e/multiplayer.spec.js.
+            command: `DEV_TEST_HOOKS=1 node src/server/local-server.mjs ${MP_PORT}`,
             url: `http://localhost:${MP_PORT}/health`,
             reuseExistingServer: !process.env.CI,
             timeout: 60_000,

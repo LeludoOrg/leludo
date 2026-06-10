@@ -5,7 +5,7 @@ import {
     decodeEntities,
     extractBullets,
     buildWhatsnewText,
-} from '../../tools/extract-whatsnew.mjs';
+} from '../../../tools/extract-whatsnew.mjs';
 
 function makeChangelog(version, ...bulletsHtml) {
     return `

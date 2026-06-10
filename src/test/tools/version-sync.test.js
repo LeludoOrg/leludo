@@ -14,7 +14,7 @@ import { VERSION } from '../../version.js';
  * the other.
  */
 describe('package.json version stays in sync with version.js', () => {
-    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
     const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 
     it('package.json version === VERSION', () => {

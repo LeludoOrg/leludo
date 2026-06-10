@@ -8,7 +8,7 @@ import { resolve, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, '..');
+const root = resolve(here, '..', 'src');
 const port = Number(process.argv[2] || process.env.PORT || 8888);
 
 const MIME = {

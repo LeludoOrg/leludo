@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
+const src = resolve(root, 'src');
 const www = resolve(root, 'www');
 
 const SHIPPED = [
@@ -35,7 +36,7 @@ await rm(www, { recursive: true, force: true });
 await mkdir(www, { recursive: true });
 
 for (const item of SHIPPED) {
-  await cp(resolve(root, item), resolve(www, item), { recursive: true });
+  await cp(resolve(src, item), resolve(www, item), { recursive: true });
 }
 
 console.log(`Built www/ (${SHIPPED.length} entries)`);

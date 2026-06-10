@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { RECORDINGS_DIR } from '../../tools/clear-recordings.mjs';
+import { RECORDINGS_DIR } from '../../../tools/clear-recordings.mjs';
 
 /**
  * End-to-end ONLINE MULTIPLAYER sessions — the real index.html UI, driven across

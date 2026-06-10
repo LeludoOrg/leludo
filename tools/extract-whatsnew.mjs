@@ -83,7 +83,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
 
   const version = await readVersion(root);
 
-  const changelog = await readFile(resolve(root, 'changelog.html'), 'utf8');
+  const changelog = await readFile(resolve(root, 'src/changelog.html'), 'utf8');
   const bullets = extractBullets(changelog, version);
   const text = buildWhatsnewText(bullets);
 

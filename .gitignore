@@ -44,6 +44,3 @@ android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 *.jks
 android/keystore.properties
-
-# itch.io upload staging
-itch-assets/
