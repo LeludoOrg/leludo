@@ -8,6 +8,9 @@ import {
     isGodModeAvailable,
     isGodModeEnabled,
     setGodModeEnabled,
+    isOnlineAvailable,
+    isOnlineEnabled,
+    setOnlineEnabled,
 } from "../scripts/index.js";
 import { goTo, back as navBack, registerScreenHandler } from "../scripts/platform/nav-history.js";
 
@@ -123,6 +126,11 @@ function buildSettingsOverlay() {
                         }).join('')}
                     </div>
                 `)}
+
+                ${isOnlineAvailable() ? settingsGroup('Experimental (dev / beta)', `
+                    ${toggleHtml('s-online', 'Online multiplayer (beta)', isOnlineEnabled(), false)}
+                    <div class="god-mode-hint">In development. Hidden on the public site. Reload the home screen to apply.</div>
+                `) : ''}
 
                 ${isGodModeAvailable() ? settingsGroup('Debug (localhost only)', `
                     ${toggleHtml('s-god-mode', 'God mode (teleport pawn)', isGodModeEnabled(), false)}
@@ -245,6 +253,20 @@ function ensureOverlay() {
             godEl.checked = isGodModeEnabled();
             godEl.addEventListener('change', ($event) => {
                 setGodModeEnabled($event.target.checked);
+            });
+        }
+    }
+
+    if (isOnlineAvailable()) {
+        const onlineEl = overlay.querySelector('#s-online');
+        if (onlineEl) {
+            onlineEl.checked = isOnlineEnabled();
+            onlineEl.addEventListener('change', ($event) => {
+                setOnlineEnabled($event.target.checked);
+                // The home CTA stack is rendered up front, so re-render it if the
+                // home screen is currently showing; otherwise it picks up the new
+                // flag on the next home visit / reload.
+                document.querySelector('wc-quick-start')?.refreshHomeIfShowing?.();
             });
         }
     }

@@ -15,11 +15,12 @@ test.describe('Home screen', () => {
         await expect(title).toContainText('le');
         await expect(title).toContainText('ludo');
 
-        // TEMP(beta-merge): online entry hidden until multiplayer ships; home
-        // shows a single "New game" CTA. Revert with the wc-quick-start change.
+        // Home offers two clear, separate paths. Online is gated behind the
+        // dev/beta feature flag (scripts/platform/feature-flags.js); under
+        // Playwright the static server runs on localhost, where the flag is on.
         await expect(page.getByTestId('home-play-offline')).toBeVisible();
-        await expect(page.getByTestId('home-play-offline')).toContainText(/new game/i);
-        await expect(page.getByTestId('home-play-online')).toBeHidden();
+        await expect(page.getByTestId('home-play-offline')).toContainText(/play offline|new offline/i);
+        await expect(page.getByTestId('home-play-online')).toBeVisible();
 
         expect(errors, `Console / page errors: ${errors.join('\n')}`).toHaveLength(0);
     });
