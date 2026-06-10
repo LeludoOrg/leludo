@@ -8,6 +8,7 @@ const MP_PORT = PORTS.MP_SERVER; // multiplayer ws server (server/local-server.m
 export default defineConfig({
     testDir: './test/e2e',
     testMatch: '**/*.spec.js',
+    outputDir: './.local/test-results',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,

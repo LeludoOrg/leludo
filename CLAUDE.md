@@ -17,9 +17,13 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 ├── scripts/             game logic (game-events, game-logic, render-logic, bot-ai, bot-names)
 ├── assets/              shipped fonts, icons, sounds
 ├── test/                vitest + Playwright suites
-├── design/              source PNGs/SVGs for app icons
 ├── tools/               build helpers (all Node .mjs)
-├── play-store/          generated store listing assets
+├── docs/                internal docs (CONTRIBUTING, ATTRIBUTIONS, plans)
+├── dev-assets/          dev/build-only sources — design/ (icon PNGs/SVGs),
+│                        screenshots/ (store shots), distribution/ (gen'd whatsnew).
+│                        NOT served, NOT shipped — referenced only by tools/*.mjs.
+├── .local/             (gitignored) local-only generated junk: coverage,
+│                        test-results, e2e recordings, signed release artifacts.
 ├── www/                 (gitignored) Capacitor shipping dir, built by tools/build-www.mjs
 └── android/             Capacitor Android project
 ```
@@ -30,7 +34,7 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 - `npm run dev` — five-server on port 8888. No build step; CSS and JS load directly. **If a dev server is already running on port 8888, reuse it — do not spawn another one** (the existing `.claude/launch.json` `ludo-dev` config is the same five-server invocation; `preview_start` returns the existing serverId when one is already up).
 - `npm test` — vitest watch mode. Unit + integration suite in `test/**/*.test.js`, mirrors source tree (e.g. [test/scripts/game-logic.test.js](test/scripts/game-logic.test.js) tests [scripts/game-logic.js](scripts/game-logic.js)). Runs in `happy-dom`. Integration tests under [test/integration/](test/integration/) drive full games via the pure [scripts/game-driver.js](scripts/game-driver.js).
 - `npm run test:run` — single-shot vitest run (CI mode, exits when done).
-- `npm run test:coverage` — coverage report (v8 provider) into `coverage/`.
+- `npm run test:coverage` — coverage report (v8 provider) into `.local/coverage/`.
 - `npm run test:e2e` — Playwright smoke tests in [test/e2e/](test/e2e/). Spawns a static server via [tools/serve-static.mjs](tools/serve-static.mjs) on port 8889. Use `npm run test:e2e:ui` for the inspector.
 - `npm run cache-bust` — see Cache Busting below.
 
@@ -238,9 +242,9 @@ via `release-android.yml`. A web-only fix still requires a version
 bump + a Release (Web) run.
 
 The public domain therefore only ever sees runtime artifacts —
-internal docs (`CLAUDE.md`, `CONTRIBUTING.md`), tooling (`tools/`,
+internal docs (`CLAUDE.md`, `docs/`), tooling (`tools/`,
 `test/`, `vitest.config.js`, `playwright.config.js`), the Android
-project (`android/`), the design source (`design/`), and the
+project (`android/`), the dev-only sources (`dev-assets/`), and the
 `package*.json` files stay invisible to clients of `leludo.org`. They
 remain visible on the GitHub repo page; that's intentional.
 

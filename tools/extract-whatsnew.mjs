@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Extract the Highlights bullets for the current VERSION from changelog.html
-// and write them to distribution/whatsnew/whatsnew-en-US for the Play Store
+// and write them to dev-assets/distribution/whatsnew/whatsnew-en-US for the Play Store
 // upload step. The r0adkll/upload-google-play action strips the `whatsnew-`
 // prefix and treats the remainder as the locale code — no file extension.
 // Play Store caps each "What's new" locale at 500 chars.
@@ -87,7 +87,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   const bullets = extractBullets(changelog, version);
   const text = buildWhatsnewText(bullets);
 
-  const outDir = resolve(root, 'distribution/whatsnew');
+  const outDir = resolve(root, 'dev-assets/distribution/whatsnew');
   await mkdir(outDir, { recursive: true });
   const outPath = resolve(outDir, 'whatsnew-en-US');
   await writeFile(outPath, text);

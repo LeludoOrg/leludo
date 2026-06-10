@@ -7,6 +7,7 @@ export default defineConfig({
         globals: false,
         coverage: {
             provider: 'v8',
+            reportsDirectory: '.local/coverage',
             reporter: ['text', 'html'],
             include: ['scripts/**/*.js', 'components/**/*.js'],
             exclude: ['**/index.js'],

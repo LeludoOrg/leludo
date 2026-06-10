@@ -154,7 +154,7 @@ jobs:
           releaseFiles: android-dist/ludo-v${{ needs.detect-version.outputs.version }}.aab
           tracks: internal
           status: completed
-          whatsNewDirectory: distribution/whatsnew
+          whatsNewDirectory: dev-assets/distribution/whatsnew
 
   release:
     name: Publish release (Android)
