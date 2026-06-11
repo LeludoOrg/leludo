@@ -9,7 +9,7 @@
  * three call sites can't drift.
  */
 
-export const ANDROID_APP_ID = 'com.leludo.ludo';
+const ANDROID_APP_ID = 'com.leludo.ludo';
 
 // Web listing — works in any browser. market:// opens the Play Store app
 // directly when we're already on an Android device.

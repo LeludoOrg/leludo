@@ -19,10 +19,6 @@ const _handlers = new Map();
 let _currentScreen = SCREENS.HOME;
 let _initialized = false;
 
-export function getCurrentScreen() {
-    return _currentScreen;
-}
-
 export function registerScreenHandler(screen, fn) {
     _handlers.set(screen, fn);
 }
