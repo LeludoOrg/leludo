@@ -766,15 +766,6 @@ export function getFinishedCount(playerIndex) {
     return getFinishedCountPure(state.playerTokenPositions[playerIndex]);
 }
 
-export function clearSavedGame() {
-    try { localStorage.removeItem(STORAGE_KEYS.SAVE); }
-    catch (e) { console.warn('clearSavedGame failed', e); }
-}
-
-export function getSavedGame() {
-    return deserializeGameState(localStorage.getItem(STORAGE_KEYS.SAVE));
-}
-
 // --- the command handler entry point ---
 
 export function commandHandler(currentState, command, services, emit) {

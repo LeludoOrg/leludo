@@ -64,13 +64,6 @@ export const REASON = Object.freeze({
     AGAIN: 'again',
 });
 
-/** End reasons that mean "the game ended because the other side left". */
-export const DISCONNECT_END_REASONS = Object.freeze([
-    REASON.OPPONENT_LEFT,
-    REASON.ABANDONED,
-    REASON.NO_ACTIVE_PLAYERS,
-]);
-
 /** `error` — rejection codes the server sends on a `rejected` / `error` frame. */
 export const ERR = Object.freeze({
     ROOM_FULL: 'ROOM_FULL',
