@@ -160,4 +160,47 @@ describe('online reconciliation (server positions fold back into the render)', (
         expect(reconciles[0].positions[2]).toEqual([20, 14, -1, -1]); // server seat 0 → local 2
         expect(reconciles[0].positions[0]).toEqual([8, -1, -1, -1]);  // server seat 1 → local 0
     });
+
+    /**
+     * A FINISH-driven end where the client MISSED the final `moved` frame. The
+     * client never replayed the finishing move (its seat-0 token0 is still at 55,
+     * phase still AWAITING_*), so it can't reach GAME_ENDED on its own. The ENDED
+     * frame carries the authoritative positions + ranks for FINISHED just like a
+     * disconnect end, so the driver must reconcile the board AND drive NET_END for
+     * EVERY reason — not only disconnect ones. Before the fix this branch did
+     * NOTHING on reason=FINISHED and the client sat forever one step short.
+     */
+    it('reconciles + ends on a FINISHED end even when the finishing `moved` was dropped', async () => {
+        // Server: seat 0 finished all four (winner), seat 1 trails. The matching
+        // `moved` (token0 → 56) was never delivered to this client.
+        const serverPositions = [[56, 56, 56, 56], [55, 30, -1, -1], null, null];
+        handleOnlineMessage({
+            t: MSG.ENDED,
+            reason: REASON.FINISHED,
+            ranks: [1, 2, 0, 0],
+            state: twoPlayerState(serverPositions, { phase: 'GAME_ENDED' }),
+        });
+        await flush();
+
+        // Board reconciles to the server truth, remapped: seat 0 → local 2, seat 1 → local 0.
+        const reconciles = ofType(COMMANDS.NET_RECONCILE);
+        expect(reconciles).toHaveLength(1);
+        expect(reconciles[0].positions[2]).toEqual([56, 56, 56, 56]); // finishing seat snapped to done
+        expect(reconciles[0].positions[0]).toEqual([55, 30, -1, -1]);
+
+        // And the client is driven to the ended state (it could not get there via
+        // the missing finishing move) with the server's ranks + mapped winner.
+        const ends = ofType(COMMANDS.NET_END);
+        expect(ends).toHaveLength(1);
+        expect(ends[0].playerRanks[2]).toBe(1); // seat 0 → local 2, rank 1
+        expect(ends[0].playerRanks[0]).toBe(2); // seat 1 → local 0, rank 2
+        expect(ends[0].winnerIndex).toBe(2);    // winner remapped to local 2
+
+        // Reconcile must run BEFORE the end flips to GAME_ENDED (netReconcile
+        // no-ops once ended), so the board settles on truth first.
+        const recIdx = recorded.findIndex((c) => c.type === COMMANDS.NET_RECONCILE);
+        const endIdx = recorded.findIndex((c) => c.type === COMMANDS.NET_END);
+        expect(recIdx).toBeGreaterThanOrEqual(0);
+        expect(endIdx).toBeGreaterThan(recIdx);
+    });
 });
