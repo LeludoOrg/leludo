@@ -17,7 +17,7 @@ import { dispatch, subscribe, EVENTS } from '../state/game-store.js';
 import { COMMANDS } from '../state/command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
 import { setDimmedPlayers, clearPresence } from './net-overlay.js';
-import { MSG, REASON, DISCONNECT_END_REASONS } from './net-protocol.js';
+import { MSG, REASON } from './net-protocol.js';
 
 let _started = false;
 let _chain = Promise.resolve();
@@ -156,13 +156,19 @@ export function handleOnlineMessage(msg) {
         if (msg.state) updateDimming(msg.state);
         enqueue(() => dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) }));
     } else if (msg.t === MSG.ENDED) {
-        // A finish-driven end already mounted the end screen via the normal move
-        // path; only disconnect-driven ends need it mounted here.
-        if (DISCONNECT_END_REASONS.includes(msg.reason)) {
-            clearPresence();
-            const { local, winnerIndex } = ranksToLocal(msg.ranks);
-            enqueue(() => dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex }));
-        }
+        // The game is over. A disconnect end has no finishing move; a finish end
+        // does — but the client may have MISSED that final `moved` frame (a 1s
+        // socket blip, a swallowed animation error, an rAF wedge at that instant),
+        // leaving it one step short and stuck in AWAITING_* with the wrong board.
+        // The ENDED frame is the last word and carries the authoritative positions
+        // + ranks for EVERY reason, so reconcile to that board AND drive the end
+        // screen unconditionally. Both NET_RECONCILE and NET_END no-op once the
+        // client already reached GAME_ENDED, so a client that DID replay the finish
+        // is left untouched (no double mount); only a desynced client is corrected.
+        clearPresence();
+        if (msg.state) reconcile(msg.state);
+        const { local, winnerIndex } = ranksToLocal(msg.ranks);
+        enqueue(() => dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex }));
     }
 }
 
