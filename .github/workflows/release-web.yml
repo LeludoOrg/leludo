@@ -59,27 +59,26 @@ jobs:
     # Runs only after tests pass, in parallel with the gh-pages publish — the
     # Worker is decoupled from the web bundle, same as Android. Requires repo
     # secrets CLOUDFLARE_API_TOKEN (scoped: Workers Scripts + Durable Objects
-    # edit) and CLOUDFLARE_ACCOUNT_ID. If either is absent the job no-ops with a
-    # notice instead of failing the release.
+    # edit) and CLOUDFLARE_ACCOUNT_ID. If either is absent the job FAILS LOUDLY —
+    # a silent no-op once let a pre-fix Worker ship under a green release (client
+    # got the fix, Worker stayed stale, multiplayer desynced). A red job is the
+    # signal that the live Worker did NOT get this release.
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Check Cloudflare credentials
-        id: creds
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Cloudflare secrets not set — skipping Worker deploy."
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot deploy the MP Worker (leludo-mp). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Workers Scripts Edit + Account Workers Durable Objects) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
           fi
+          echo "Cloudflare credentials present — proceeding with Worker deploy."
 
       - name: Deploy to Cloudflare Workers
-        if: steps.creds.outputs.present == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
