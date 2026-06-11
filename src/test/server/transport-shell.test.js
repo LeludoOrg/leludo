@@ -82,15 +82,19 @@ describe('dispatchIntent', () => {
         const engine = {
             handleRoll: vi.fn(), handleMove: vi.fn(), handleJoin: vi.fn(),
             handleSetSize: vi.fn(), handleSetSeat: vi.fn(), handleKick: vi.fn(), handleStart: vi.fn(),
+            handleProfile: vi.fn(),
         };
         dispatchIntent(engine, 'sid', { t: MSG.ROLL });
         dispatchIntent(engine, 'sid', { t: MSG.MOVE, token: 2 });
         dispatchIntent(engine, 'sid', { t: MSG.LOBBY_KICK, seat: 1 });
+        const profileMsg = { t: MSG.LOBBY_PROFILE, name: 'Zed', seat: 3 };
+        dispatchIntent(engine, 'sid', profileMsg);
         dispatchIntent(engine, 'sid', { t: 'unknown' }); // no-op
 
         expect(engine.handleRoll).toHaveBeenCalledWith('sid');
         expect(engine.handleMove).toHaveBeenCalledWith('sid', 2);
         expect(engine.handleKick).toHaveBeenCalledWith('sid', 1);
+        expect(engine.handleProfile).toHaveBeenCalledWith('sid', profileMsg);
         expect(engine.handleStart).not.toHaveBeenCalled();
     });
 });

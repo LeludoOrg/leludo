@@ -3,7 +3,7 @@ import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.j
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/core/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/core/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/platform/nav-history.js";
-import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor} from "../scripts/net/net-client.js";
+import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor, setUsername, setOnlineColor} from "../scripts/net/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
 import {MSG} from "../scripts/net/net-protocol.js";
@@ -520,10 +520,18 @@ class QuickStart extends HTMLElement {
     // game (host), or run a per-seat host control. Seats mirror offline: 'human'
     // opens the chair for a player, 'bot' drops a bot in, 'empty' clears it, and
     // 'kick' removes a player who already joined (reopening the chair).
-    _onRoomIntent({ kind, action, seat }) {
+    _onRoomIntent({ kind, action, seat, name }) {
         if (kind === 'back' || kind === 'leave') { navBack(); return }
         if (kind === 'start') { this._net?.start(); return }
         if (kind === 'share') { this._shareRoom(); return }
+        if (kind === 'profile') {
+            // Player set their own name / colour in the lobby. Remember it for next
+            // time and forward to the server (it re-seats / renames authoritatively).
+            if (name != null) setUsername(name)
+            if (seat != null) setOnlineColor(seat)               // colour = chosen seat
+            this._net?.setProfile({ name, seat })
+            return
+        }
         if (kind === 'seat') {
             if (!this._net) return
             if (action === 'kick') this._net.kick(seat)

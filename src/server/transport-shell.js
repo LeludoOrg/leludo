@@ -83,6 +83,8 @@ export function dispatchIntent(engine, sessionId, msg) {
         case MSG.LOBBY_SEAT: engine.handleSetSeat(sessionId, msg.seat, msg.seatType); break;
         case MSG.LOBBY_KICK: engine.handleKick(sessionId, msg.seat); break;
         case MSG.LOBBY_START: engine.handleStart(sessionId); break;
+        // any seated player edits their own name / colour (open-seat move)
+        case MSG.LOBBY_PROFILE: engine.handleProfile(sessionId, msg); break;
         default: break;
     }
 }

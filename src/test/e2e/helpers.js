@@ -25,21 +25,25 @@ export async function startGame(page, query = '') {
 }
 
 /**
- * Open the online menu and enter a display name (required to play online).
+ * Open the online entry screen as a player called `name`.
  *
- * Superset of the three near-identical copies that used to live in
- * online-screens / online-hidden-tab / online-gameplay: honours an optional
- * query string on the initial navigation (used by the grace-window override in
- * online-gameplay).
+ * The display name is picked in the room lobby now, not on the entry screen, so
+ * we seed it as the remembered username before navigating: the connect carries
+ * it and the lobby pre-fills it. This keeps the many specs that just need "this
+ * player is called X" terse (and matches a returning player on a real device).
+ * Honours an optional query string on the initial navigation (used by the
+ * grace-window override in online-gameplay).
  *
  * @param {import('@playwright/test').Page} page
- * @param {string} name - display name to type into the online name field.
+ * @param {string} name - remembered display name for this player.
  * @param {string} [query] - optional query string (leading '?').
  */
 export async function openOnline(page, name, query = '') {
+    await page.addInitScript((n) => {
+        try { localStorage.setItem('leludo-username', n); } catch { /* storage blocked */ }
+    }, name);
     await page.goto(`/${query}`);
     await page.getByTestId('home-play-online').click();
-    await page.getByTestId('online-name').fill(name);
 }
 
 /**
