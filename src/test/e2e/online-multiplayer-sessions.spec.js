@@ -20,7 +20,7 @@ import { RECORDINGS_DIR } from '../../../tools/clear-recordings.mjs';
  * Scenarios cover: 2-human head-to-head, a full 4-human table (mixed join-by-code
  * + invite-link), host-vs-bots, host moderation (kick + refill), a session that
  * reaches the end screen via forfeit, and a non-deterministic fuzz loop that
- * randomises player count, colours, join methods and bot fills across games.
+ * randomises player count, join methods and bot fills across games.
  *
  * Server-authoritative lockstep (raw board equality) is already covered against
  * the debug harness in multiplayer.spec.js; here we assert the player-facing
@@ -62,10 +62,13 @@ async function makeUser(browser, { name }) {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
     const user = { ctx, page, name, errors, closed: false, video: page.video() };
 
-    // Home → Play online → enter name (saves username, enabling invite-link auto-join).
+    // Remember the name up front (picked in the lobby now, not on entry) so the
+    // connect carries it and invite-link auto-join works. Then Home → Play online.
+    await page.addInitScript((n) => {
+        try { localStorage.setItem('leludo-username', n); } catch { /* storage blocked */ }
+    }, name);
     await page.goto('/');
     await page.getByTestId('home-play-online').click();
-    await page.getByTestId('online-name').fill(name);
     return user;
 }
 
@@ -97,13 +100,14 @@ function assertNoErrors(users) {
 // ---------------------------------------------------------------------------
 // Lobby helpers.
 // ---------------------------------------------------------------------------
-async function createRoom(host, { color } = {}) {
-    if (color != null) await host.page.getByTestId(`online-color-${color}`).click();
+async function createRoom(host) {
     await host.page.getByTestId('online-create').click();
     await expect(host.page.getByTestId('online-room-code')).toBeVisible();
     const code = (await host.page.getByTestId('online-room-code').textContent())?.trim();
     expect(code).toMatch(/^[A-Z0-9]{4}$/);
     await expect(host.page.getByTestId('online-is-host')).toHaveText('true');
+    // The host always lands on seat 0 (colour picking isn't in the lobby for now).
+    await expect(host.page.getByTestId('online-seat-0')).toContainText('(you)');
     return code;
 }
 
@@ -119,6 +123,15 @@ async function joinByLink(user, code) {
     await user.page.goto(`/?join=${code}`);
     await expect(user.page.locator('wc-game-room')).toHaveCount(1);
     await expect(user.page.getByTestId('online-room-code')).toHaveText(code);
+}
+
+/** Assert every player shows in the host's lobby. The host's own name lives in
+ *  its editable seat input (a value, not text); everyone else's is static text. */
+async function expectAllSeated(host, users) {
+    for (const u of users) {
+        if (u === host) await expect(host.page.getByTestId('online-name')).toHaveValue(u.name);
+        else await expect(host.page.locator('.seat-list')).toContainText(u.name);
+    }
 }
 
 /** Index of the seat this client occupies (the row tagged "(you)"). */
@@ -201,8 +214,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const guest = await makeUser(browser, { name: 'Guesty' });
             users.push(host, guest);
 
-            const code = await createRoom(host, { color: 2 });
-            await expect(host.page.getByTestId('online-seat-2')).toContainText('(you)'); // host holds picked colour
+            const code = await createRoom(host);
 
             await joinByCode(guest, code);
             // Roles: host sees Start, guest waits; each sees the other in the lobby.
@@ -230,13 +242,13 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const g3 = await makeUser(browser, { name: 'Dax' });
             users.push(host, g1, g2, g3);
 
-            const code = await createRoom(host, { color: 0 });
+            const code = await createRoom(host);
             await joinByCode(g1, code);   // one joins by typing the code
             await joinByLink(g2, code);   // one taps a shared invite link
             await joinByCode(g3, code);
 
             // Host sees all four humans seated before starting.
-            for (const u of users) await expect(host.page.locator('.seat-list')).toContainText(u.name);
+            await expectAllSeated(host, users);
             // No open seats left → starting needs no bot fill; it's a 4-human table.
 
             await startAndMount(host, users);
@@ -255,7 +267,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const host = await makeUser(browser, { name: 'Solo' });
             users.push(host);
 
-            await createRoom(host, { color: 1 });
+            await createRoom(host);
             const bots = await fillOpenSeatsWithBots(host);
             expect(bots).toHaveLength(3); // 3 open seats → 3 bots
 
@@ -276,7 +288,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const guest = await makeUser(browser, { name: 'Leaver' });
             users.push(host, guest);
 
-            const code = await createRoom(host, {});
+            const code = await createRoom(host);
             await joinByCode(guest, code);
 
             // Find the guest's seat row and kick it.
@@ -311,9 +323,9 @@ test.describe('Online multiplayer — recorded sessions', () => {
             users.push(host, guest);
             await host.page.goto('/?grace=4000');
             await host.page.getByTestId('home-play-online').click();
-            await host.page.getByTestId('online-name').fill('Alice');
+            // Name already remembered by makeUser (carried via localStorage).
 
-            const code = await createRoom(host, {});
+            const code = await createRoom(host);
             await joinByCode(guest, code);
             await expect(host.page.locator('.seat-list')).toContainText('Bob');
 
@@ -336,21 +348,20 @@ test.describe('Online multiplayer — recorded sessions', () => {
     });
 
     // -----------------------------------------------------------------------
-    // Non-deterministic fuzz: a handful of games with randomised player count,
-    // host colour, join methods, and bot fills. Catches stalls/desyncs that only
-    // surface in odd seatings. Reproduce a failure by setting MP_FUZZ_SEED.
+    // Non-deterministic fuzz: a handful of games with randomised player count, join
+    // methods, and bot fills. Catches stalls/desyncs that only surface in odd
+    // seatings. Reproduce a failure by setting MP_FUZZ_SEED.
     // -----------------------------------------------------------------------
     for (let iter = 0; iter < 3; iter++) {
-        test(`fuzz session #${iter + 1}: random players / colours / join methods`, async ({ browser }, testInfo) => {
+        test(`fuzz session #${iter + 1}: random players / join methods`, async ({ browser }, testInfo) => {
             const baseSeed = process.env.MP_FUZZ_SEED
                 ? Number(process.env.MP_FUZZ_SEED) + iter
                 : (Date.now() ^ (iter * 0x9e3779b1)) >>> 0;
             const rng = mulberry32(baseSeed);
 
             const humanCount = rint(rng, 2, 4);
-            const hostColor = rint(rng, 0, 3);
             const names = [...NAME_POOL].sort(() => rng() - 0.5).slice(0, humanCount);
-            const plan = `seed=${baseSeed} humans=${humanCount} hostColor=${hostColor} names=${names.join(',')}`;
+            const plan = `seed=${baseSeed} humans=${humanCount} names=${names.join(',')}`;
             testInfo.annotations.push({ type: 'fuzz', description: plan });
 
             const scenario = `fuzz-${iter + 1}`;
@@ -358,7 +369,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
             try {
                 const host = await makeUser(browser, { name: names[0] });
                 users.push(host);
-                const code = await createRoom(host, { color: hostColor });
+                const code = await createRoom(host);
 
                 for (let i = 1; i < humanCount; i++) {
                     const guest = await makeUser(browser, { name: names[i] });
@@ -368,7 +379,7 @@ test.describe('Online multiplayer — recorded sessions', () => {
                     else await joinByCode(guest, code);
                 }
 
-                for (const u of users) await expect(host.page.locator('.seat-list')).toContainText(u.name);
+                await expectAllSeated(host, users);
                 await fillOpenSeatsWithBots(host); // any leftover seats → bots
                 await startAndMount(host, users);
                 await drivePlies(users, { minTurns: rint(rng, 4, 7) });

@@ -41,6 +41,14 @@ export const PHASES = Object.freeze({
 });
 
 const MIN_PLAYERS = 2;
+// Display-name cap — mirrors the client's online name `maxlength` so a lobby
+// rename can't smuggle a longer name past the input. Trim + clamp server-side.
+const NAME_MAX = 12;
+
+/** Trim a player-supplied display name and clamp it to NAME_MAX. */
+function sanitizeName(raw) {
+    return String(raw ?? '').trim().slice(0, NAME_MAX);
+}
 
 function cloneBoard(positions) {
     return positions.map(p => (p ? p.slice() : null));
@@ -323,6 +331,51 @@ export class RoomEngine {
         this._bootIfHuman(i); // notifies + reopens
         this._broadcastState(REASON.LOBBY);
         return { ok: true };
+    }
+
+    /**
+     * Any seated player: set their OWN display name and/or pick their colour by
+     * moving to an open seat (the seat index doubles as the colour). Lobby only.
+     * `name` and `seat` are both optional — the client sends `name` on a rename,
+     * `seat` on a colour tap. A colour move keeps the player's name, connection,
+     * and host-ness (the host is keyed by session, so it follows them to the new
+     * seat); the vacated chair reopens as a free human seat.
+     */
+    handleProfile(sessionId, { name, seat } = {}) {
+        let from = this._seatOf(sessionId);
+        if (from === -1) return this._reject(from, ERR.NOT_SEATED);
+        if (this.phase !== PHASES.LOBBY) return this._reject(from, ERR.NOT_IN_LOBBY);
+
+        if (name != null) this.seats[from].name = sanitizeName(name) || this.seats[from].name;
+
+        if (seat != null && seat !== from) {
+            const target = this.seats[seat];
+            if (!target || target.type !== 'PLAYER' || target.sessionId !== null) {
+                return this._reject(from, ERR.BAD_SEAT);
+            }
+            // Move: occupy the target, reopen the chair we left. Host-ness is keyed
+            // by session, so hostSession is unchanged and _hostSeat() follows us.
+            target.sessionId = sessionId;
+            target.name = this.seats[from].name;
+            target.connected = true;
+            target.personality = null;
+            const old = this.seats[from];
+            old.sessionId = null;
+            old.name = '';
+            old.connected = false;
+            old.personality = null;
+            from = seat;
+            // Tell the mover their new seat index so the client retints + tracks it.
+            this.transport.send(from, {
+                t: MSG.SEATED,
+                playerIndex: from,
+                isHost: this._isHost(sessionId),
+                roomId: this.roomId,
+            });
+        }
+
+        this._broadcastState(REASON.LOBBY);
+        return { ok: true, seat: from };
     }
 
     /** Host: start the game. Open human seats fill with bots. */

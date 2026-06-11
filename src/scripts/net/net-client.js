@@ -207,5 +207,10 @@ export class NetClient {
     kick(seat) { this.send({ t: MSG.LOBBY_KICK, seat }); }
     start() { this.send({ t: MSG.LOBBY_START }); }
 
+    // Any seated player: set their own name and/or colour (open-seat move) in the
+    // lobby. Sent on a name blur (`{name}`) or a colour tap (`{seat}`), not per
+    // keystroke, so it stays one message per deliberate edit.
+    setProfile({ name, seat } = {}) { this.send({ t: MSG.LOBBY_PROFILE, name, seat }); }
+
     close() { this._closedByUs = true; this.ws?.close(); }
 }

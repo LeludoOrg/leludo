@@ -98,3 +98,6 @@ wc-game-room .online-start-btn {
     justify-content: center;
     gap: 9px;
 }
+
+/* Your own seat row carries an inline editable name (the shared .seat-name-wrap
+   / .seat-name look from components/seat-list.css) — no extra rules needed. */

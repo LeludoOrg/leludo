@@ -23,6 +23,9 @@ export const MSG = Object.freeze({
     LOBBY_SEAT: 'lobby_seat',
     LOBBY_KICK: 'lobby_kick',
     LOBBY_START: 'lobby_start',
+    // a seated player sets their OWN name and/or colour (open-seat move) in the
+    // lobby — picked there now instead of on the Play Online setup screen.
+    LOBBY_PROFILE: 'lobby_profile',
     QUEUE_CANCEL: 'queue_cancel',
     // server → client broadcasts
     SEATED: 'seated',

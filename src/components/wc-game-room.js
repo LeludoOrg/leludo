@@ -1,6 +1,6 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
-import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE, ICON_USER, ICON_BOT, ICON_CLOSE } from "./wc-icons.js";
+import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE, ICON_USER, ICON_BOT, ICON_CLOSE, ICON_PENCIL } from "./wc-icons.js";
 
 // The "Game room" lobby: the room code to share, the live seat list, and (for
 // the host) Start + per-seat controls. It renders server state pushed in via
@@ -53,9 +53,32 @@ class GameRoom extends HTMLElement {
         el.querySelector('[data-testid="online-share"]').addEventListener("click", () => { playClickSound(); this._emit('share') })
         el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); this._emit('leave') })
 
-        // Host per-seat controls (human / bot / empty / kick) are delegated on
-        // the body so they survive renderLobby rewriting the seat list.
-        el.querySelector(".frame-body").addEventListener("click", (e) => {
+        // Your name lives on your own seat row (like the offline setup). Commit on
+        // blur / Enter — not per keystroke — so it's one message per edit; the
+        // server clamps + echoes it back via renderLobby. Delegated on the body so
+        // it survives renderLobby rewriting the seat list.
+        const body = el.querySelector(".frame-body")
+        body.addEventListener("change", (e) => {
+            const input = e.target.closest('.seat-name')
+            if (!input) return
+            const v = (input.value || '').trim()
+            if (v) this._emit('profile', { name: v })
+        })
+        body.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && e.target.closest('.seat-name')) { e.preventDefault(); e.target.blur() }
+        })
+        // Focus UI (mirrors the offline setup): editing your name tints your seat's
+        // underline in your colour, hides the pencil, and mutes the other seats.
+        body.addEventListener("focusin", (e) => {
+            if (e.target.closest('.seat-name')) this._setEditing(e.target, true)
+        })
+        body.addEventListener("focusout", (e) => {
+            if (e.target.closest('.seat-name')) this._setEditing(e.target, false)
+        })
+
+        // Host per-seat controls (human / bot / empty / kick) are delegated on the
+        // body too, so they survive renderLobby rewriting the seat list.
+        body.addEventListener("click", (e) => {
             const btn = e.target.closest("[data-action]")
             if (!btn) return
             playClickSound()
@@ -63,6 +86,24 @@ class GameRoom extends HTMLElement {
         })
 
         this.appendChild(el)
+    }
+
+    // Toggle the "editing your name" UI: tint your seat's underline in your colour
+    // + hide its pencil, and mute every other seat row. Mirrors the offline setup
+    // (wc-quick-start `_applyFocusUI`). Re-applied automatically when renderLobby
+    // restores focus after a state-push re-render.
+    _setEditing(input, on) {
+        const row = input.closest('.seat-row')
+        const wrap = input.closest('.seat-name-wrap')
+        if (wrap) {
+            // The input's caret colour is already its player colour — reuse it.
+            wrap.style.borderBottomColor = on ? input.style.caretColor : ''
+            wrap.style.borderBottomWidth = on ? '1.5px' : ''
+            wrap.querySelector('.seat-name-pencil')?.classList.toggle('hide-on-focus', on)
+        }
+        this.querySelectorAll('.seat-row, .seat-row-empty').forEach(r => {
+            r.style.opacity = on && r !== row ? '0.35' : ''
+        })
     }
 
     _emit(kind, detail = {}) {
@@ -94,6 +135,7 @@ class GameRoom extends HTMLElement {
         const isHost = state.hostSeat === mySeat && mySeat !== -1
         const startBtn = this.querySelector('[data-testid="online-start"]')
         if (startBtn) startBtn.hidden = !isHost || state.started
+
         const isHostEl = this.querySelector('[data-testid="online-is-host"]')
         if (isHostEl) isHostEl.textContent = String(isHost)
 
@@ -101,7 +143,22 @@ class GameRoom extends HTMLElement {
         const seats = (state.seats || []).slice().sort((a, b) => a.index - b.index)
         const seatList = this.querySelector('.seat-list')
         if (seatList) {
+            // Preserve an in-progress rename: the list is innerHTML-rewritten on
+            // every state push (another player joining/leaving), which would drop
+            // focus + the half-typed value of your own seat-name field. Capture,
+            // re-render, restore. Only your own seat renders an editable input, so
+            // there's at most one .seat-name to track.
+            const active = seatList.querySelector('.seat-name:focus')
+            const saved = active ? { value: active.value, start: active.selectionStart, end: active.selectionEnd } : null
             seatList.innerHTML = seats.map(s => this._seatRowHtml(s, mySeat, canEdit)).join('')
+            if (saved) {
+                const fresh = seatList.querySelector('.seat-name')
+                if (fresh) {
+                    fresh.value = saved.value
+                    fresh.focus()
+                    try { fresh.setSelectionRange(saved.start, saved.end) } catch { /* unsupported */ }
+                }
+            }
         }
 
         const startedEl = this.querySelector('[data-testid="online-started"]')
@@ -158,14 +215,15 @@ class GameRoom extends HTMLElement {
         // ---- Filled chair: Human (joined / open) or Bot. ----
         const isBot = s.type === 'BOT'
         const joined = s.claimed
+        const isMe = i === mySeat
         let name, status, controls = ''
         if (isBot) {
             name = s.name || `Bot ${i + 1}`
             status = 'Bot'
             if (editable) controls = `<div class="seat-pill">${half('human', ICON_USER, 'Human', false)}${half('bot', ICON_BOT, 'Bot', true)}</div>${removeBtn('empty', 'Empty seat')}`
         } else if (joined) {
-            name = (s.name || `Player ${i + 1}`) + (i === mySeat ? ' (you)' : '')
-            status = s.isHost ? 'Host' : 'Ready'
+            name = s.name || `Player ${i + 1}`
+            status = isMe ? `(you)${s.isHost ? ' · Host' : ''}` : (s.isHost ? 'Host' : 'Ready')
             // A live player can't be silently retyped — kick them first (reopens the chair).
             if (editable) controls = kickBtn()
         } else {
@@ -174,13 +232,21 @@ class GameRoom extends HTMLElement {
             if (editable) controls = `<div class="seat-pill">${half('human', ICON_USER, 'Human', true)}${half('bot', ICON_BOT, 'Bot', false)}</div>${removeBtn('empty', 'Empty seat')}`
         }
         const pawnDim = !isBot && !joined ? 'opacity:0.5;' : ''
+        // Your own seat carries an inline editable name (mirrors the offline setup);
+        // everyone else's name is static text. The rename commits on blur / Enter.
+        const nameHtml = (isMe && joined)
+            ? /*html*/ `<label class="seat-name-wrap">
+                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${escapeHtml(name)}" maxlength="12" spellcheck="false" placeholder="Your name" />
+                    <span class="seat-name-pencil">${ICON_PENCIL}</span>
+                </label>`
+            : `<div class="online-seat-name">${escapeHtml(name)}</div>`
         return /*html*/ `
             <div class="seat-row" data-testid="online-seat-${i}">
                 <div class="seat-color-cycle" style="background:${colorVar};${pawnDim}">
                     <div class="seat-pawn">${PAWN_SVG(i)}</div>
                 </div>
                 <div class="seat-body">
-                    <div class="online-seat-name">${escapeHtml(name)}</div>
+                    ${nameHtml}
                     <div class="seat-empty-sub">${status}</div>
                 </div>
                 ${controls}

@@ -27,60 +27,77 @@ test.describe('Home — offline / online split', () => {
     });
 
     // Initial release ships private rooms only — the "Find a public match" entry
-    // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The online menu
-    // is an identity + an entry point: your name centered as the hero, then the
-    // actions (join by code + Create) at the bottom. The Open/Bot seats live
-    // later in room mode, NOT here. It must NOT show the public entry.
-    test('online path offers the private-room seat setup only', async ({ page }) => {
+    // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The entry screen
+    // is join-first: a code field + "Join room" as the hero, then a quieter
+    // "Create a room" card. Name + colour are picked later, in the lobby — NOT
+    // here. It must NOT show the public entry.
+    test('online path offers the private-room join / create entry only', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
         await expect(page.getByTestId('online-public')).toHaveCount(0);      // public hidden for launch
-        await expect(page.getByTestId('online-create')).toBeVisible();        // create room (offered first)
-        await expect(page.getByTestId('online-join')).toBeVisible();          // join by code
-        await expect(page.getByTestId('online-setup-seat-0')).toBeVisible();  // your seat (name)
-        await expect(page.getByTestId('online-name')).toBeVisible();
-        await expect(page.getByTestId('online-create')).toBeVisible();        // create room
+        await expect(page.getByTestId('online-join')).toBeVisible();          // join by code (primary)
+        await expect(page.getByTestId('online-code-input')).toBeVisible();
+        await expect(page.getByTestId('online-create')).toBeVisible();        // create-a-room card
 
-        // No other seats / Open-Bot toggles on the setup screen — they belong to
-        // room mode now. Guards against reintroducing the seat picker here.
-        await expect(page.getByTestId('online-setup-seat-1')).toHaveCount(0);
-        await expect(page.getByTestId('online-setup-seat-1-bot')).toHaveCount(0);
+        // Identity moved to the lobby: no name field or colour picker on entry.
+        // Guards against reintroducing them here.
+        await expect(page.getByTestId('online-name')).toHaveCount(0);
+        await expect(page.getByTestId('online-color-picker')).toHaveCount(0);
+        await expect(page.getByTestId('online-setup-seat-0')).toHaveCount(0);
     });
 
-    // Layout mirrors home: the name is the centered hero up top, and the actions
-    // sit at the bottom — Create room, then a separator, then join-by-code.
-    // Guards the requested structure (name centered above; create + join with a
-    // divider between, bottom-aligned).
-    test('the setup screen centers the name above the create / join actions', async ({ page }) => {
+    // Join is the hero up top; "host your own" sits below — the code field above
+    // the "or host your own" divider, the Create card below it. Guards the
+    // requested join-first structure.
+    test('the entry screen puts join above the create card', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
 
-        const name = await page.getByTestId('online-name').boundingBox();
-        const create = await page.getByTestId('online-create').boundingBox();
-        const divider = await page.locator('.online-new-room-divider').boundingBox();
         const join = await page.getByTestId('online-code-input').boundingBox();
-        expect(name.y).toBeLessThan(create.y);     // name (hero) above the actions
-        expect(create.y).toBeLessThan(divider.y);  // Create room above the separator
-        expect(divider.y).toBeLessThan(join.y);    // separator above join
+        const divider = await page.locator('.online-host-divider').boundingBox();
+        const create = await page.getByTestId('online-create').boundingBox();
+        expect(join.y).toBeLessThan(divider.y);    // join hero above the separator
+        expect(divider.y).toBeLessThan(create.y);  // separator above the Create card
     });
 
-    // The colour picker requests a seat: the seat index doubles as the colour,
-    // so choosing colour 2 seats you at seat 2 in the room you create. Guards the
-    // pick → preferred-seat handoff end to end (client param → server seating).
-    test('the picked colour becomes your seat in the created room', async ({ page }) => {
-        await page.goto('/');
-        await page.getByTestId('home-play-online').click();
-        await page.getByTestId('online-name').fill('Hue');
-
-        await page.getByTestId('online-color-2').click();
-        await expect(page.getByTestId('online-color-2')).toHaveClass(/is-selected/);
-
+    // Your own seat carries an editable name inline (like the offline setup); your
+    // row is the one tagged "(you)". The host lands on seat 0.
+    test('your seat shows your name inline and is tagged (you)', async ({ page }) => {
+        await openOnline(page, 'Hue');
         await page.getByTestId('online-create').click();
-
         await expect(page.getByTestId('online-room-code')).toBeVisible();
-        // Seat 2 = the chosen colour; you (the host) hold it.
-        await expect(page.getByTestId('online-seat-2')).toContainText('Hue');
-        await expect(page.getByTestId('online-seat-2')).toContainText('(you)');
+
+        await expect(page.getByTestId('online-seat-0')).toContainText('(you)');
+        // The name is an editable input on your own row (not static text).
+        await expect(page.getByTestId('online-seat-0').getByTestId('online-name')).toHaveValue('Hue');
+    });
+
+    // Editing your name mirrors the offline setup's focus UI: your seat's underline
+    // tints to your colour, the pencil hides, and every OTHER seat is muted. All of
+    // it resets on blur.
+    test('editing your name tints your seat and mutes the others', async ({ page }) => {
+        await openOnline(page, 'Hue');
+        await page.getByTestId('online-create').click();
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+
+        const other = page.getByTestId('online-seat-1');
+        const wrap = page.getByTestId('online-seat-0').locator('.seat-name-wrap');
+        const pencil = wrap.locator('.seat-name-pencil');
+        const restColor = await wrap.evaluate(el => getComputedStyle(el).borderBottomColor);
+        await expect(other).toHaveCSS('opacity', '1');      // un-muted to start
+        await expect(pencil).toBeVisible();
+
+        await page.getByTestId('online-name').focus();
+        await expect(other).toHaveCSS('opacity', '0.35');   // other seats muted
+        await expect(page.getByTestId('online-seat-0')).toHaveCSS('opacity', '1'); // your row stays
+        await expect(pencil).toBeHidden();                  // pencil hides while editing
+        // Underline tints to your colour (≠ the resting border colour).
+        const focusColor = await wrap.evaluate(el => getComputedStyle(el).borderBottomColor);
+        expect(focusColor).not.toBe(restColor);
+
+        await page.getByTestId('online-name').blur();
+        await expect(other).toHaveCSS('opacity', '1');      // mute clears
+        await expect(pencil).toBeVisible();
     });
 
     test('back from the online menu returns home', async ({ page }) => {
@@ -96,9 +113,7 @@ test.describe('Home — offline / online split', () => {
     // Start). Creating a room navigates from the first to the second; back
     // returns to setup (not all the way home). Guards the split + its wiring.
     test('creating a room navigates from play-online to the game-room screen', async ({ page }) => {
-        await page.goto('/');
-        await page.getByTestId('home-play-online').click();
-        await page.getByTestId('online-name').fill('Hosty');
+        await openOnline(page, 'Hosty');
 
         // Setup screen: the play-online component, with join + no room code yet.
         await expect(page.locator('wc-play-online')).toHaveCount(1);
@@ -128,21 +143,34 @@ test.describe('Home — offline / online split', () => {
 });
 
 test.describe('Online — username', () => {
-    test('requires a name before going online', async ({ page }) => {
+    // No name is required on the entry screen anymore — you can create a room with
+    // no saved name and pick it in the lobby. Guards that create is never blocked.
+    test('creating a room no longer requires a name up front', async ({ page }) => {
         await page.goto('/');
         await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-name')).toHaveValue(''); // fresh device
         await page.getByTestId('online-create').click();
-        // Blocked: no room is created, a prompt is shown.
-        await expect(page.getByTestId('online-status')).toContainText(/name/i);
-        await expect(page.getByTestId('online-room-code')).toHaveCount(0);
+        // A room is created and the name field lives in the lobby now.
+        await expect(page.getByTestId('online-room-code')).toBeVisible();
+        await expect(page.getByTestId('online-name')).toBeVisible();
     });
 
-    test('remembers the name for next time', async ({ page }) => {
+    // The remembered name carries into the lobby; renaming there persists for the
+    // next room. Guards the name carry-through + lobby persistence.
+    test('remembers the name and lets you change it in the lobby', async ({ page }) => {
         await openOnline(page, 'Zelda');
-        await page.goBack(); // back home
-        await page.getByTestId('home-play-online').click();
-        await expect(page.getByTestId('online-name')).toHaveValue('Zelda');
+        await page.getByTestId('online-create').click();
+        await expect(page.getByTestId('online-name')).toHaveValue('Zelda'); // carried in
+
+        // Rename on your seat, then create a fresh room — the new name persists.
+        await page.getByTestId('online-name').fill('Link');
+        await page.getByTestId('online-name').blur();
+        // Server echoes the rename back onto your seat row's input.
+        await expect(page.getByTestId('online-name')).toHaveValue('Link');
+        await expect(page.getByTestId('online-seat-0')).toContainText('(you)');
+
+        await page.goBack(); // back to the entry screen
+        await page.getByTestId('online-create').click();
+        await expect(page.getByTestId('online-name')).toHaveValue('Link');
     });
 });
 
@@ -191,31 +219,27 @@ test.describe('Online lobby — create + join', () => {
         await ctxGuest.close();
     });
 
-    // The colour is the HOST's: only the room creator's pick is honoured. A
-    // joiner's pick is ignored — the server seats them in the next open seat,
-    // not their chosen colour. (Host takes colour 2; guest picks the free
-    // colour 1 but still lands in seat 0, the next open one.)
-    test('only the host picks a colour — a joiner is seated automatically', async ({ browser }) => {
+    // The host takes seat 0; a joiner is auto-seated diagonally opposite (seat 2).
+    // Each sees their own seat tagged "(you)" with an editable name inline.
+    test('a joiner is auto-seated diagonally opposite the host', async ({ browser }) => {
         const ctxHost = await browser.newContext();
         const ctxGuest = await browser.newContext();
         const host = await ctxHost.newPage();
         const guest = await ctxGuest.newPage();
 
-        // Host picks colour 2 and creates → host holds seat 2.
         await openOnline(host, 'Hosty');
-        await host.getByTestId('online-color-2').click();
         await host.getByTestId('online-create').click();
         const code = (await host.getByTestId('online-room-code').textContent())?.trim();
-        await expect(host.getByTestId('online-seat-2')).toContainText('(you)');
+        await expect(host.getByTestId('online-seat-0')).toContainText('(you)');
 
-        // Guest picks colour 1 (free) but JOINS → the pick is ignored; the guest
-        // is seated at the next open seat (0), NOT colour 1.
+        // Guest joins → auto-seated diagonally at seat 2 (not adjacent to the host).
         await openOnline(guest, 'Guesty');
-        await guest.getByTestId('online-color-1').click();
         await guest.getByTestId('online-code-input').fill(code);
         await guest.getByTestId('online-join').click();
-        await expect(guest.getByTestId('online-seat-0')).toContainText('(you)');
-        await expect(guest.getByTestId('online-seat-1')).not.toContainText('(you)');
+        await expect(guest.getByTestId('online-seat-2')).toContainText('(you)');
+        await expect(guest.getByTestId('online-seat-2').getByTestId('online-name')).toHaveValue('Guesty');
+        // Host sees the guest on seat 2 (as static text, not its own input).
+        await expect(host.getByTestId('online-seat-2')).toContainText('Guesty');
 
         await ctxHost.close();
         await ctxGuest.close();
@@ -330,13 +354,13 @@ test.describe('Online — invite links', () => {
     });
 
     // A brand-new visitor (no remembered name) opening an invite link lands on
-    // the setup screen with the code pre-filled, prompting for a name — one tap
-    // away from joining, without losing the link.
-    test('a shared invite link with no saved name prefills the code and asks for a name', async ({ page }) => {
+    // the entry screen with the code pre-filled, one tap from joining — name +
+    // colour are picked in the lobby afterwards, so it doesn't block on a name.
+    test('a shared invite link with no saved name prefills the code ready to join', async ({ page }) => {
         await page.goto('/?join=ABCD'); // ABCD is a valid room-code-alphabet code
         await expect(page.locator('wc-play-online')).toHaveCount(1);
         await expect(page.getByTestId('online-code-input')).toHaveValue('ABCD');
-        await expect(page.getByTestId('online-status')).toContainText(/name/i);
+        await expect(page.getByTestId('online-status')).toContainText(/join/i);
     });
 });
 

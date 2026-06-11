@@ -122,6 +122,62 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.handleJoin('a', 'A', 3)).toEqual({ ok: true, seat: 1 }); // reconnect → same seat
     });
 
+    // Name + colour are picked in the lobby now (not on the entry screen), via
+    // handleProfile. A rename sets your seat name; a colour pick moves you to that
+    // open seat (the seat index doubles as the colour).
+    describe('handleProfile (lobby name + colour)', () => {
+        it('renames your own seat, clamped to 12 chars', () => {
+            const { engine } = room(2);
+            engine.handleJoin('h', 'Host');
+            expect(engine.handleProfile('h', { name: '  Newby  ' })).toEqual({ ok: true, seat: 0 });
+            expect(engine.seats[0].name).toBe('Newby');                 // trimmed
+            engine.handleProfile('h', { name: 'x'.repeat(40) });
+            expect(engine.seats[0].name).toHaveLength(12);              // clamped
+        });
+
+        it('moves you to a free colour and reopens the chair you left', () => {
+            const { engine } = room(4);
+            engine.handleJoin('h', 'Host');                            // host at seat 0
+            expect(engine.handleProfile('h', { seat: 2 })).toEqual({ ok: true, seat: 2 });
+            expect(engine.seats[2].sessionId).toBe('h');               // moved in
+            expect(engine.seats[2].name).toBe('Host');                 // name follows
+            expect(engine.seats[0].sessionId).toBe(null);              // old chair reopened
+            expect(engine.seats[0].type).toBe('PLAYER');
+            // Host-ness is keyed by session, so it follows the move.
+            expect(engine.hostSession).toBe('h');
+            expect(engine._hostSeat()).toBe(2);
+        });
+
+        it('tells the mover their new seat index (a fresh SEATED frame)', () => {
+            const { fake, engine } = room(4);
+            engine.handleJoin('h', 'Host');
+            engine.handleProfile('h', { seat: 3 });
+            const seated = fake.sends.filter(s => s.msg.t === 'seated');
+            expect(seated.at(-1).msg.playerIndex).toBe(3);
+            expect(seated.at(-1).msg.isHost).toBe(true);
+        });
+
+        it('rejects moving onto a taken, bot, or closed colour', () => {
+            const { engine } = room(4);
+            engine.handleJoin('h', 'Host');                            // seat 0
+            engine.handleJoin('g', 'Guest', 2);                        // seat 2 (taken)
+            engine.handleSetSeat('h', 1, 'BOT');                       // seat 1 (bot)
+            expect(engine.handleProfile('g', { seat: 2 })).toEqual({ ok: true, seat: 2 }); // same seat = no-op move
+            expect(engine.handleProfile('g', { seat: 0 })).toEqual({ ok: false, error: 'BAD_SEAT' }); // host's seat
+            expect(engine.handleProfile('g', { seat: 1 })).toEqual({ ok: false, error: 'BAD_SEAT' }); // bot seat
+            expect(engine.handleProfile('g', { seat: 9 })).toEqual({ ok: false, error: 'BAD_SEAT' }); // out of range
+        });
+
+        it('rejects a profile change from an unseated session or once started', () => {
+            const { engine } = room(2);
+            expect(engine.handleProfile('nobody', { name: 'X' })).toEqual({ ok: false, error: 'NOT_SEATED' });
+            engine.handleJoin('h', 'Host');
+            engine.handleJoin('g', 'Guest');
+            engine.handleStart('h');
+            expect(engine.handleProfile('h', { name: 'X' })).toEqual({ ok: false, error: 'NOT_IN_LOBBY' });
+        });
+    });
+
     it('fills open human seats with bots on start', () => {
         const { engine } = room(3);     // 3 seats, only the host joins
         engine.handleJoin('h', 'Host');
