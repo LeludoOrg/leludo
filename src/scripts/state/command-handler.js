@@ -429,8 +429,11 @@ function netSyncState(cmd, emit) {
     // Re-derive the input affordances from the authoritative phase. This is
     // what un-sticks a client that reconnected mid-AWAIT_MOVE (it used to come
     // back stuck AWAITING_ROLL: its roll intents were rejected, the server
-    // waited for a move it could never send, and the whole room hung).
+    // waited for a move it could never send, and the whole room hung). A
+    // DROPPED frame can point currentPlayerIndex at the just-stripped seat for
+    // one frame — nothing to activate then; the follow-up frame re-arms.
     inactiveTokens();
+    if (!state.playerTypes[state.currentPlayerIndex]) return;
     if (state.phase === PHASES.AWAITING_SELECTION) {
         inactiveDice();
         for (const ti of state.movableTokenIndexes) {

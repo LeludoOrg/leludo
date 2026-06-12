@@ -676,11 +676,13 @@ export function inactiveTokens() {
 }
 
 export function activateDice() {
-    document.getElementById("wc-dice").dataset.active = "true"
+    const dice = document.getElementById("wc-dice");
+    if (dice) dice.dataset.active = "true";
 }
 
 export function inactiveDice() {
-    document.getElementById("wc-dice").dataset.active = "false"
+    const dice = document.getElementById("wc-dice");
+    if (dice) dice.dataset.active = "false";
 }
 
 export function showGame() {
@@ -860,6 +862,8 @@ export function updateCornerWidgets() {
     const dice = document.getElementById('wc-dice');
     if (dice && dice.parentElement) dice.parentElement.removeChild(dice);
 
+    let diceMounted = false;
+
     CORNER_CFG.forEach(({ anchor, layout }, idx) => {
         const el = document.getElementById(anchor);
         if (!el) return;
@@ -884,6 +888,7 @@ export function updateCornerWidgets() {
                 dice.style.cssText = 'width:100%;height:100%;';
                 dice.className = '';
                 diceBtn.appendChild(dice);
+                diceMounted = true;
             }
         } else {
             const lastRoll = _lastRollByPlayer[idx];
@@ -904,6 +909,16 @@ export function updateCornerWidgets() {
         }
         el.appendChild(wrap);
     });
+
+    // The dice landed in no corner (the current seat just forfeited — an online
+    // DROPPED frame can point currentPlayerIndex at the stripped seat for one
+    // frame). Park it back in its offscreen home: detaching it permanently
+    // would make every later getElementById('wc-dice') null and crash the
+    // frame pipeline that follows.
+    if (dice && !diceMounted) {
+        const home = document.getElementById('dice-home');
+        if (home) home.appendChild(dice);
+    }
 }
 
 // Single place the "Turn N" label is written — every counter mutation paints

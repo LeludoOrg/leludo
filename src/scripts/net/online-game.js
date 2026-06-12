@@ -27,7 +27,7 @@
 import { dispatch, subscribe, EVENTS } from '../state/game-store.js';
 import { COMMANDS } from '../state/command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
-import { setDimmedPlayers, clearPresence } from './net-overlay.js';
+import { setDimmedPlayers, clearPresence, showWaitingFor, hideWaitingBanner } from './net-overlay.js';
 import { MSG, REASON } from './net-protocol.js';
 
 let _started = false;
@@ -102,6 +102,24 @@ function updateDimming(state) {
 }
 
 /**
+ * Show/hide the "waiting for X to reconnect" banner from a snapshot. The
+ * server holds the game whenever the turn is on a disconnected human
+ * (state.waiting) — turns are never skipped — so every player should see who
+ * the game is blocked on and the countdown to that seat's forfeit.
+ */
+function updatePresence(state) {
+    updateDimming(state);
+    const held = state.waiting
+        ? (state.disconnects || []).find(d => d.index === state.currentPlayerIndex)
+        : null;
+    if (held && held.index !== onlineSeat()) {
+        showWaitingFor(held.name, held.remainingMs);
+    } else {
+        hideWaitingBanner();
+    }
+}
+
+/**
  * Map a server seat-indexed 4-slot array onto this client's local board
  * indexes. Per-token position VALUES are player-relative (0 = that seat's own
  * home-start), so only the player slot moves — exactly like buildSeatLayout.
@@ -157,7 +175,7 @@ async function applyFrame(msg) {
     const state = msg.state;
 
     if (msg.t === MSG.STATE) {
-        updateDimming(state);
+        updatePresence(state);
         if (isRollReason(msg.reason)) {
             await dispatch({ type: COMMANDS.NET_APPLY_ROLL, value: state.dice, animate });
         }
@@ -175,7 +193,7 @@ async function applyFrame(msg) {
             animate,
         });
     } else if (msg.t === MSG.DROPPED) {
-        if (state) updateDimming(state);
+        if (state) updatePresence(state);
         await dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) });
     } else if (msg.t === MSG.ENDED) {
         clearPresence();
