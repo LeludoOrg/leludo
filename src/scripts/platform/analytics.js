@@ -147,11 +147,10 @@ export function initAnalytics() {
     _enabled = true;
     _platformInfo = detectPlatform();
 
-    const s = document.createElement('script');
-    s.async = true;
-    s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
-    document.head.appendChild(s);
-
+    // Set up dataLayer + config synchronously so any screen/event fired
+    // during startup is buffered. Only the gtag.js *network* fetch is
+    // deferred (below) — it pulls in GA + GTM, ~3 third-party requests we
+    // don't want competing for bandwidth on the first-paint critical path.
     window.gtag = gtag;
     gtag('js', new Date());
     gtag('config', GA_MEASUREMENT_ID, {
@@ -159,6 +158,29 @@ export function initAnalytics() {
         ...baseParams(),
         transport_type: 'beacon',
     });
+
+    deferGtagScript();
+}
+
+/**
+ * Inject the gtag.js <script> once the page is idle (or loaded), off the
+ * first-paint critical path. dataLayer buffers any gtag() calls made before
+ * the script lands, so deferring the fetch loses no events.
+ */
+function deferGtagScript() {
+    const inject = () => {
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
+        document.head.appendChild(s);
+    };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(inject, { timeout: 3000 });
+    } else if (typeof document !== 'undefined' && document.readyState === 'complete') {
+        inject();
+    } else if (typeof window !== 'undefined') {
+        window.addEventListener('load', inject, { once: true });
+    }
 }
 
 export function trackScreen(name) {
