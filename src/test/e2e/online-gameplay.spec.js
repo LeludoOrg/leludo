@@ -93,6 +93,73 @@ test.describe('Online gameplay', () => {
         }, { timeout: 30_000, intervals: [400, 400, 400] }).toBeGreaterThan(4);
     });
 
+    // Regression: opening settings (or any pause surface) during an online game
+    // used to freeze the REPLAY, not the game — the server kept playing while
+    // the isGameLogicPaused() guards silently dropped every NET_APPLY_ROLL /
+    // NET_APPLY_MOVE frame. The player closed settings onto a stale board that
+    // stayed visibly wrong for a turn or more. Server frames are authoritative
+    // and must keep applying while paused; pause only blocks LOCAL input.
+    test('server frames keep applying while the game is paused (settings open)', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', e => errors.push(String(e)));
+
+        await openOnline(page, 'Pauser');
+        await page.getByTestId('online-create').click();
+        // All-bot opponents so the server generates turns continuously without
+        // any input from this client.
+        for (const i of [1, 2, 3]) await page.getByTestId(`online-seat-${i}-bot`).click();
+        await page.getByTestId('online-start').click();
+        await expect(page.locator('wc-board .board-grid')).toBeVisible();
+
+        // Wait for the game to flow past the host's first turn so the bots own
+        // the table (the host idling doesn't stall a bot-only rotation — their
+        // turns advance regardless of our input… except on our own turn).
+        const turnCount = () => page.evaluate(async () =>
+            (await import('/scripts/index.js')).state.turnCount);
+        const dice = page.locator('wc-dice');
+        await expect.poll(async () => {
+            await dice.click({ force: true }).catch(() => {});
+            const token = page.locator('wc-token .animate-bounce').first();
+            if (await token.count()) await token.click({ force: true }).catch(() => {});
+            return await turnCount();
+        }, { timeout: 20_000, intervals: [400, 400, 400] }).toBeGreaterThan(0);
+
+        // Pause exactly like the settings overlay does (wc-settings.openSettings
+        // → pauseGameLogic). If it lands on our own turn the bots are still
+        // queued behind us only until the server's pending frame drains, so move
+        // past our turn first by polling until it's NOT our seat's turn.
+        await expect.poll(() => page.evaluate(async () => {
+            const m = await import('/scripts/index.js');
+            return m.state.currentPlayerIndex;
+        }), { timeout: 20_000 }).not.toBe(2); // self always renders at board pos 2
+        await page.evaluate(async () => {
+            const m = await import('/scripts/index.js');
+            m.pauseGameLogic();
+        });
+
+        // THE assertion: while paused, server broadcasts must keep applying —
+        // the turn counter advances. Under the old replay-through-guards
+        // pipeline this froze (frames silently dropped) and only the positions
+        // snapped later, leaving the visible board wrong for a turn or more.
+        const before = await turnCount();
+        await expect.poll(turnCount, { timeout: 20_000 }).toBeGreaterThan(before + 1);
+
+        // Unpause (settings closed): the game continues without a hiccup.
+        await page.evaluate(async () => {
+            const m = await import('/scripts/index.js');
+            m.dispatch({ type: m.COMMANDS.RESUME });
+        });
+        const afterResume = await turnCount();
+        await expect.poll(async () => {
+            await dice.click({ force: true }).catch(() => {});
+            const token = page.locator('wc-token .animate-bounce').first();
+            if (await token.count()) await token.click({ force: true }).catch(() => {});
+            return await turnCount();
+        }, { timeout: 20_000, intervals: [400, 400, 400] }).toBeGreaterThan(afterResume);
+
+        expect(errors, `Page errors:\n${errors.join('\n')}`).toEqual([]);
+    });
+
     // Regression: when a human leaves mid-game their seat wasn't being handled —
     // the game stalled. Now the leaver is just DIMMED (no blocking overlay) and
     // the game plays on; once the (test-shortened) grace window elapses they

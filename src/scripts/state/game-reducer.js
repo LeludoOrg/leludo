@@ -37,10 +37,9 @@ export const EVENTS = Object.freeze({
     GAME_RESUMED_FROM_PAUSE: 'GAME_RESUMED_FROM_PAUSE',
     DICE_ROLL_STARTED: 'DICE_ROLL_STARTED',
     GOD_TELEPORTED: 'GOD_TELEPORTED',
-    NET_TURN_SYNCED: 'NET_TURN_SYNCED',
+    NET_STATE_SYNCED: 'NET_STATE_SYNCED',
     NET_PLAYER_DROPPED: 'NET_PLAYER_DROPPED',
     NET_GAME_ENDED: 'NET_GAME_ENDED',
-    NET_RECONCILED: 'NET_RECONCILED',
 });
 
 // Reset seat `i`'s per-game highlight-reel stats to their "nothing happened
@@ -259,16 +258,55 @@ export function reducer(state, event) {
             return state;
         }
 
-        // Online only: force currentPlayerIndex to the server's authority. The
-        // seat→board mapping is diagonal-first (not a pure rotation), so the
-        // local round-robin can pick a different next player than the server;
-        // this realigns it without bumping turnCount (the local advance already
-        // did, or the server is the source of truth either way).
-        case EVENTS.NET_TURN_SYNCED: {
-            state.currentPlayerIndex = event.playerIndex;
+        // Online only: fold the server's authoritative snapshot into local state.
+        // Applied UNCONDITIONALLY after every server frame — the server is the
+        // source of truth for the board, whose turn it is, the phase, the dice,
+        // which tokens are movable, captures and ranks. The local replay of the
+        // frame's delta (dice spin, pawn glide) is purely cosmetic; whatever it
+        // computed, this snapshot is the last word, so one dropped or drifted
+        // delta can never leave the client diverged past the frame that follows.
+        //
+        // All fields arrive pre-mapped to LOCAL board indexes (online-game maps
+        // server seats through toLocal before dispatching).
+        case EVENTS.NET_STATE_SYNCED: {
+            for (let i = 0; i < 4; i++) {
+                const active = event.playerTypes ? event.playerTypes[i] != null : state.playerTypes[i] != null;
+                if (!active) {
+                    // Seat inactive on the server (forfeited / never seated): make
+                    // sure it's inactive here too, even if the DROPPED frame that
+                    // announced it was missed while this client was offline.
+                    state.playerTypes[i] = undefined;
+                    state.playerTokenPositions[i] = undefined;
+                    state.botPersonalities[i] = null;
+                    continue;
+                }
+                if (event.playerTypes) state.playerTypes[i] = event.playerTypes[i];
+                if (event.positions && event.positions[i]) {
+                    state.playerTokenPositions[i] = event.positions[i].slice();
+                }
+                if (event.captures) state.playerCaptures[i] = event.captures[i] ?? 0;
+                if (event.ranks) state.playerRanks[i] = event.ranks[i] ?? 0;
+            }
+            if (event.ranks) {
+                state.lastRank = Math.max(0, ...state.playerRanks);
+                const winner = state.playerRanks.findIndex(r => r === 1);
+                if (winner !== -1) state.winnerIndex = winner;
+            }
+            if (event.currentPlayerIndex != null) state.currentPlayerIndex = event.currentPlayerIndex;
+            if (event.turnCount != null) state.turnCount = event.turnCount;
+            if (event.dice > 0) state.currentDiceRoll = event.dice;
+            // The server owns three-sixes detection; the local counter must never
+            // trigger a local turn decision online.
             state.consecutiveSixesCount = 0;
-            state.phase = PHASES.AWAITING_ROLL;
-            state.movableTokenIndexes = [];
+            // Server phase → local phase. 'ENDED' is deliberately NOT mapped here:
+            // the ENDED frame drives NET_GAME_ENDED, which owns that transition.
+            if (event.phase === 'AWAIT_ROLL') {
+                state.phase = PHASES.AWAITING_ROLL;
+                state.movableTokenIndexes = [];
+            } else if (event.phase === 'AWAIT_MOVE') {
+                state.phase = PHASES.AWAITING_SELECTION;
+                state.movableTokenIndexes = (event.legalMoves || []).slice();
+            }
             return state;
         }
 
@@ -281,25 +319,6 @@ export function reducer(state, event) {
             state.playerTokenPositions[i] = undefined;
             state.botPersonalities[i] = null;
             state.playerRanks[i] = 0;
-            return state;
-        }
-
-        // Online only: snap the local board back onto the server's authoritative
-        // positions. The client renders by REPLAYING the server's roll/move
-        // deltas, but it re-derives captures and never ingests the full snapshot
-        // the server stamps on every frame — so one dropped/throttled delta (a
-        // backgrounded tab, a 1s socket blip) leaves the board permanently
-        // diverged. Folding the snapshot back in after each delta keeps replay for
-        // the animation but makes the server the source of truth for the result.
-        // Only overwrites a seat both sides still consider active (activation
-        // changes flow through NET_PLAYER_DROPPED / NET_GAME_ENDED).
-        case EVENTS.NET_RECONCILED: {
-            for (let i = 0; i < 4; i++) {
-                const target = event.positions[i];
-                if (target && state.playerTokenPositions[i]) {
-                    state.playerTokenPositions[i] = target.slice();
-                }
-            }
             return state;
         }
 

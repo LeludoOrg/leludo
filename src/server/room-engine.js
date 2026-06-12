@@ -50,6 +50,18 @@ function sanitizeName(raw) {
     return String(raw ?? '').trim().slice(0, NAME_MAX);
 }
 
+/**
+ * Validate a client-supplied seat index to a real 0..3 integer, or -1. Seat
+ * indexes arrive raw off the wire and are used to index `this.seats` — a
+ * non-integer key like "__proto__" would otherwise reach `this.seats[i]`
+ * (which resolves to Array.prototype!) and let a hostile frame write onto the
+ * prototype via _fillBot/_openSeat. Never index seats with an unchecked value.
+ */
+function asSeatIndex(raw) {
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isInteger(n) && n >= 0 && n < 4 ? n : -1;
+}
+
 function cloneBoard(positions) {
     return positions.map(p => (p ? p.slice() : null));
 }
@@ -159,6 +171,17 @@ export class RoomEngine {
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
         this.legalMoves = [];
+        // Monotonic frame counter stamped on every broadcast. WebSocket delivery
+        // is ordered per socket, but a session can briefly hold TWO sockets (a
+        // reconnect racing a zombie connection) — the client uses `seq` to drop
+        // duplicate/stale frames instead of replaying them out of order.
+        this.seq = 0;
+    }
+
+    /** Broadcast a frame to the room, stamped with the next sequence number. */
+    _broadcast(frame) {
+        frame.seq = ++this.seq;
+        this.transport.broadcast(frame);
     }
 
     // ---- seat helpers -------------------------------------------------------
@@ -299,9 +322,10 @@ export class RoomEngine {
      * Host: set seat `i` to 'PLAYER' (open human seat), 'BOT', or 'CLOSED'.
      * Replacing a connected human boots them (a kick).
      */
-    handleSetSeat(sessionId, i, type) {
+    handleSetSeat(sessionId, rawSeat, type) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
+        const i = asSeatIndex(rawSeat);
         const seat = this.seats[i];
         if (!seat) return this._reject(this._seatOf(sessionId), ERR.BAD_SEAT);
         if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_CHANGE_HOST);
@@ -322,9 +346,10 @@ export class RoomEngine {
     }
 
     /** Host: remove the human in seat `i` (back to an open seat). */
-    handleKick(sessionId, i) {
+    handleKick(sessionId, rawSeat) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
+        const i = asSeatIndex(rawSeat);
         const seat = this.seats[i];
         if (!seat || seat.type !== 'PLAYER' || !seat.sessionId) return this._reject(this._seatOf(sessionId), ERR.NOTHING_TO_KICK);
         if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_KICK_HOST);
@@ -349,6 +374,7 @@ export class RoomEngine {
         if (name != null) this.seats[from].name = sanitizeName(name) || this.seats[from].name;
 
         if (seat != null && seat !== from) {
+            seat = asSeatIndex(seat);
             const target = this.seats[seat];
             if (!target || target.type !== 'PLAYER' || target.sessionId !== null) {
                 return this._reject(from, ERR.BAD_SEAT);
@@ -602,7 +628,7 @@ export class RoomEngine {
         s.name = '';
 
         // Tell clients to clear this player's pawns from the board.
-        this.transport.broadcast({ t: MSG.DROPPED, seat, state: this._publicState() });
+        this._broadcast({ t: MSG.DROPPED, seat, state: this._publicState() });
 
         // Only one human (or one participant) left → the match is over.
         if (this._seatedActiveHumans().length <= 1 || this._activeInGameSeats().length <= 1) {
@@ -733,7 +759,7 @@ export class RoomEngine {
             }
         }
 
-        this.transport.broadcast({
+        this._broadcast({
             t: MSG.MOVED,
             p: pi,
             token: tokenIndex,
@@ -778,7 +804,7 @@ export class RoomEngine {
         this.waiting = false;
         if (this.started) this._rankLeftovers();
         this.phase = PHASES.ENDED;
-        this.transport.broadcast({ t: MSG.ENDED, reason, ranks: this.ranks.slice(), state: this._publicState() });
+        this._broadcast({ t: MSG.ENDED, reason, ranks: this.ranks.slice(), state: this._publicState() });
         this.transport.release?.();
     }
 
@@ -838,6 +864,6 @@ export class RoomEngine {
     }
 
     _broadcastState(reason) {
-        this.transport.broadcast({ t: MSG.STATE, reason, state: this._publicState() });
+        this._broadcast({ t: MSG.STATE, reason, state: this._publicState() });
     }
 }

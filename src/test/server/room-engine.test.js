@@ -593,3 +593,36 @@ describe('RoomEngine — disconnect grace', () => {
         expect(engine.handleRoll('h')).toMatchObject({ ok: true });
     });
 });
+
+describe('RoomEngine — frame sequencing + input hardening', () => {
+    it('stamps a strictly increasing seq on every broadcast frame', () => {
+        // Clients use seq to drop duplicate/stale frames when a reconnect races
+        // a zombie socket — without it the same frame can replay twice.
+        const { fake, engine } = room(2);
+        engine.handleJoin('h', 'Host');
+        engine.handleJoin('g', 'Guest');
+        engine.handleStart('h');
+        engine.rng = () => 0.7; // a 5: normal roll, no six
+        engine.handleRoll('h');
+
+        const seqs = fake.broadcasts.map(b => b.seq);
+        expect(seqs.every(s => Number.isInteger(s) && s > 0)).toBe(true);
+        for (let i = 1; i < seqs.length; i++) expect(seqs[i]).toBeGreaterThan(seqs[i - 1]);
+    });
+
+    it('rejects a non-integer seat index instead of touching Array.prototype', () => {
+        // "__proto__" as an array index resolves to Array.prototype — an
+        // unchecked handleSetSeat would let a hostile lobby frame write bot
+        // fields onto EVERY array in the isolate (prototype pollution).
+        const { engine } = room(2);
+        engine.handleJoin('h', 'Host');
+        expect(engine.handleSetSeat('h', '__proto__', 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+        expect(Array.prototype.type).toBeUndefined();
+        expect([].type).toBeUndefined();
+        expect(engine.handleKick('h', '__proto__')).toEqual({ ok: false, error: 'NOTHING_TO_KICK' });
+        expect(engine.handleProfile('h', { seat: '__proto__' })).toEqual({ ok: false, error: 'BAD_SEAT' });
+        // Fractional / out-of-range indexes are rejected the same way.
+        expect(engine.handleSetSeat('h', 1.5, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+        expect(engine.handleSetSeat('h', 7, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+    });
+});
