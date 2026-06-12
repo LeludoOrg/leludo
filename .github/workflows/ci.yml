@@ -106,3 +106,18 @@ jobs:
           test -f www/components/wc-board.js
           test -d www/scripts
           test -d www/assets
+          # Production bundle artifacts (build-www.mjs): single JS bundle +
+          # split CSS. Guards the first-load optimization from silent regress.
+          test -f www/app.js
+          test -f www/game.css
+          # index.html must reference the bundle, inline critical CSS, and
+          # load game.css non-blocking — not the raw per-module shell.
+          grep -q '<script type="module" src="app.js">' www/index.html
+          grep -q "game.css\" media=\"print\"" www/index.html
+          grep -q '<style>' www/index.html
+          ! grep -q 'src="components/index.js"' www/index.html
+          ! grep -q 'href="components/wc-board.css"' www/index.html
+          # sw.js precaches the bundles, not the per-module files.
+          grep -q "'app.js'" www/sw.js
+          grep -q "'game.css'" www/sw.js
+          ! grep -q "'components/wc-board.js'" www/sw.js
