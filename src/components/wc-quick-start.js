@@ -551,7 +551,8 @@ class QuickStart extends HTMLElement {
         const view = document.createElement('wc-game-room')
         this.appendChild(view)
         view.setCode(code)
-        view.setStatus('Connecting…')
+        // The room mounts in its own connecting state (skeleton seats + a
+        // "Connecting you to the host…" line); no status line needed here.
         view.addEventListener('room-intent', (e) => this._onRoomIntent(e.detail))
         this._gameRoom = view
         return view
@@ -730,6 +731,7 @@ class QuickStart extends HTMLElement {
                 if (this._net !== client || isOnlineGameStarted()) return
                 // Surface a dead/unreachable server instead of spinning forever
                 // on "Finding players…". Both setters no-op off their screen.
+                this._gameRoom?.setConnecting(false)
                 this._setLobbyStatus('Disconnected from the server.')
                 this._setSearchStatus('Couldn’t reach the server. Check your connection and try again.')
             },

@@ -26,8 +26,12 @@ class GameRoom extends HTMLElement {
 
                 <div class="frame-body online-room-body">
                     <div class="online-room-banner">
-                        <span class="section-label">Room code</span>
+                        <span class="section-label" data-testid="online-room-eyebrow">Room code</span>
                         <div class="online-code-display" data-testid="online-room-code"></div>
+                        <div class="online-connecting" data-testid="online-connecting">
+                            <span class="online-connecting-dot"></span>
+                            <span>Connecting you to the host…</span>
+                        </div>
                         <p class="online-room-share" data-testid="online-lobby-hint">Share the invite so friends can tap to join.</p>
                         <button class="online-share-btn cta-secondary" data-testid="online-share">${ICON_SHARE}<span>Share invite</span></button>
                     </div>
@@ -86,6 +90,37 @@ class GameRoom extends HTMLElement {
         })
 
         this.appendChild(el)
+        // Mount straight into the "connecting" state: shimmering seat skeletons +
+        // a "Connecting you to the host…" line until the first lobby STATE lands.
+        this.setConnecting(true)
+    }
+
+    // Toggle the pre-lobby connecting state. While on: the banner reads "Joining
+    // room", the share invite line/button hide (nothing to share yet), and the
+    // seat-list shows shimmering skeleton rows (count mirrors the four chairs a
+    // room can hold). renderLobby/onBusy flip it off once real state arrives.
+    setConnecting(on) {
+        this.classList.toggle('is-connecting', on)
+        const eyebrow = this.querySelector('[data-testid="online-room-eyebrow"]')
+        if (eyebrow) eyebrow.textContent = on ? 'Joining room' : 'Room code'
+        if (on) {
+            this.setStatus('')
+            const seatList = this.querySelector('.seat-list')
+            if (seatList) seatList.innerHTML = Array.from({ length: 4 }, () => this._seatSkeletonHtml()).join('')
+        }
+    }
+
+    // One shimmering placeholder row, matching the real seat-row geometry (44px
+    // colour chip + name/status lines). Pure decoration — hidden from a11y.
+    _seatSkeletonHtml() {
+        return /*html*/ `
+            <div class="seat-row seat-skeleton" aria-hidden="true">
+                <div class="skeleton-block skeleton-chip"></div>
+                <div class="seat-body">
+                    <div class="skeleton-block skeleton-line skeleton-line-name"></div>
+                    <div class="skeleton-block skeleton-line skeleton-line-sub"></div>
+                </div>
+            </div>`
     }
 
     // Toggle the "editing your name" UI: tint your seat's underline in your colour
@@ -122,6 +157,9 @@ class GameRoom extends HTMLElement {
 
     /** Servers are busy: surface it and make sure the room reads "not started". */
     onBusy() {
+        this.setConnecting(false)
+        const seatList = this.querySelector('.seat-list')
+        if (seatList) seatList.innerHTML = ''
         this.setStatus('Servers are busy right now — please try again in a few minutes.')
         const startedEl = this.querySelector('[data-testid="online-started"]')
         if (startedEl) startedEl.textContent = 'false'
@@ -132,6 +170,8 @@ class GameRoom extends HTMLElement {
     // Bot) so the host can configure each one. `mySeat` is this client's server
     // seat index (-1 until seated).
     renderLobby(state, mySeat) {
+        // First real state ends the connecting/skeleton phase.
+        this.setConnecting(false)
         const isHost = state.hostSeat === mySeat && mySeat !== -1
         const startBtn = this.querySelector('[data-testid="online-start"]')
         if (startBtn) startBtn.hidden = !isHost || state.started
