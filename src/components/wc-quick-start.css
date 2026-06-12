@@ -198,10 +198,11 @@ wc-quick-start .home-mode-toggle {
     -webkit-backdrop-filter: blur(8px);
 }
 
-/* Frosted chip that slides behind the active segment. Built on --color-surface
-   (the raised-card color) so it lifts off the track identically in both themes:
-   a pale glass pill in light mode, a smoked glass pill in dark. The inset top
-   highlight is the glass sheen; the soft shadow is the lift. */
+/* Frosted chip that slides behind the active segment. Built on
+   --color-surface-hover (the "raised surface" token) so the same rule lifts a
+   fixed step above the track in BOTH themes — a pale glass pill in light, an
+   equally-raised lighter pill in dark — same material, same elevation language.
+   The inset top highlight is the glass sheen; the soft shadow is the lift. */
 wc-quick-start .home-mode-thumb {
     position: absolute;
     top: 4px;
@@ -209,7 +210,7 @@ wc-quick-start .home-mode-thumb {
     left: 4px;
     width: calc(50% - 4px);
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    background: color-mix(in srgb, var(--color-surface-hover) 85%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
     box-shadow:
         0 2px 6px rgb(var(--shadow-tint) / 0.18),
