@@ -192,17 +192,14 @@ wc-quick-start .home-mode-toggle {
     height: 48px;
     padding: 4px;
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-fg) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
 }
 
-/* Frosted chip that slides behind the active segment. Built on
-   --color-surface-hover (the "raised surface" token) so the same rule lifts a
-   fixed step above the track in BOTH themes — a pale glass pill in light, an
-   equally-raised lighter pill in dark — same material, same elevation language.
-   The inset top highlight is the glass sheen; the soft shadow is the lift. */
+/* Sliding thumb behind the active segment. The fill is a translucent fg tint,
+   so it reads as a raised chip in both themes. Light mode uses a touch lighter
+   tint than dark (9% vs 12%) so the chip sits a hair brighter on the pale
+   track; the .dark override below keeps the original, slightly stronger fill. */
 wc-quick-start .home-mode-thumb {
     position: absolute;
     top: 4px;
@@ -210,14 +207,13 @@ wc-quick-start .home-mode-thumb {
     left: 4px;
     width: calc(50% - 4px);
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-hover) 85%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
-    box-shadow:
-        0 2px 6px rgb(var(--shadow-tint) / 0.18),
-        inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--color-fg) 9%, transparent);
+    box-shadow: 0 1px 3px rgb(var(--shadow-tint) / 0.25);
     transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark wc-quick-start .home-mode-thumb {
+    background: color-mix(in srgb, var(--color-fg) 12%, transparent);
 }
 
 wc-quick-start .home-mode-toggle[data-mode="online"] .home-mode-thumb {
