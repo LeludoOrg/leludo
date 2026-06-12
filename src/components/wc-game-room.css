@@ -29,6 +29,91 @@ wc-game-room .online-room-share {
     max-width: 280px;
 }
 
+/* ---- Connecting state (pre-lobby) -----------------------------------------
+   Until the first room STATE lands the lobby can't be configured or shared, so
+   the banner reads "Joining room", the share line/button hide, and the seats
+   render as shimmering skeletons. Toggled by the `is-connecting` class on the
+   host element (set/cleared in wc-game-room.setConnecting). */
+
+/* The connecting line shows only while connecting; the share hint/button only
+   once connected. */
+wc-game-room .online-connecting { display: none; }
+wc-game-room.is-connecting .online-connecting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    font-size: 13px;
+    opacity: 0.6;
+    margin-top: var(--space-1);
+}
+wc-game-room.is-connecting .online-room-share,
+wc-game-room.is-connecting .online-share-btn { display: none; }
+
+wc-game-room .online-connecting-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+    animation: connecting-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes connecting-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50%      { opacity: 1;    transform: scale(1); }
+}
+
+/* Skeleton seat rows — match the real .seat-row geometry (44px chip + two text
+   lines) so the layout doesn't jump when real seats replace them. */
+wc-game-room .seat-skeleton {
+    pointer-events: none;
+}
+
+wc-game-room .skeleton-block {
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--color-fg) 8%, transparent) 25%,
+        color-mix(in srgb, var(--color-fg) 18%, transparent) 37%,
+        color-mix(in srgb, var(--color-fg) 8%, transparent) 63%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+wc-game-room .skeleton-chip {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+}
+
+wc-game-room .skeleton-line {
+    height: 11px;
+    border-radius: var(--radius-pill);
+}
+
+wc-game-room .skeleton-line-name { width: 55%; }
+wc-game-room .skeleton-line-sub  { width: 32%; margin-top: 8px; }
+
+/* Stagger the four rows so the shimmer doesn't sweep in lock-step. */
+wc-game-room .seat-skeleton:nth-child(2) .skeleton-line-name { width: 68%; }
+wc-game-room .seat-skeleton:nth-child(3) .skeleton-line-name { width: 47%; }
+wc-game-room .seat-skeleton:nth-child(4) .skeleton-line-name { width: 60%; }
+wc-game-room .seat-skeleton:nth-child(2) .skeleton-block { animation-delay: 0.12s; }
+wc-game-room .seat-skeleton:nth-child(3) .skeleton-block { animation-delay: 0.24s; }
+wc-game-room .seat-skeleton:nth-child(4) .skeleton-block { animation-delay: 0.36s; }
+
+@keyframes skeleton-shimmer {
+    0%   { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-game-room .skeleton-block,
+    wc-game-room .online-connecting-dot { animation: none; }
+}
+
 /* Invite share button — fires the OS share sheet (or copies the link). Sized to
    its content and centered under the code, not a full-width CTA. */
 wc-game-room .online-share-btn {
