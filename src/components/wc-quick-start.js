@@ -338,6 +338,7 @@ class QuickStart extends HTMLElement {
 
                 <div class="frame-footer">
                     <button class="start-btn cta-primary">Start game</button>
+                    <p class="home-cta-sub">Pass the phone around on this device</p>
                 </div>
             </div>
         `
