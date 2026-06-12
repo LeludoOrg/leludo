@@ -500,35 +500,74 @@ describe('RoomEngine — active-seat predicates', () => {
         expect(configured()._disconnectedActiveHumans()).toEqual([1]);
     });
 
-    it('_isDisconnectedHuman / _anyoneCanAct track those same seats', () => {
+    it('_isDisconnectedHuman tracks those same seats', () => {
         const engine = configured();
         expect(engine._isDisconnectedHuman(1)).toBe(true);
         expect(engine._isDisconnectedHuman(0)).toBe(false); // connected
         expect(engine._isDisconnectedHuman(2)).toBe(false); // finished
-        expect(engine._anyoneCanAct()).toBe(true);          // seat 0 is live
-
-        // Knock the only live human's link out: now nobody can act.
-        engine.seats[0].connected = false;
-        expect(engine._anyoneCanAct()).toBe(false);
     });
 });
 
 describe('RoomEngine — disconnect grace', () => {
-    it('skips the current player when they drop so the others keep playing', () => {
+    it('HOLDS the game when the current player drops — their turn is never skipped', () => {
         const { fake, engine } = gameWith(['h', 'g']);
         expect(engine.currentPlayerIndex).toBe(0); // host's turn
 
         engine.handleDisconnect('h'); // current player vanishes
-        expect(engine.waiting).toBe(false);          // not stalled
-        expect(engine.currentPlayerIndex).toBe(1);   // turn passed to the guest
+        expect(engine.waiting).toBe(true);           // game held, not skipped
+        expect(engine.currentPlayerIndex).toBe(0);   // still the host's turn
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
 
         const last = [...fake.broadcasts].reverse().find(b => b.t === 'state');
-        expect(last.state).not.toHaveProperty('frozen'); // no freeze concept anymore
+        expect(last.state.waiting).toBe(true);       // clients show the banner
         expect(last.state.disconnects.map(d => d.index)).toEqual([0]); // host dimmed
         expect(last.state.disconnects[0].remainingMs).toBe(30_000);
 
-        // The connected guest can take their turn right away.
+        // The other player CANNOT play through the hold.
+        expect(engine.handleRoll('g')).toEqual({ ok: false, error: 'NOT_YOUR_TURN' });
+
+        // Reconnect lifts the hold and the held turn resumes with its owner.
+        engine.handleJoin('h', 'Host');
+        expect(engine.waiting).toBe(false);
+        const reconnect = [...fake.broadcasts].reverse().find(b => b.t === 'state');
+        expect(reconnect.state.waiting).toBe(false); // banner lifts in the same frame
+        expect(engine.handleRoll('h')).toMatchObject({ ok: true });
+    });
+
+    it('holds mid-AWAIT_MOVE and resumes the SAME move selection on reconnect', () => {
+        const { engine } = gameWith(['h', 'g']);
+        engine.rng = () => 0.85; // a six: all four yard tokens become movable
+        engine.handleRoll('h');
+        expect(engine.phase).toBe(PHASES.AWAIT_MOVE);
+        const legal = engine.legalMoves.slice();
+
+        engine.handleDisconnect('h'); // drops while choosing a token
+        expect(engine.waiting).toBe(true);
+        expect(engine.phase).toBe(PHASES.AWAIT_MOVE);   // roll preserved, not reset
+        expect(engine.currentDiceRoll).toBe(6);
+        expect(engine.legalMoves).toEqual(legal);
+
+        engine.handleJoin('h', 'Host'); // back — same turn, same pending move
+        expect(engine.waiting).toBe(false);
+        expect(engine.handleMove('h', legal[0])).toMatchObject({ ok: true });
+    });
+
+    it('holds when the rotation REACHES a disconnected player (no skip mid-rotation)', () => {
+        const { fake, engine } = gameWith(['h', 'g']);
+        engine.handleDisconnect('g'); // not their turn yet — game flows on
+        expect(engine.waiting).toBe(false);
+
+        engine.rng = () => 0.7; // a five: every pawn is in the yard → no move
+        engine.handleRoll('h'); // host's turn passes to the guest… who is gone
+        expect(engine.currentPlayerIndex).toBe(1);
+        expect(engine.waiting).toBe(true);            // held on the guest's turn
+        const last = [...fake.broadcasts].reverse().find(b => b.t === 'state');
+        expect(last.reason).toBe('waiting');
+        expect(last.state.waiting).toBe(true);
+
+        // Guest reconnects: the hold lifts and it is THEIR turn.
+        engine.handleJoin('g', 'Guest');
+        expect(engine.waiting).toBe(false);
         expect(engine.handleRoll('g')).toMatchObject({ ok: true });
     });
 
@@ -568,28 +607,84 @@ describe('RoomEngine — disconnect grace', () => {
         expect(engine.phase).toBe(PHASES.ENDED);
     });
 
-    it('forfeits a dropped player but keeps a 3-player game running', () => {
+    it('forfeit of the held player hands the turn on and the 3-player game continues', () => {
         const { engine, clock } = gameWith(['h', 'g', 'k']);
         expect(engine.currentPlayerIndex).toBe(0);
-        engine.handleDisconnect('h'); // current player drops → skipped immediately
-        expect(engine.currentPlayerIndex).not.toBe(0);
+        engine.handleDisconnect('h'); // current player drops → game HOLDS on them
+        expect(engine.currentPlayerIndex).toBe(0); // not skipped
+        expect(engine.waiting).toBe(true);
         clock.fireAll();              // grace elapses → forfeit
 
         expect(engine.phase).not.toBe(PHASES.ENDED); // two humans remain
         expect(engine.positions[0]).toBeNull();       // forfeited
+        expect(engine.currentPlayerIndex).not.toBe(0); // NOW the turn moves on
         expect(engine.waiting).toBe(false);
     });
 
-    it('holds only when every active player is disconnected, then resumes on reconnect', () => {
-        const { engine } = gameWith(['h', 'g']);
-        engine.handleDisconnect('h'); // → turn passes to g
-        engine.handleDisconnect('g'); // now nobody can act
+    it('a non-current forfeit does not steal the turn the game is holding for', () => {
+        const { engine } = gameWith(['h', 'g', 'k']);
+        engine.handleDisconnect('h'); // current → game held on h
+        engine.handleDisconnect('g'); // not current — counting down in parallel
         expect(engine.waiting).toBe(true);
-        expect(engine.phase).toBe(PHASES.AWAIT_ROLL); // held
+        expect(engine.currentPlayerIndex).toBe(0);
 
-        engine.handleJoin('h', 'Host'); // someone's back
+        const gSeat = engine._seatOf('g');
+        engine._dropSeat(gSeat); // g's grace expires first
+        expect(engine.playerTypes[gSeat]).toBeUndefined(); // g forfeited
+        expect(engine.currentPlayerIndex).toBe(0);         // still held on h's turn
+        expect(engine.waiting).toBe(true);
+
+        engine.handleJoin('h', 'Host'); // h back → their held turn resumes
         expect(engine.waiting).toBe(false);
-        expect(engine.currentPlayerIndex).toBe(0);     // resumes on the live player
         expect(engine.handleRoll('h')).toMatchObject({ ok: true });
+    });
+
+    it('a different player reconnecting does not lift a hold on someone else', () => {
+        const { engine } = gameWith(['h', 'g']);
+        engine.handleDisconnect('h'); // held on h's turn
+        engine.handleDisconnect('g'); // g drops too
+        expect(engine.waiting).toBe(true);
+        expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
+
+        engine.handleJoin('g', 'Guest'); // g is back — but the game waits on h
+        expect(engine.waiting).toBe(true);
+        expect(engine.handleRoll('g')).toEqual({ ok: false, error: 'NOT_YOUR_TURN' });
+
+        engine.handleJoin('h', 'Host'); // the held player returns
+        expect(engine.waiting).toBe(false);
+        expect(engine.handleRoll('h')).toMatchObject({ ok: true });
+    });
+});
+
+describe('RoomEngine — frame sequencing + input hardening', () => {
+    it('stamps a strictly increasing seq on every broadcast frame', () => {
+        // Clients use seq to drop duplicate/stale frames when a reconnect races
+        // a zombie socket — without it the same frame can replay twice.
+        const { fake, engine } = room(2);
+        engine.handleJoin('h', 'Host');
+        engine.handleJoin('g', 'Guest');
+        engine.handleStart('h');
+        engine.rng = () => 0.7; // a 5: normal roll, no six
+        engine.handleRoll('h');
+
+        const seqs = fake.broadcasts.map(b => b.seq);
+        expect(seqs.every(s => Number.isInteger(s) && s > 0)).toBe(true);
+        for (let i = 1; i < seqs.length; i++) expect(seqs[i]).toBeGreaterThan(seqs[i - 1]);
+    });
+
+    it('rejects a non-integer seat index instead of touching Array.prototype', () => {
+        // "__proto__" as an array index resolves to Array.prototype — an
+        // unchecked handleSetSeat would let a hostile lobby frame write bot
+        // fields onto EVERY array in the isolate (prototype pollution).
+        const { engine } = room(2);
+        engine.handleJoin('h', 'Host');
+        expect(engine.handleSetSeat('h', '__proto__', 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+        expect(Array.prototype.type).toBeUndefined();
+        expect([].type).toBeUndefined();
+        expect(engine.handleKick('h', '__proto__')).toEqual({ ok: false, error: 'NOTHING_TO_KICK' });
+        expect(engine.handleProfile('h', { seat: '__proto__' })).toEqual({ ok: false, error: 'BAD_SEAT' });
+        // Fractional / out-of-range indexes are rejected the same way.
+        expect(engine.handleSetSeat('h', 1.5, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+        expect(engine.handleSetSeat('h', 7, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
     });
 });

@@ -9,6 +9,9 @@ import { playCaptureSound } from '../render/audio.js';
 
 export function installAudioListener() {
     subscribe((event) => {
-        if (event.type === EVENTS.TOKEN_CAPTURED) playCaptureSound();
+        // `silent` marks captures replayed during an online catch-up burst (a
+        // backlog of frames after a hidden tab / reconnect) — state applies but
+        // a machine-gun of capture sounds would be noise, not feedback.
+        if (event.type === EVENTS.TOKEN_CAPTURED && !event.silent) playCaptureSound();
     });
 }

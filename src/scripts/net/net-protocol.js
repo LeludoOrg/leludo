@@ -1,8 +1,14 @@
 /**
  * Single source of truth for the multiplayer wire protocol.
  *
- * Every socket frame is `{ t, ... }`. These enums name every `t` value, every
- * `reason` code, and every rejection/error code that crosses the wire. They are
+ * Every socket frame is `{ t, ... }`. Broadcast frames (state / moved /
+ * dropped / ended) also carry `seq`, a per-room monotonic counter stamped by
+ * the RoomEngine — clients drop frames whose seq they have already applied
+ * (duplicate delivery via a zombie socket racing a reconnect) and skip
+ * animations while replaying a backlog (only the newest frame animates).
+ *
+ * These enums name every `t` value, every `reason` code, and every
+ * rejection/error code that crosses the wire. They are
  * imported by the browser client (net-client, online-game, wc-quick-start), the
  * Node dev server (local-server), the runtime-agnostic engine (room-engine,
  * matchmaker, admission), and the Cloudflare Durable Objects (room-do, match-do,

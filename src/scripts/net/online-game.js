@@ -1,26 +1,44 @@
 /**
  * Online game driver — bridges server broadcasts to the local board renderer.
  *
- * The local game engine is deterministic given (positions, dice, tokenIndex),
- * so online play reuses it wholesale: we inject only the server's authoritative
- * dice value (NET_APPLY_ROLL) and token choice (NET_APPLY_MOVE) and let the
- * normal command/event pipeline animate the move, resolve captures, advance the
- * turn, rank players and mount the end screen — exactly as in a local game.
- * Local authority (RNG, bot autoplay, the human's own taps) is suppressed or
- * rerouted to the server (see command-handler + bot-listener + online-state).
+ * THE MODEL: the server is authoritative for everything; the client is a
+ * projector. Every broadcast frame carries the room's full snapshot (positions,
+ * phase, whose turn, dice, legal moves, captures, ranks) plus the delta that
+ * produced it (the dice value rolled, the token moved, the pawns captured).
+ * For each frame the driver:
  *
- * Messages are processed through a promise queue so each roll's animation
- * finishes before the following move renders, even when the server sends a
- * roll + forced move back-to-back.
+ *   1. plays the delta as a cosmetic animation (dice spin, pawn glide, capture
+ *      flight) driven ONLY by the frame payload — nothing is re-derived from
+ *      the local board, and no local guard (pause, phase, movability) may drop
+ *      it; the server already validated the action, and
+ *   2. applies the snapshot unconditionally (NET_SYNC_STATE) — the last word.
+ *
+ * So even if an animation step goes sideways, every frame converges the client
+ * onto the server's exact state; drift can never outlive the frame it started
+ * in. Frames are processed through a serial promise queue so animations play
+ * in order; `seq` (stamped by the server) drops duplicate/stale frames, and a
+ * backlog (hidden tab, reconnect catch-up) replays state-only — just the
+ * newest frame animates.
+ *
+ * Local authority (RNG, bot autoplay, turn decisions, the human's own taps) is
+ * suppressed or rerouted to the server (see command-handler + bot-listener +
+ * online-state).
  */
 import { dispatch, subscribe, EVENTS } from '../state/game-store.js';
 import { COMMANDS } from '../state/command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
-import { setDimmedPlayers, clearPresence } from './net-overlay.js';
+import { setDimmedPlayers, clearPresence, showWaitingFor, hideWaitingBanner } from './net-overlay.js';
 import { MSG, REASON } from './net-protocol.js';
 
 let _started = false;
 let _chain = Promise.resolve();
+// Highest seq applied (frames at or below it are duplicates) and the highest
+// seq RECEIVED (a queued frame below it is a backlog entry → skip animation).
+let _appliedSeq = 0;
+let _newestSeq = 0;
+// The newest state-bearing frame, kept so a REJECTED intent can re-apply the
+// authoritative snapshot immediately instead of waiting for the next broadcast.
+let _lastState = null;
 
 function enqueue(makeStep) {
     _chain = _chain.then(makeStep).catch(e => console.error('[online] step failed', e));
@@ -60,10 +78,13 @@ export function buildSeatLayout(net, seat, state) {
 }
 
 /** Hand off from the lobby: mount the board from the first started snapshot. */
-export function startOnlineGame({ net, seat, state }) {
+export function startOnlineGame({ net, seat, state, seq }) {
     const layout = buildSeatLayout(net, seat, state);
     _started = true;
     _chain = Promise.resolve();
+    _appliedSeq = seq || 0;
+    _newestSeq = seq || 0;
+    _lastState = state;
 
     enqueue(() => dispatch({
         type: COMMANDS.NET_START_GAME,
@@ -81,28 +102,33 @@ function updateDimming(state) {
 }
 
 /**
- * Map the server's seat-indexed board onto this client's local board indexes.
- * The per-token position VALUES are player-relative (0 = that seat's own
- * home-start), so they're identical across the remap — only the player slot
- * moves, exactly like buildSeatLayout. Returns a 4-slot array (undefined for
- * empty seats) suitable for NET_RECONCILE.
+ * Show/hide the "waiting for X to reconnect" banner from a snapshot. The
+ * server holds the game whenever the turn is on a disconnected human
+ * (state.waiting) — turns are never skipped — so every player should see who
+ * the game is blocked on and the countdown to that seat's forfeit.
  */
-function positionsToLocal(positions) {
-    const local = new Array(4).fill(undefined);
-    if (!Array.isArray(positions)) return local;
-    for (let s = 0; s < 4; s++) {
-        if (positions[s]) local[toLocal(s)] = positions[s].slice();
+function updatePresence(state) {
+    updateDimming(state);
+    const held = state.waiting
+        ? (state.disconnects || []).find(d => d.index === state.currentPlayerIndex)
+        : null;
+    if (held && held.index !== onlineSeat()) {
+        showWaitingFor(held.name, held.remainingMs);
+    } else {
+        hideWaitingBanner();
     }
-    return local;
 }
 
 /**
- * Fold the server's authoritative board snapshot back into the local render.
- * Enqueued AFTER the frame's delta so it runs once the move animation settles;
- * a no-op unless the replay drifted (see netReconcile in command-handler).
+ * Map a server seat-indexed 4-slot array onto this client's local board
+ * indexes. Per-token position VALUES are player-relative (0 = that seat's own
+ * home-start), so only the player slot moves — exactly like buildSeatLayout.
  */
-function reconcile(state) {
-    enqueue(() => dispatch({ type: COMMANDS.NET_RECONCILE, positions: positionsToLocal(state.positions) }));
+function seatsToLocal(arr, mapValue = (v) => v) {
+    const local = new Array(4).fill(undefined);
+    if (!Array.isArray(arr)) return local;
+    for (let s = 0; s < 4; s++) local[toLocal(s)] = mapValue(arr[s]);
+    return local;
 }
 
 /** Map the server's seat-indexed ranks onto local board positions. */
@@ -118,57 +144,107 @@ function ranksToLocal(ranks) {
     return { local, winnerIndex };
 }
 
+/** Build the NET_SYNC_STATE command for a server snapshot, mapped to local. */
+function syncCommand(state) {
+    return {
+        type: COMMANDS.NET_SYNC_STATE,
+        positions: seatsToLocal(state.positions, p => (p ? p.slice() : undefined)),
+        playerTypes: seatsToLocal(state.playerTypes, t => t ?? undefined),
+        currentPlayerIndex: toLocal(state.currentPlayerIndex),
+        turnCount: state.turn,
+        dice: state.dice,
+        phase: state.phase,
+        legalMoves: state.legalMoves, // token indexes are per-player: no remap
+        captures: seatsToLocal(state.captures, c => c ?? 0),
+        ranks: seatsToLocal(state.ranks, r => r ?? 0),
+    };
+}
+
+/** A roll happened iff the broadcast carries a freshly-resolved dice value. */
+function isRollReason(reason) {
+    return reason === REASON.ROLLED || reason === REASON.NO_MOVE || reason === REASON.THREE_SIXES;
+}
+
+/**
+ * One frame, start to finish: cosmetic delta first, authoritative snapshot
+ * last. `animate` is false when a newer frame has already arrived (backlog
+ * catch-up after a hidden tab or a reconnect) — state applies, visuals snap.
+ */
+async function applyFrame(msg) {
+    const animate = msg.seq == null || msg.seq >= _newestSeq;
+    const state = msg.state;
+
+    if (msg.t === MSG.STATE) {
+        updatePresence(state);
+        if (isRollReason(msg.reason)) {
+            await dispatch({ type: COMMANDS.NET_APPLY_ROLL, value: state.dice, animate });
+        }
+    } else if (msg.t === MSG.MOVED) {
+        await dispatch({
+            type: COMMANDS.NET_APPLY_MOVE,
+            playerIndex: toLocal(msg.p),
+            tokenIndex: msg.token,
+            fromPosition: msg.from,
+            toPosition: msg.to,
+            captures: (msg.caps || []).map(c => ({
+                playerIndex: toLocal(c.playerIndex),
+                tokenIndex: c.tokenIndex,
+            })),
+            animate,
+        });
+    } else if (msg.t === MSG.DROPPED) {
+        if (state) updatePresence(state);
+        await dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) });
+    } else if (msg.t === MSG.ENDED) {
+        clearPresence();
+    }
+
+    // The snapshot is the last word on EVERY frame — positions, phase, turn,
+    // dice, movable tokens. Whatever the delta animation replayed (or skipped:
+    // a pause, a guard, an animation error), the client lands on server truth.
+    if (state) await dispatch(syncCommand(state));
+
+    if (msg.t === MSG.ENDED) {
+        // The end frame may be the client's ONLY notice of the finish (the final
+        // `moved` can be lost to a socket blip). The snapshot above already
+        // snapped the board; this mounts the end screen with the server's ranks.
+        const { local, winnerIndex } = ranksToLocal(msg.ranks);
+        await dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex });
+    }
+}
+
 /** Feed a server broadcast into the renderer. */
 export function handleOnlineMessage(msg) {
     if (!_started) return;
-    if (msg.t === MSG.STATE) {
-        if (!msg.state.started) return;
-        // Dim opponents who are mid-reconnect (the game plays on without them).
-        updateDimming(msg.state);
-        // The server is authoritative for whose turn it is AND for the turn
-        // number. The seat→board mapping is diagonal-first (not a pure rotation),
-        // so the local engine's own round-robin can drift from the server's —
-        // re-sync currentPlayerIndex (and the "Turn N" count, which a client's own
-        // replay would otherwise undercount on a missed turn) from every broadcast.
-        enqueue(() => dispatch({
-            type: COMMANDS.NET_SYNC_TURN,
-            playerIndex: toLocal(msg.state.currentPlayerIndex),
-            turnCount: msg.state.turn,
-        }));
-        // A roll happened iff the broadcast carries a fresh dice result.
-        if (msg.reason === REASON.ROLLED || msg.reason === REASON.NO_MOVE || msg.reason === REASON.THREE_SIXES) {
-            const value = msg.state.dice;
-            enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_ROLL, value }));
+    switch (msg.t) {
+        case MSG.STATE:
+            if (!msg.state?.started) return;
+            // falls through
+        case MSG.MOVED:
+        case MSG.DROPPED:
+        case MSG.ENDED: {
+            // Drop duplicates/stale frames (zombie socket racing a reconnect).
+            if (msg.seq != null) {
+                if (msg.seq <= _appliedSeq) return;
+                _appliedSeq = msg.seq;
+                _newestSeq = Math.max(_newestSeq, msg.seq);
+            }
+            if (msg.state) _lastState = msg.state;
+            enqueue(() => applyFrame(msg));
+            break;
         }
-        // Snap to the authoritative board. Critical on reason=RECONNECT, whose
-        // snapshot is the ONLY catch-up for the `moved` frames missed while the
-        // socket was down — but harmless (and self-healing) on every frame.
-        reconcile(msg.state);
-    } else if (msg.t === MSG.MOVED) {
-        enqueue(() => dispatch({ type: COMMANDS.NET_APPLY_MOVE, playerIndex: toLocal(msg.p), tokenIndex: msg.token }));
-        // The move's captures are re-derived locally from this client's board, so
-        // any prior drift makes the wrong pawns go home (or none). Reconcile to the
-        // server's post-move positions — which already reflect its authoritative
-        // captures — so the result converges even when the replay diverged.
-        reconcile(msg.state);
-    } else if (msg.t === MSG.DROPPED) {
-        // A player's reconnect window elapsed: pull their pawns off the board.
-        if (msg.state) updateDimming(msg.state);
-        enqueue(() => dispatch({ type: COMMANDS.NET_DROP_PLAYER, playerIndex: toLocal(msg.seat) }));
-    } else if (msg.t === MSG.ENDED) {
-        // The game is over. A disconnect end has no finishing move; a finish end
-        // does — but the client may have MISSED that final `moved` frame (a 1s
-        // socket blip, a swallowed animation error, an rAF wedge at that instant),
-        // leaving it one step short and stuck in AWAITING_* with the wrong board.
-        // The ENDED frame is the last word and carries the authoritative positions
-        // + ranks for EVERY reason, so reconcile to that board AND drive the end
-        // screen unconditionally. Both NET_RECONCILE and NET_END no-op once the
-        // client already reached GAME_ENDED, so a client that DID replay the finish
-        // is left untouched (no double mount); only a desynced client is corrected.
-        clearPresence();
-        if (msg.state) reconcile(msg.state);
-        const { local, winnerIndex } = ranksToLocal(msg.ranks);
-        enqueue(() => dispatch({ type: COMMANDS.NET_END, playerRanks: local, winnerIndex }));
+        case MSG.REJECTED: {
+            // The server refused one of OUR intents — the local view that made
+            // the intent look legal is off. Re-apply the newest snapshot so the
+            // phase/turn/affordances self-heal now, not a turn later.
+            if (_lastState) {
+                const snap = _lastState;
+                enqueue(() => dispatch(syncCommand(snap)));
+            }
+            break;
+        }
+        default:
+            break;
     }
 }
 
@@ -179,6 +255,7 @@ export function isOnlineGameStarted() {
 function stopOnlineGame() {
     if (!_started) return;
     _started = false;
+    _lastState = null;
     clearPresence();
     try { onlineNet()?.close(); } catch { /* ignore */ }
     clearOnline();

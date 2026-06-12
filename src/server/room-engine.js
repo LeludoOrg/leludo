@@ -50,6 +50,18 @@ function sanitizeName(raw) {
     return String(raw ?? '').trim().slice(0, NAME_MAX);
 }
 
+/**
+ * Validate a client-supplied seat index to a real 0..3 integer, or -1. Seat
+ * indexes arrive raw off the wire and are used to index `this.seats` — a
+ * non-integer key like "__proto__" would otherwise reach `this.seats[i]`
+ * (which resolves to Array.prototype!) and let a hostile frame write onto the
+ * prototype via _fillBot/_openSeat. Never index seats with an unchecked value.
+ */
+function asSeatIndex(raw) {
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isInteger(n) && n >= 0 && n < 4 ? n : -1;
+}
+
 function cloneBoard(positions) {
     return positions.map(p => (p ? p.slice() : null));
 }
@@ -105,19 +117,20 @@ export class RoomEngine {
         this.autoStart = !!opts.autoStart;
 
         // ---- disconnect grace ----
-        // When an in-game human drops, their turns are SKIPPED so the others keep
-        // playing, and that seat gets a reconnect window. Reconnect in time →
-        // they rejoin the rotation; else the seat forfeits (pawns removed), or
-        // the game ends if one human is left. Timers/clock are injectable so unit
-        // tests can drive them deterministically (and a Cloudflare DO can swap
-        // setTimeout for alarms).
+        // When an in-game human drops, the game HOLDS at their turn: play
+        // continues only until the rotation reaches them (or stops immediately
+        // if it was already their turn), then waits. A turn is never skipped —
+        // the hold lifts when they reconnect (resuming the turn exactly where
+        // it stopped, mid-AWAIT_MOVE included) or when the grace window
+        // forfeits the seat (pawns removed, game flows on; ends if one human
+        // is left). Timers/clock are injectable so unit tests can drive them
+        // deterministically (and a Cloudflare DO can swap setTimeout for alarms).
         this.graceMs = opts.graceMs ?? 30_000;
         this.setTimer = opts.setTimer || ((fn, ms) => setTimeout(fn, ms));
         this.clearTimer = opts.clearTimer || ((h) => clearTimeout(h));
         this.now = opts.now || (() => Date.now());
-        // True only in the rare case where EVERY active player is a disconnected
-        // human, so there's no one to hand the turn to — held until a reconnect
-        // or forfeit. Normal disconnects don't stall the game.
+        // True while the game is held on a disconnected human's turn. Exposed
+        // in the public snapshot so clients show the "waiting for X" banner.
         this.waiting = false;
 
         // ---- lobby seat model ----
@@ -159,6 +172,17 @@ export class RoomEngine {
         this.ranks = [0, 0, 0, 0];
         this.lastRank = 0;
         this.legalMoves = [];
+        // Monotonic frame counter stamped on every broadcast. WebSocket delivery
+        // is ordered per socket, but a session can briefly hold TWO sockets (a
+        // reconnect racing a zombie connection) — the client uses `seq` to drop
+        // duplicate/stale frames instead of replaying them out of order.
+        this.seq = 0;
+    }
+
+    /** Broadcast a frame to the room, stamped with the next sequence number. */
+    _broadcast(frame) {
+        frame.seq = ++this.seq;
+        this.transport.broadcast(frame);
     }
 
     // ---- seat helpers -------------------------------------------------------
@@ -254,12 +278,20 @@ export class RoomEngine {
             roomId: this.roomId,
         });
 
-        // Reconnecting into a live game: cancel the forfeit timer, un-dim them on
-        // clients, and resume play if the game was held waiting on a disconnect.
+        // Reconnecting into a live game: cancel the forfeit timer and un-dim
+        // them on clients. If the game was held on this player's turn, the hold
+        // lifts and the turn resumes EXACTLY where it stopped — phase, dice and
+        // legal moves were preserved, so a mid-AWAIT_MOVE drop comes back still
+        // awaiting that same move (no _beginTurn, which would reset the roll).
+        // A different still-disconnected human keeps the game held. waiting is
+        // cleared BEFORE the broadcast so the same frame lifts every client's
+        // waiting banner.
         if (this.started && this.phase !== PHASES.ENDED) {
             this._clearGrace(seat);
+            if (this.waiting && !this._isDisconnectedHuman(this.currentPlayerIndex)) {
+                this.waiting = false;
+            }
             this._broadcastState(REASON.RECONNECT);
-            if (this.waiting) { this.waiting = false; this._beginTurn(); }
             return { ok: true, seat };
         }
 
@@ -299,9 +331,10 @@ export class RoomEngine {
      * Host: set seat `i` to 'PLAYER' (open human seat), 'BOT', or 'CLOSED'.
      * Replacing a connected human boots them (a kick).
      */
-    handleSetSeat(sessionId, i, type) {
+    handleSetSeat(sessionId, rawSeat, type) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
+        const i = asSeatIndex(rawSeat);
         const seat = this.seats[i];
         if (!seat) return this._reject(this._seatOf(sessionId), ERR.BAD_SEAT);
         if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_CHANGE_HOST);
@@ -322,9 +355,10 @@ export class RoomEngine {
     }
 
     /** Host: remove the human in seat `i` (back to an open seat). */
-    handleKick(sessionId, i) {
+    handleKick(sessionId, rawSeat) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
+        const i = asSeatIndex(rawSeat);
         const seat = this.seats[i];
         if (!seat || seat.type !== 'PLAYER' || !seat.sessionId) return this._reject(this._seatOf(sessionId), ERR.NOTHING_TO_KICK);
         if (seat.sessionId === this.hostSession) return this._reject(this._seatOf(sessionId), ERR.CANT_KICK_HOST);
@@ -349,6 +383,7 @@ export class RoomEngine {
         if (name != null) this.seats[from].name = sanitizeName(name) || this.seats[from].name;
 
         if (seat != null && seat !== from) {
+            seat = asSeatIndex(seat);
             const target = this.seats[seat];
             if (!target || target.type !== 'PLAYER' || target.sessionId !== null) {
                 return this._reject(from, ERR.BAD_SEAT);
@@ -501,13 +536,14 @@ export class RoomEngine {
             return;
         }
 
-        // Active human dropped mid-game: start their reconnect countdown and let
-        // the game flow on. Clients dim them; their turns get skipped until they
-        // reconnect or the timer forfeits them.
+        // Active human dropped mid-game: start their reconnect countdown.
+        // Clients dim them. If it was their turn, HOLD the game right here —
+        // phase, dice and legal moves intact, so a reconnect resumes the turn
+        // exactly where it stopped (even mid-AWAIT_MOVE). The turn is never
+        // handed to the next player unless the grace window forfeits the seat.
         this._startGrace(seat);
+        if (seat === this.currentPlayerIndex) this.waiting = true;
         this._broadcastState(REASON.DISCONNECT);
-        // If it was their turn, pass it straight away so nobody waits on them.
-        if (seat === this.currentPlayerIndex) this._advanceTurn();
     }
 
     // ---- seat predicates ----------------------------------------------------
@@ -570,14 +606,6 @@ export class RoomEngine {
         return this._isActiveHuman(i) && !this.seats[i].connected;
     }
 
-    /** Is there any active seat that can take a turn right now (bot or live human)? */
-    _anyoneCanAct() {
-        return this._seatsWhere(i =>
-            this._isActiveInGameSeat(i) && !isPlayerFinished(this.positions[i])
-            && (this.playerTypes[i] === 'BOT' || this.seats[i].connected)
-        ).length > 0;
-    }
-
     /** Reconnect window elapsed: forfeit the seat (remove pawns) and continue. */
     _dropSeat(seat) {
         if (this.phase === PHASES.ENDED) return;
@@ -602,16 +630,19 @@ export class RoomEngine {
         s.name = '';
 
         // Tell clients to clear this player's pawns from the board.
-        this.transport.broadcast({ t: MSG.DROPPED, seat, state: this._publicState() });
+        this._broadcast({ t: MSG.DROPPED, seat, state: this._publicState() });
 
         // Only one human (or one participant) left → the match is over.
         if (this._seatedActiveHumans().length <= 1 || this._activeInGameSeats().length <= 1) {
             return this._end(REASON.OPPONENT_LEFT);
         }
 
-        // If the game was held on this seat (everyone was disconnected) or it was
-        // simply their turn, advance — _beginTurn re-evaluates who can act next.
-        if (wasCurrent || this.waiting) this._advanceTurn();
+        // The game only ever holds on the CURRENT player; if the forfeited seat
+        // is the one it was held on (or it was simply their turn), advance —
+        // _beginTurn re-evaluates and re-holds if the next player is also down.
+        // A non-current forfeit must NOT advance: that would skip the turn the
+        // game is still holding for someone else.
+        if (wasCurrent) this._advanceTurn();
     }
 
     // ---- in-game intents ----------------------------------------------------
@@ -640,11 +671,11 @@ export class RoomEngine {
 
     _beginTurn() {
         if (this.phase === PHASES.ENDED) return;
-        // Skip a disconnected human's turn so the others keep playing. If NOBODY
-        // can act (every active player is a disconnected human), hold the turn
-        // until someone reconnects or forfeits — otherwise we'd loop forever.
+        // The rotation reached a disconnected human: HOLD here until they
+        // reconnect or the grace window forfeits them. Their turn is never
+        // skipped — a broken link must block the game, not cost the player
+        // their turns while they scramble to get back.
         if (this._isDisconnectedHuman(this.currentPlayerIndex)) {
-            if (this._anyoneCanAct()) return this._advanceTurn();
             this.waiting = true;
             this.phase = PHASES.AWAIT_ROLL;
             this.currentDiceRoll = 0;
@@ -733,7 +764,7 @@ export class RoomEngine {
             }
         }
 
-        this.transport.broadcast({
+        this._broadcast({
             t: MSG.MOVED,
             p: pi,
             token: tokenIndex,
@@ -778,7 +809,7 @@ export class RoomEngine {
         this.waiting = false;
         if (this.started) this._rankLeftovers();
         this.phase = PHASES.ENDED;
-        this.transport.broadcast({ t: MSG.ENDED, reason, ranks: this.ranks.slice(), state: this._publicState() });
+        this._broadcast({ t: MSG.ENDED, reason, ranks: this.ranks.slice(), state: this._publicState() });
         this.transport.release?.();
     }
 
@@ -813,6 +844,9 @@ export class RoomEngine {
                 name: this.seats[i].name,
                 remainingMs: Math.max(0, (this.seats[i].graceUntil || 0) - this.now()),
             })),
+            // The game is held on a disconnected human's turn — clients show the
+            // "waiting for X to reconnect" banner off this flag.
+            waiting: this.waiting,
             hostSeat: this._hostSeat(),
             size: this._activeCount(),
             currentPlayerIndex: this.currentPlayerIndex,
@@ -838,6 +872,6 @@ export class RoomEngine {
     }
 
     _broadcastState(reason) {
-        this.transport.broadcast({ t: MSG.STATE, reason, state: this._publicState() });
+        this._broadcast({ t: MSG.STATE, reason, state: this._publicState() });
     }
 }

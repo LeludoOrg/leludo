@@ -27,6 +27,9 @@ export function installAnalyticsListener() {
                 break;
             }
 
+            // NET_GAME_ENDED is the online twin of GAME_ENDED (the server, not a
+            // local finishing move, declares the end) — track both the same way.
+            case EVENTS.NET_GAME_ENDED:
             case EVENTS.GAME_ENDED: {
                 const durationMs = state.gameStartedAt
                     ? Date.now() - state.gameStartedAt

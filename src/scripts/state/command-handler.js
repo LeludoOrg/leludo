@@ -91,17 +91,21 @@ export const COMMANDS = Object.freeze({
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
     GOD_TELEPORT: 'GOD_TELEPORT',
     // Online (multiplayer) — server-driven render commands. NET_START_GAME
-    // mounts the board from a server snapshot; NET_APPLY_ROLL/MOVE replay the
-    // server's authoritative dice value + token choice through the normal path.
+    // mounts the board from a server snapshot. NET_APPLY_ROLL / NET_APPLY_MOVE
+    // play the frame's cosmetic delta (dice spin, pawn glide, capture flight)
+    // using ONLY the server's payload; NET_SYNC_STATE then applies the frame's
+    // full authoritative snapshot — board, phase, turn, dice, movable tokens —
+    // unconditionally. No guard (pause, phase, movability) may drop a server
+    // frame: the server already validated it, and a dropped frame is exactly
+    // how clients used to drift apart for a turn or more.
     NET_START_GAME: 'NET_START_GAME',
-    NET_SYNC_TURN: 'NET_SYNC_TURN',
     NET_APPLY_ROLL: 'NET_APPLY_ROLL',
     NET_APPLY_MOVE: 'NET_APPLY_MOVE',
+    NET_SYNC_STATE: 'NET_SYNC_STATE',
     // A peer's reconnect window expired: clear their forfeited pawns. NET_END
-    // mounts the end screen when the game ends on a disconnect (no local move
-    // triggered it).
+    // mounts the end screen when the server declares the game over (finish or
+    // disconnect — the client makes no end-of-game decisions of its own).
     NET_DROP_PLAYER: 'NET_DROP_PLAYER',
-    NET_RECONCILE: 'NET_RECONCILE',
     NET_END: 'NET_END',
 });
 
@@ -290,20 +294,156 @@ function netStartGame(payload, emit) {
     moveDice(state.currentPlayerIndex);
 }
 
-// Online: realign the local renderer's current player to the server's. No-op
-// when already in sync (the common case in 2- and 3-player games, where the
-// diagonal mapping happens to preserve turn order). Repositions the dice/corner
-// widgets onto the corrected seat.
-function netSyncTurn(playerIndex, turnCount, emit) {
-    // The server owns the turn number. Apply it on EVERY frame — unconditionally,
-    // before the player-change early-return — so the "Turn N" label is identical
-    // on every client even when this client's own replay missed a turn pass (and
-    // even in the 2-3 player case where the diagonal mapping makes the player
-    // index a no-op but the count still advanced).
-    if (turnCount != null) setTurnCount(turnCount);
-    if (playerIndex == null || playerIndex === state.currentPlayerIndex) return;
-    emit({ type: EVENTS.NET_TURN_SYNCED, playerIndex });
+// Online: replay the server's dice roll as a visual. The value is the server's
+// — never rolled locally — and NOTHING may drop the frame: not the pause flag
+// (settings open while the server plays on), not a stale local phase. The
+// trailing NET_SYNC_STATE makes the dice/turn state authoritative either way;
+// this just spins the die so the player sees the roll happen.
+async function netApplyRoll(value, animate, emit) {
+    inactiveTokens();
+    const lastFace = state.currentDiceRoll;
+    emit({ type: EVENTS.DICE_ROLL_STARTED });
+    if (animate) await animateDiceRoll(lastFace);
+    emit({ type: EVENTS.DICE_ROLLED, value });
+    updateDiceFace(lastFace, state.currentDiceRoll);
+    setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
+}
+
+// Online: replay the server's move — player, token, path AND captures all come
+// from the frame payload (msg.p/token/from/to/caps), never re-derived from the
+// local board (re-deriving captures was a desync source: a drifted board sent
+// the wrong pawns home until the next snapshot corrected it, a visible glitch).
+// With animate=false (catch-up replay of a backlog) only state is updated and
+// capture events stay silent; the trailing snapshot sync snaps the DOM once.
+async function netApplyMove({ playerIndex, tokenIndex, fromPosition, toPosition, captures = [], animate }, emit) {
+    inactiveTokens();
+    inactiveDice();
+    emit({
+        type: EVENTS.TOKEN_MOVED,
+        playerIndex,
+        tokenIndex,
+        fromPosition,
+        toPosition,
+    });
+
+    const el = getTokenElement(playerIndex, tokenIndex);
+    if (animate && el) {
+        for (const c of captures) {
+            const t = getTokenElement(c.playerIndex, c.tokenIndex);
+            if (t) pinTokenForCapture(t);
+        }
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition);
+        const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
+        const attack = {
+            attackerPlayerIndex: playerIndex,
+            attackerTokenIndex: tokenIndex,
+            prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
+        };
+        for (const c of captures) {
+            emit({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: playerIndex,
+                capturedPlayerIndex: c.playerIndex,
+                capturedTokenIndex: c.tokenIndex,
+            });
+            await animateCaptureToHome(c.playerIndex, c.tokenIndex, attack);
+        }
+    } else {
+        for (const c of captures) {
+            emit({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: playerIndex,
+                capturedPlayerIndex: c.playerIndex,
+                capturedTokenIndex: c.tokenIndex,
+                silent: true, // catch-up: no capture sound burst
+            });
+        }
+    }
+
+    // The move finished this player's last pawn: record rank + finish time so
+    // the end screen shows them (the rank is overwritten by the authoritative
+    // snapshot that follows; the locally-measured time is all we have).
+    if (isTripComplete(toPosition) && isPlayerFinished(playerIndex)) {
+        emit({
+            type: EVENTS.PLAYER_FINISHED,
+            playerIndex,
+            rank: state.lastRank + 1,
+            time: new Date().getTime() - state.gameStartedAt,
+        });
+    }
+}
+
+// True when every active player's token elements sit in the cells the state
+// says they should — i.e. the rendered board matches the (just-synced)
+// authoritative positions. Inactive seats must have NO token elements left.
+function tokenDomMatchesState() {
+    for (let pi = 0; pi < 4; pi++) {
+        const row = state.playerTokenPositions[pi];
+        const active = !!state.playerTypes[pi] && !!row;
+        for (let ti = 0; ti < 4; ti++) {
+            const el = document.getElementById(getTokenElementId(pi, ti));
+            if (!active) {
+                if (el) return false; // ghost pawn of a forfeited seat
+                continue;
+            }
+            if (!el || !el.parentElement) return false;
+            if (el.parentElement.id !== getTokenContainerId(pi, ti, row[ti])) return false;
+        }
+    }
+    return true;
+}
+
+// Online: apply the server's full authoritative snapshot — the last word after
+// every frame. State first (reducer), then repaint everything derived from it:
+// turn label, dice face/corner, board DOM (re-mounted only when drifted), and
+// the roll/move affordances. Runs even while paused; the pause overlay only
+// blocks local input, never the server's game.
+function netSyncState(cmd, emit) {
+    if (state.phase === PHASES.GAME_ENDED) return;
+
+    const prevFace = state.currentDiceRoll;
+    emit({
+        type: EVENTS.NET_STATE_SYNCED,
+        positions: cmd.positions,
+        playerTypes: cmd.playerTypes,
+        currentPlayerIndex: cmd.currentPlayerIndex,
+        turnCount: cmd.turnCount,
+        dice: cmd.dice,
+        phase: cmd.phase,
+        legalMoves: cmd.legalMoves,
+        captures: cmd.captures,
+        ranks: cmd.ranks,
+    });
+
+    setTurnCount(state.turnCount);
+    if (cmd.dice > 0 && cmd.dice !== prevFace) updateDiceFace(prevFace, cmd.dice);
     moveDice(state.currentPlayerIndex);
+
+    // Snap any drifted token (or ghost pawn) back onto the truth. No-op in the
+    // common case, so it never fights the move animation it runs after.
+    if (!tokenDomMatchesState()) {
+        removeGameTokens();
+        mountTokensFromState();
+    }
+
+    // Re-derive the input affordances from the authoritative phase. This is
+    // what un-sticks a client that reconnected mid-AWAIT_MOVE (it used to come
+    // back stuck AWAITING_ROLL: its roll intents were rejected, the server
+    // waited for a move it could never send, and the whole room hung). A
+    // DROPPED frame can point currentPlayerIndex at the just-stripped seat for
+    // one frame — nothing to activate then; the follow-up frame re-arms.
+    inactiveTokens();
+    if (!state.playerTypes[state.currentPlayerIndex]) return;
+    if (state.phase === PHASES.AWAITING_SELECTION) {
+        inactiveDice();
+        for (const ti of state.movableTokenIndexes) {
+            if (getTokenElement(state.currentPlayerIndex, ti)) {
+                activateToken(state.currentPlayerIndex, ti);
+            }
+        }
+    } else if (state.phase === PHASES.AWAITING_ROLL) {
+        activateDice();
+    }
 }
 
 // Online: a player ran out of reconnect time and forfeited. Pull their pawns
@@ -323,48 +463,8 @@ function netDropPlayer(playerIndex, emit) {
     emit({ type: EVENTS.NET_PLAYER_DROPPED, playerIndex });
 }
 
-// Online: reconcile the rendered board to the server's authoritative positions.
-// The online renderer replays the server's roll/move deltas through the local
-// engine; a dropped, rejected, or missed delta (a backgrounded tab throttling
-// rAF, a 1s socket blip dropping `moved` frames, a swallowed animation error)
-// would otherwise leave this client's board permanently diverged from the
-// server's — captures especially, since they're re-derived locally rather than
-// taken from the server's authoritative `caps`. Every server frame carries the
-// full positions, so after each delta we snap any drifted token back onto the
-// truth. No-op in the common case (the replay already matches), so it never
-// fights the in-flight move animation it runs after; on real drift it re-mounts
-// every token from the corrected state.
-//
-// `positions` is the server snapshot already mapped to LOCAL board indices by the
-// online driver. Activation changes (a seat that forfeited / finished while we
-// were away) flow through NET_DROP_PLAYER / NET_END, so a seat that's active on
-// only one side is left for those paths — here we only correct token positions of
-// seats both sides still consider in play.
-function netReconcile(positions, emit) {
-    if (!Array.isArray(positions)) return;
-    if (state.phase === PHASES.GAME_ENDED) return;
-
-    let drifted = false;
-    for (let pi = 0; pi < 4 && !drifted; pi++) {
-        const target = positions[pi];
-        const local = state.playerTokenPositions[pi];
-        if (!target || !local) continue; // activation mismatch — not our job
-        for (let ti = 0; ti < 4; ti++) {
-            if (target[ti] !== local[ti]) { drifted = true; break; }
-        }
-    }
-    if (!drifted) return;
-
-    emit({ type: EVENTS.NET_RECONCILED, positions });
-    // Re-render from the corrected state: drop every on-board token and re-mount
-    // from state.playerTokenPositions (now the server's truth).
-    removeGameTokens();
-    mountTokensFromState();
-}
-
-// Online: the server ended the game without a finishing move (an opponent left
-// or the room was abandoned). Apply the server's final ranks and mount the end
-// screen — mirrors the tail of handleAfterTokenMove.
+// Online: the server declared the game over. Apply the final ranks and mount
+// the end screen — mirrors the tail of handleAfterTokenMove.
 function netEnd(ranks, winnerIndex, emit) {
     if (state.phase === PHASES.GAME_ENDED) return;
     emit({ type: EVENTS.NET_GAME_ENDED, playerRanks: ranks, winnerIndex });
@@ -424,9 +524,7 @@ function resumeSavedGame(emit) {
     moveDice(state.currentPlayerIndex);
 }
 
-// `forcedValue` is the server's authoritative dice for online play (passed by
-// NET_APPLY_ROLL); offline it's null and the value is rolled locally.
-function rollDice(emit, forcedValue = null) {
+function rollDice(emit) {
     if (isGameLogicPaused()) return;
     if (!canRoll()) return;
     emit({ type: EVENTS.DICE_ROLL_STARTED });
@@ -435,9 +533,7 @@ function rollDice(emit, forcedValue = null) {
             const lastDiceRoll = state.currentDiceRoll;
             const pi = state.currentPlayerIndex;
             const hasTokenAtHome = state.playerTokenPositions[pi].includes(-1);
-            const newRoll = forcedValue != null
-                ? forcedValue
-                : rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome);
+            const newRoll = rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome);
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
             setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
@@ -795,16 +891,14 @@ export function commandHandler(currentState, command, services, emit) {
             return resumeSavedGame(emit);
         case COMMANDS.NET_START_GAME:
             return netStartGame(command, emit);
-        case COMMANDS.NET_SYNC_TURN:
-            return netSyncTurn(command.playerIndex, command.turnCount, emit);
         case COMMANDS.NET_APPLY_ROLL:
-            return rollDice(emit, command.value);
+            return netApplyRoll(command.value, command.animate !== false, emit);
         case COMMANDS.NET_APPLY_MOVE:
-            return selectToken(command.playerIndex, command.tokenIndex, emit);
+            return netApplyMove(command, emit);
+        case COMMANDS.NET_SYNC_STATE:
+            return netSyncState(command, emit);
         case COMMANDS.NET_DROP_PLAYER:
             return netDropPlayer(command.playerIndex, emit);
-        case COMMANDS.NET_RECONCILE:
-            return netReconcile(command.positions, emit);
         case COMMANDS.NET_END:
             return netEnd(command.playerRanks, command.winnerIndex, emit);
         case COMMANDS.ROLL_DICE:

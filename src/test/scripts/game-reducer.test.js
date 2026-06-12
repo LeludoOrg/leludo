@@ -135,67 +135,94 @@ describe('reducer', () => {
         expect(state.consecutiveSixesCount).toBe(0);
     });
 
-    it('NET_TURN_SYNCED forces currentPlayerIndex without bumping turnCount', () => {
-        // Online: the diagonal seat→board layout is not a pure rotation, so the
-        // local round-robin can drift from the server's seat order. NET_TURN_SYNCED
-        // realigns the current player to the server's authority and re-arms the
-        // roll phase — but must NOT bump turnCount (the local advance already did).
-        const state = initialGameState();
-        state.currentPlayerIndex = 3;        // local engine drifted here
-        state.turnCount = 7;
-        state.consecutiveSixesCount = 1;
-        state.phase = PHASES.AWAITING_SELECTION;
-        state.movableTokenIndexes = [0, 2];
-        reducer(state, { type: EVENTS.NET_TURN_SYNCED, playerIndex: 0 }); // server says seat→pos 0
-        expect(state.currentPlayerIndex).toBe(0);
-        expect(state.turnCount).toBe(7);     // unchanged
-        expect(state.consecutiveSixesCount).toBe(0);
-        expect(state.phase).toBe(PHASES.AWAITING_ROLL);
-        expect(state.movableTokenIndexes).toEqual([]);
-    });
-
-    it('NET_RECONCILED snaps active seats onto the server board, leaves empty seats', () => {
-        // Online: the renderer replays move deltas and re-derives captures, so a
-        // dropped/throttled delta leaves the board diverged (the live bug: a
-        // captured pawn that went home on the server still showed on the board on
-        // a lagging client — "2 pawns home on one screen, 1 on the other"). The
-        // server stamps full positions on every frame; NET_RECONCILED folds them
-        // back in. Here seat 1's captured token is still on the track locally; the
-        // server says it's home (-1) → it must snap home.
+    it('NET_STATE_SYNCED applies the full server snapshot: board, turn, phase, movable', () => {
+        // Online: the server snapshot is the last word after every frame. A
+        // drifted board (the live bug: a captured pawn that went home on the
+        // server still showed on the track on a lagging client), a drifted
+        // current player, a drifted turn count and a stale phase must all snap
+        // to the server's values in one event — phase included, because a
+        // client that reconnected mid-AWAIT_MOVE used to come back stuck
+        // AWAITING_ROLL and deadlock the whole room.
         const state = initialGameState();
         state.playerTypes = ['PLAYER', 'PLAYER', undefined, undefined];
         state.playerTokenPositions = [
-            [5, -1, -1, -1],   // local: matches server
-            [10, 3, -1, -1],   // local: token0 NOT yet sent home (drifted)
+            [5, -1, -1, -1],   // matches server
+            [10, 3, -1, -1],   // token0 NOT yet sent home (drifted)
             undefined,
             undefined,
         ];
+        state.currentPlayerIndex = 1;        // local round-robin drifted
+        state.turnCount = 7;                 // undercounted a missed turn
+        state.consecutiveSixesCount = 1;
+        state.phase = PHASES.AWAITING_ROLL;  // server actually awaits a MOVE
         reducer(state, {
-            type: EVENTS.NET_RECONCILED,
+            type: EVENTS.NET_STATE_SYNCED,
             positions: [
                 [5, -1, -1, -1],
                 [-1, 3, -1, -1], // server truth: token0 was captured → home
                 undefined,
                 undefined,
             ],
+            playerTypes: ['PLAYER', 'PLAYER', undefined, undefined],
+            currentPlayerIndex: 0,
+            turnCount: 9,
+            dice: 4,
+            phase: 'AWAIT_MOVE',
+            legalMoves: [0, 2],
+            captures: [2, 0, 0, 0],
         });
         expect(state.playerTokenPositions[1]).toEqual([-1, 3, -1, -1]); // snapped home
         expect(state.playerTokenPositions[0]).toEqual([5, -1, -1, -1]); // untouched
         expect(state.playerTokenPositions[2]).toBeUndefined();           // empty seat left alone
+        expect(state.currentPlayerIndex).toBe(0);
+        expect(state.turnCount).toBe(9);
+        expect(state.currentDiceRoll).toBe(4);
+        expect(state.consecutiveSixesCount).toBe(0);
+        expect(state.phase).toBe(PHASES.AWAITING_SELECTION);
+        expect(state.movableTokenIndexes).toEqual([0, 2]);
+        expect(state.playerCaptures[0]).toBe(2);
     });
 
-    it('NET_RECONCILED never resurrects a seat the client has deactivated', () => {
-        // A seat that forfeited/finished locally is undefined; even if the server
-        // snapshot still lists positions for it, NET_RECONCILED must not re-add it
-        // (activation changes flow through NET_PLAYER_DROPPED / NET_GAME_ENDED).
+    it('NET_STATE_SYNCED deactivates a seat the server says is gone (missed DROPPED)', () => {
+        // A player forfeited while THIS client was offline: the DROPPED frame
+        // never arrived, so the seat is still active locally — ghost pawns. The
+        // snapshot lists the seat as inactive; the sync must clear it.
         const state = initialGameState();
-        state.playerTypes = ['PLAYER', undefined, undefined, undefined];
-        state.playerTokenPositions = [[5, -1, -1, -1], undefined, undefined, undefined];
+        state.playerTypes = ['PLAYER', 'PLAYER', undefined, undefined];
+        state.playerTokenPositions = [[5, -1, -1, -1], [10, 3, -1, -1], undefined, undefined];
         reducer(state, {
-            type: EVENTS.NET_RECONCILED,
-            positions: [[5, -1, -1, -1], [2, 2, 2, 2], undefined, undefined],
+            type: EVENTS.NET_STATE_SYNCED,
+            positions: [[5, -1, -1, -1], undefined, undefined, undefined],
+            playerTypes: ['PLAYER', undefined, undefined, undefined],
+            currentPlayerIndex: 0,
+            phase: 'AWAIT_ROLL',
         });
+        expect(state.playerTypes[1]).toBeUndefined();
         expect(state.playerTokenPositions[1]).toBeUndefined();
+        expect(state.playerTokenPositions[0]).toEqual([5, -1, -1, -1]);
+        expect(state.phase).toBe(PHASES.AWAITING_ROLL);
+        expect(state.movableTokenIndexes).toEqual([]);
+    });
+
+    it('NET_STATE_SYNCED leaves phase alone when the server says ENDED', () => {
+        // The ENDED frame drives NET_GAME_ENDED, which owns the end transition
+        // (mounting the recap exactly once). The snapshot sync must not race it.
+        const state = initialGameState();
+        state.playerTypes = ['PLAYER', 'PLAYER', undefined, undefined];
+        state.playerTokenPositions = [[56, 56, 56, 56], [10, 3, -1, -1], undefined, undefined];
+        state.phase = PHASES.AWAITING_SELECTION;
+        reducer(state, {
+            type: EVENTS.NET_STATE_SYNCED,
+            positions: [[56, 56, 56, 56], [10, 3, -1, -1], undefined, undefined],
+            playerTypes: ['PLAYER', 'PLAYER', undefined, undefined],
+            currentPlayerIndex: 0,
+            phase: 'ENDED',
+            ranks: [1, 2, 0, 0],
+        });
+        expect(state.phase).toBe(PHASES.AWAITING_SELECTION); // untouched
+        expect(state.playerRanks[0]).toBe(1);
+        expect(state.winnerIndex).toBe(0);
+        expect(state.lastRank).toBe(2);
     });
 
     it('ASSIST_FLAG_CHANGED toggles flag', () => {

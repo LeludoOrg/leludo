@@ -661,8 +661,21 @@ class QuickStart extends HTMLElement {
     // Single net-message handler shared by private rooms and public matchmaking.
     _onNetMessage(msg, client) {
         if (this._net !== client) return
-        // Once the game has started, every message drives the board.
-        if (this._inGame) { handleOnlineMessage(msg); return }
+        // Once the game has started, every message drives the board — except a
+        // join rejection (the reconnect found our seat forfeited: the room is
+        // full or gone). Without this the client sat frozen on a dead board.
+        if (this._inGame) {
+            if (msg.t === MSG.ERROR || msg.t === MSG.KICKED) {
+                this._inGame = false
+                dispatch({ type: COMMANDS.EXIT_TO_HOME })
+                this.showOnlineScreen()
+                replaceTo(SCREENS.ONLINE)
+                this._setOnlineStatus('Your seat was forfeited while you were disconnected.')
+                return
+            }
+            handleOnlineMessage(msg)
+            return
+        }
         switch (msg.t) {
             case MSG.QUEUED:
                 this._setSearchStatus(`Searching for a ${msg.size}-player match…`)
@@ -686,7 +699,7 @@ class QuickStart extends HTMLElement {
                     // Hand off to the real board, server-driven from here on.
                     this._inGame = true
                     if (this._isPublic) this._updateMatchStartingNames(msg.state)
-                    startOnlineGame({ net: this._net, seat: this._mySeat, state: msg.state })
+                    startOnlineGame({ net: this._net, seat: this._mySeat, state: msg.state, seq: msg.seq })
                     const menu = document.getElementById('main-menu')
                     if (menu) menu.classList.add('hidden')
                     replaceTo(SCREENS.GAME)
