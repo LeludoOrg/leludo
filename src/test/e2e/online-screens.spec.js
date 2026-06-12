@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openOnline } from './helpers.js';
+import { openOnline, goHomeOnline } from './helpers.js';
 
 /**
  * Home now offers two clear, separate paths — offline (pass-and-play on this
@@ -15,15 +15,36 @@ import { openOnline } from './helpers.js';
 test.describe('Home — offline / online split', () => {
     test('home shows both paths', async ({ page }) => {
         await page.goto('/');
-        await expect(page.getByTestId('home-play-offline')).toBeVisible();
-        await expect(page.getByTestId('home-play-online')).toBeVisible();
+        await expect(page.getByTestId('home-mode-device')).toBeVisible();
+        await expect(page.getByTestId('home-mode-online')).toBeVisible();
     });
 
     test('offline path opens the local "who is playing" setup', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-offline').click();
+        // Device is the default mode; New game opens local setup directly.
+        await page.getByTestId('home-new-game').click();
         await expect(page.locator('.seat-list')).toBeVisible();
         await expect(page.locator('.seat-row')).toHaveCount(4);
+    });
+
+    // The home is a single CTA whose destination is set by the mode toggle.
+    // Device is the default; flipping to Online re-points the one New game button
+    // at the online flow and swaps the subtext. Guards the "mode toggle, one
+    // button" redesign — a regression where New game ignored the toggle would
+    // strand online players on the offline setup.
+    test('the mode toggle re-points the single New game button', async ({ page }) => {
+        await page.goto('/');
+        // Default: device mode, offline-flavoured subtext.
+        await expect(page.getByTestId('home-mode-device')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('home-cta-sub')).toContainText(/this device/i);
+
+        // Flip to Online: selection + subtext follow, New game enters the online flow.
+        await page.getByTestId('home-mode-online').click();
+        await expect(page.getByTestId('home-mode-online')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('home-cta-sub')).toContainText(/friends|room|online/i);
+        await page.getByTestId('home-new-game').click();
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+        await expect(page.locator('.seat-list')).toHaveCount(0); // NOT the offline setup
     });
 
     // Initial release ships private rooms only — the "Find a public match" entry
@@ -33,7 +54,7 @@ test.describe('Home — offline / online split', () => {
     // here. It must NOT show the public entry.
     test('online path offers the private-room join / create entry only', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await goHomeOnline(page);
         await expect(page.getByTestId('online-public')).toHaveCount(0);      // public hidden for launch
         await expect(page.getByTestId('online-join')).toBeVisible();          // join by code (primary)
         await expect(page.getByTestId('online-code-input')).toBeVisible();
@@ -51,7 +72,7 @@ test.describe('Home — offline / online split', () => {
     // requested join-first structure.
     test('the entry screen puts join above the create card', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await goHomeOnline(page);
 
         const join = await page.getByTestId('online-code-input').boundingBox();
         const divider = await page.locator('.online-host-divider').boundingBox();
@@ -102,10 +123,10 @@ test.describe('Home — offline / online split', () => {
 
     test('back from the online menu returns home', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await goHomeOnline(page);
         await expect(page.getByTestId('online-create')).toBeVisible();
         await page.goBack();
-        await expect(page.getByTestId('home-play-offline')).toBeVisible();
+        await expect(page.getByTestId('home-new-game')).toBeVisible();
     });
 
     // Play online and the game room are two separate components/screens:
@@ -147,7 +168,7 @@ test.describe('Online — username', () => {
     // no saved name and pick it in the lobby. Guards that create is never blocked.
     test('creating a room no longer requires a name up front', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-online').click();
+        await goHomeOnline(page);
         await page.getByTestId('online-create').click();
         // A room is created and the name field lives in the lobby now.
         await expect(page.getByTestId('online-room-code')).toBeVisible();

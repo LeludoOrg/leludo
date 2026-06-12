@@ -43,7 +43,20 @@ export async function openOnline(page, name, query = '') {
         try { localStorage.setItem('leludo-username', n); } catch { /* storage blocked */ }
     }, name);
     await page.goto(`/${query}`);
-    await page.getByTestId('home-play-online').click();
+    await goHomeOnline(page);
+}
+
+/**
+ * Enter the online flow from the home screen. Home is a "mode toggle + one
+ * button" design now: pick the Online segment, then tap the single New game
+ * CTA. Centralised so the many specs that just need "get me into online" don't
+ * each duplicate the two-step.
+ *
+ * @param {import('@playwright/test').Page} page
+ */
+export async function goHomeOnline(page) {
+    await page.getByTestId('home-mode-online').click();
+    await page.getByTestId('home-new-game').click();
 }
 
 /**

@@ -128,9 +128,14 @@ class QuickStart extends HTMLElement {
 
         const saved = this._readSavedGame()
         // Online is gated behind the dev/beta feature flag. When off (prod /
-        // APK) the home shows a single "New game" button; when on, the original
-        // "Play offline" / "Play online" pair.
+        // APK) the home shows a single "New game" button; when on, a segmented
+        // mode toggle (On this device / Online) sits above the same single
+        // button, and the button routes by the selected mode.
         const online = isOnlineEnabled()
+        // Mode persists across in-session home re-renders; force device when
+        // online is off so the CTA never tries an unavailable path.
+        if (!online || this._homeMode == null) this._homeMode = 'device'
+        const mode = this._homeMode
 
         const html = /*html*/ `
             <div class="frame home-frame${saved ? ' home-frame--in-progress' : ''}">
@@ -149,24 +154,38 @@ class QuickStart extends HTMLElement {
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
                 <div class="frame-footer home-cta-stack">
-                    <button class="play-offline-btn new-game-btn cta-primary" data-testid="home-play-offline">${online ? `${ICON_DEVICE}<span>${saved ? 'New offline game' : 'Play offline'}</span>` : `<span>New game</span>`}</button>
-                    ${online ? `<button class="play-online-btn cta-secondary home-online-cta" data-testid="home-play-online">${ICON_GLOBE}<span>Play online</span></button>` : ''}
+                    ${online ? /*html*/ `
+                    <div class="home-mode-toggle" role="tablist" aria-label="Game mode" data-mode="${mode}">
+                        <div class="home-mode-thumb" aria-hidden="true"></div>
+                        <button class="home-mode-seg" role="tab" data-mode="device" data-testid="home-mode-device" aria-selected="${mode === 'device'}">${ICON_DEVICE}<span>On this device</span></button>
+                        <button class="home-mode-seg" role="tab" data-mode="online" data-testid="home-mode-online" aria-selected="${mode === 'online'}">${ICON_GLOBE}<span>Online</span></button>
+                    </div>` : ''}
+                    <button class="new-game-btn cta-primary" data-testid="home-new-game"><span>New game</span></button>
+                    <p class="home-cta-sub" data-testid="home-cta-sub">${this._modeSubtext(mode)}</p>
                 </div>
             </div>
         `
 
         const el = htmlToElement(html)
 
-        el.querySelector(".play-offline-btn").addEventListener("click", () => {
+        el.querySelector(".new-game-btn").addEventListener("click", () => {
             playClickSound()
-            this.showSetupScreen()
-            goTo(SCREENS.SETUP)
+            if (this._homeMode === 'online') {
+                this.showOnlineScreen()
+                goTo(SCREENS.ONLINE)
+            } else {
+                this.showSetupScreen()
+                goTo(SCREENS.SETUP)
+            }
         })
 
-        el.querySelector(".play-online-btn")?.addEventListener("click", () => {
-            playClickSound()
-            this.showOnlineScreen()
-            goTo(SCREENS.ONLINE)
+        el.querySelectorAll(".home-mode-seg").forEach(seg => {
+            seg.addEventListener("click", () => {
+                const next = seg.dataset.mode
+                if (next === this._homeMode) return
+                playClickSound()
+                this._setHomeMode(next)
+            })
         })
 
         const resumeEl = el.querySelector(".resume-card")
@@ -179,6 +198,28 @@ class QuickStart extends HTMLElement {
 
         this.appendChild(el)
         this._startHomeDieCycle()
+    }
+
+    // Subtext under the single CTA, narrating where "New game" leads in the
+    // currently-selected mode.
+    _modeSubtext(mode) {
+        return mode === 'online'
+            ? 'Play with friends in a private room'
+            : 'Pass-and-play on this device'
+    }
+
+    // Flip the home mode toggle in place (no re-render): slide the thumb, swap
+    // the selected segment, and update the CTA subtext. The New game button
+    // reads this._homeMode at click time, so it always routes to the live mode.
+    _setHomeMode(mode) {
+        this._homeMode = mode
+        const toggle = this.querySelector('.home-mode-toggle')
+        if (toggle) toggle.dataset.mode = mode
+        this.querySelectorAll('.home-mode-seg').forEach(seg => {
+            seg.setAttribute('aria-selected', String(seg.dataset.mode === mode))
+        })
+        const sub = this.querySelector('.home-cta-sub')
+        if (sub) sub.textContent = this._modeSubtext(mode)
     }
 
     _startHomeDieCycle() {

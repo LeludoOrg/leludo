@@ -173,20 +173,81 @@ wc-quick-start .home-version {
     letter-spacing: 0.08em;
 }
 
-/* Two equal paths: offline (primary) + online (outlined). Both full width. */
-wc-quick-start .home-cta-stack .cta-primary,
-wc-quick-start .home-cta-stack .cta-secondary {
+/* One button, mode picked by the toggle above it. */
+wc-quick-start .home-cta-stack .cta-primary {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 9px;
 }
 
-wc-quick-start .home-online-cta {
-    height: var(--cta-h);
-    border-radius: var(--cta-radius);
-    font-size: 16px;
+/* ----- Mode toggle (On this device / Online) ----- */
+
+/* Segmented pill: a track with a sliding "thumb" behind two equal-width
+   segments. The track's data-mode drives both the thumb position and which
+   segment reads as selected, so a flip is one attribute change (no re-render). */
+wc-quick-start .home-mode-toggle {
+    position: relative;
+    display: flex;
+    height: 48px;
+    padding: 4px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+
+wc-quick-start .home-mode-thumb {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+    box-shadow: 0 1px 3px rgb(var(--shadow-tint) / 0.25);
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+wc-quick-start .home-mode-toggle[data-mode="online"] .home-mode-thumb {
+    transform: translateX(100%);
+}
+
+wc-quick-start .home-mode-seg {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font-size: 15px;
     font-weight: 600;
+    color: var(--color-fg);
+    opacity: 0.5;
+    transition: opacity 150ms ease;
+}
+
+wc-quick-start .home-mode-seg[aria-selected="true"] {
+    opacity: 1;
+}
+
+wc-quick-start .home-mode-seg svg {
+    flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-quick-start .home-mode-thumb { transition: none; }
+}
+
+/* CTA subtext: one quiet line narrating where New game leads. */
+wc-quick-start .home-cta-sub {
+    text-align: center;
+    font-size: 13px;
+    opacity: 0.5;
+    margin: 2px 0 0;
 }
 
 /* ----- Online (public match search) ----- */

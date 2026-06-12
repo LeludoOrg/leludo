@@ -68,7 +68,9 @@ async function makeUser(browser, { name }) {
         try { localStorage.setItem('leludo-username', n); } catch { /* storage blocked */ }
     }, name);
     await page.goto('/');
-    await page.getByTestId('home-play-online').click();
+    // Home toggle → Online, then the single New game CTA enters the flow.
+    await page.getByTestId('home-mode-online').click();
+    await page.getByTestId('home-new-game').click();
     return user;
 }
 
@@ -322,7 +324,8 @@ test.describe('Online multiplayer — recorded sessions', () => {
             const guest = await makeUser(browser, { name: 'Bob' });
             users.push(host, guest);
             await host.page.goto('/?grace=4000');
-            await host.page.getByTestId('home-play-online').click();
+            await host.page.getByTestId('home-mode-online').click();
+            await host.page.getByTestId('home-new-game').click();
             // Name already remembered by makeUser (carried via localStorage).
 
             const code = await createRoom(host);

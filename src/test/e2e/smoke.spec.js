@@ -15,19 +15,22 @@ test.describe('Home screen', () => {
         await expect(title).toContainText('le');
         await expect(title).toContainText('ludo');
 
-        // Home offers two clear, separate paths. Online is gated behind the
-        // dev/beta feature flag (scripts/platform/feature-flags.js); under
-        // Playwright the static server runs on localhost, where the flag is on.
-        await expect(page.getByTestId('home-play-offline')).toBeVisible();
-        await expect(page.getByTestId('home-play-offline')).toContainText(/play offline|new offline/i);
-        await expect(page.getByTestId('home-play-online')).toBeVisible();
+        // Home is a "mode toggle + one button" design: a segmented On this
+        // device / Online control over a single New game CTA. Online is gated
+        // behind the dev/beta feature flag (scripts/platform/feature-flags.js);
+        // under Playwright the static server runs on localhost, where it's on,
+        // so both segments show.
+        await expect(page.getByTestId('home-mode-device')).toBeVisible();
+        await expect(page.getByTestId('home-mode-online')).toBeVisible();
+        await expect(page.getByTestId('home-new-game')).toContainText(/new game/i);
 
         expect(errors, `Console / page errors: ${errors.join('\n')}`).toHaveLength(0);
     });
 
     test('the offline path opens the local setup screen', async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId('home-play-offline').click();
+        // Device mode is the default — New game goes straight to local setup.
+        await page.getByTestId('home-new-game').click();
         await expect(page.locator('.start-btn')).toBeVisible();
         await expect(page.locator('.start-btn')).toContainText(/start|play/i);
     });
