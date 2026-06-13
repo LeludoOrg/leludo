@@ -104,6 +104,34 @@ describe('online move animation under streamed frames', () => {
         expect(moves[0].animate).toBe(true); // the trailing turn-snapshot must not skip it
     });
 
+    it('a move trailed by the NEXT player\'s dice spin still animates (a roll must not teleport a pawn)', async () => {
+        // The live "still jumps sometimes" case: a bot / auto-rolling opponent's
+        // next dice spin arrives while THIS move is still gliding. A newer roll is
+        // a delta, but it must NOT classify the pawn move as stale — only a newer
+        // MOVE supersedes a move. Hold the queue with a prior in-flight roll.
+        handleOnlineMessage({
+            t: MSG.STATE, seq: 1, reason: REASON.ROLLED,
+            state: base([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null], { dice: 4, currentPlayerIndex: 1, phase: 'AWAIT_MOVE', legalMoves: [0] }),
+        });
+        await tick(); // roll spin in flight, holding the queue
+
+        handleOnlineMessage({
+            t: MSG.MOVED, seq: 2, p: 1, token: 0, from: -1, to: 4, caps: [],
+            state: base([[-1, -1, -1, -1], [4, -1, -1, -1], null, null]),
+        });
+        // The next player's roll lands before the move above gets to animate.
+        handleOnlineMessage({
+            t: MSG.STATE, seq: 3, reason: REASON.ROLLED,
+            state: base([[-1, -1, -1, -1], [4, -1, -1, -1], null, null], { dice: 6, currentPlayerIndex: 0, phase: 'AWAIT_MOVE', legalMoves: [0], turn: 2 }),
+        });
+
+        await drain();
+
+        const moves = ofType('NET_APPLY_MOVE');
+        expect(moves).toHaveLength(1);
+        expect(moves[0].animate).toBe(true); // the move glides; the later dice spin doesn't preempt it
+    });
+
     it('BACKLOG: an older move SNAPS when a newer move is already queued (catch-up preserved)', async () => {
         // Genuine backlog: two real moves pile up behind an in-flight animation.
         // The older one fast-forwards (snap), only the newest animates — the

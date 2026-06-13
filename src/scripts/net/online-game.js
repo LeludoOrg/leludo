@@ -34,11 +34,16 @@ let _started = false;
 let _chain = Promise.resolve();
 // Highest seq applied — frames at or below it are duplicates/stale and dropped.
 let _appliedSeq = 0;
-// Highest seq among RECEIVED frames that carry a visual delta (a pawn glide or
-// a dice spin). A frame animates iff no NEWER delta frame has arrived yet — so
-// a real backlog of moves still fast-forwards, but the delta-less turn/again
-// snapshot the server stamps right after every MOVED no longer classifies that
-// move as stale (which teleported every pawn straight to its target cell).
+// "Newest received" markers that decide whether a frame still animates or snaps
+// to catch up. Two of them, by visual value:
+//   _newestMovedSeq — newest MOVED (pawn glide). A move is superseded ONLY by a
+//     newer MOVE: a real backlog of moves still fast-forwards, but a dice spin
+//     or the delta-less turn/again snapshot the server stamps after every MOVED
+//     must NOT make a pawn teleport to its target (the live "still jumps
+//     sometimes" case — an opponent's next roll landing mid-glide).
+//   _newestDeltaSeq — newest MOVED or roll-STATE. A dice spin is lower value, so
+//     it yields to any newer delta (the move it produced, or the next roll).
+let _newestMovedSeq = 0;
 let _newestDeltaSeq = 0;
 // The newest state-bearing frame, kept so a REJECTED intent can re-apply the
 // authoritative snapshot immediately instead of waiting for the next broadcast.
@@ -87,6 +92,7 @@ export function startOnlineGame({ net, seat, state, seq }) {
     _started = true;
     _chain = Promise.resolve();
     _appliedSeq = seq || 0;
+    _newestMovedSeq = seq || 0;
     _newestDeltaSeq = seq || 0;
     _lastState = state;
 
@@ -187,7 +193,10 @@ function isDeltaFrame(msg) {
  * suppress the move it follows (see _newestDeltaSeq).
  */
 async function applyFrame(msg) {
-    const animate = msg.seq == null || msg.seq >= _newestDeltaSeq;
+    // A MOVED only yields to a newer MOVED; everything else (a roll spin) yields
+    // to any newer delta. So a pawn glide is never cut short by the next roll.
+    const supersededBy = msg.t === MSG.MOVED ? _newestMovedSeq : _newestDeltaSeq;
+    const animate = msg.seq == null || msg.seq >= supersededBy;
     const state = msg.state;
 
     if (msg.t === MSG.STATE) {
@@ -243,6 +252,7 @@ export function handleOnlineMessage(msg) {
             if (msg.seq != null) {
                 if (msg.seq <= _appliedSeq) return;
                 _appliedSeq = msg.seq;
+                if (msg.t === MSG.MOVED) _newestMovedSeq = Math.max(_newestMovedSeq, msg.seq);
                 if (isDeltaFrame(msg)) _newestDeltaSeq = Math.max(_newestDeltaSeq, msg.seq);
             }
             if (msg.state) _lastState = msg.state;
