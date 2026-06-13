@@ -98,17 +98,26 @@ export function setOnlineColor(n) {
     } catch { /* storage blocked */ }
 }
 
+/** Fresh unguessable session id. Uses crypto when available, falls back to Math.random. */
+function newSessionId() {
+    try {
+        return `s-${crypto.randomUUID()}`;
+    } catch {
+        return `s-${Math.random().toString(36).slice(2)}`;
+    }
+}
+
 /** Stable per-device session id (reconnect key). Persisted in localStorage. */
 export function getSessionId() {
     try {
         let s = localStorage.getItem(STORAGE_KEYS.MP_SESSION);
         if (!s) {
-            s = `s-${Math.random().toString(36).slice(2)}`;
+            s = newSessionId();
             localStorage.setItem(STORAGE_KEYS.MP_SESSION, s);
         }
         return s;
     } catch {
-        return `s-${Math.random().toString(36).slice(2)}`;
+        return newSessionId();
     }
 }
 
