@@ -3,6 +3,7 @@ import { RoomEngine, PHASES } from '../../server/room-engine.js';
 import { PITY_SIX_CEIL } from '../../scripts/core/game-logic.js';
 import { BOT_NAME_POOLS } from '../../scripts/core/bot-names.js';
 import { PERSONALITIES } from '../../scripts/core/bot-ai.js';
+import { makeRng } from '../../scripts/core/game-driver.js';
 
 /**
  * Authority + host-lobby tests. A fake transport collects every broadcast /
@@ -686,5 +687,85 @@ describe('RoomEngine — frame sequencing + input hardening', () => {
         // Fractional / out-of-range indexes are rejected the same way.
         expect(engine.handleSetSeat('h', 1.5, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
         expect(engine.handleSetSeat('h', 7, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+    });
+});
+
+/**
+ * Hibernation round-trip. A Cloudflare DO evicts the engine from memory between
+ * moves to save duration, then reconstructs it from a `serialize()` snapshot.
+ * These guard that the reconstruction is byte-identical — board, seats, counters
+ * AND the dice RNG stream — so a resumed game plays on exactly as it would have.
+ */
+describe('RoomEngine — snapshot / restore', () => {
+    const sid = ['h', 'g'];
+    const step = (e) => {
+        const seat = e.currentPlayerIndex;
+        if (e.phase === PHASES.AWAIT_ROLL) e.handleRoll(sid[seat]);
+        else if (e.phase === PHASES.AWAIT_MOVE) e.handleMove(sid[seat], e.legalMoves[0]);
+    };
+
+    it('makeRng resumes an identical stream from getState/setState', () => {
+        const a = makeRng(0xC0FFEE);
+        for (let i = 0; i < 5; i++) a();          // advance into the stream
+        const saved = a.getState();
+        const expected = [a(), a(), a(), a()];
+        const b = makeRng(1);                      // different seed...
+        b.setState(saved);                         // ...rewound to a's position
+        expect([b(), b(), b(), b()]).toEqual(expected);
+    });
+
+    it('round-trips full mid-game state, internals included', () => {
+        const { engine } = started2();
+        for (let i = 0; i < 12 && engine.phase !== PHASES.ENDED; i++) step(engine); // churn real state
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({ roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule });
+        restored.restore(engine.serialize());
+
+        // serialize() captures everything the turn machine reads — public view,
+        // hostSession, counters, legalMoves, seq, and both RNG states — so a deep
+        // equality of the snapshot is a complete round-trip assertion.
+        expect(restored.serialize()).toEqual(engine.serialize());
+        expect(restored._publicState()).toEqual(engine._publicState());
+        expect(restored.rng.getState()).toBe(engine.rng.getState());
+    });
+
+    it('resumes the dice stream so the next roll is identical', () => {
+        const { engine } = started2();
+        for (let i = 0; i < 9 && engine.phase !== PHASES.ENDED; i++) step(engine);
+        if (engine.phase === PHASES.ENDED) return; // unlucky fast finish — nothing to resume
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({ roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule });
+        restored.restore(engine.serialize());
+
+        // One more identical action on each: a resumed RNG must roll the SAME
+        // dice, so the resulting states stay byte-identical. A diverged stream
+        // would roll differently and this would fail.
+        step(engine);
+        step(restored);
+        expect(restored.serialize()).toEqual(engine.serialize());
+    });
+
+    it('re-arms and fires a lapsed reconnect-grace forfeit on resume', () => {
+        // A DO evicted DURING a grace window loses the setTimeout; on the next
+        // wake _resumeTimers must forfeit a seat whose deadline already passed.
+        const { engine } = started2();
+        const snap = engine.serialize();
+        snap.seats[1].connected = false;   // guest dropped mid-game...
+        snap.seats[1].graceUntil = 500;    // ...and the window lapsed (< now below)
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({
+            roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule,
+            setTimer: (fn) => fn(), now: () => 10_000,
+        });
+        restored.restore(snap);
+        restored._resumeTimers();
+
+        // Two-human game minus the forfeiting seat → the match ends for the survivor.
+        expect(restored.seats[1].type).toBe(null);
+        expect(restored.phase).toBe(PHASES.ENDED);
+        expect(fake2.broadcasts.some(b => b.t === 'ended')).toBe(true);
     });
 });
