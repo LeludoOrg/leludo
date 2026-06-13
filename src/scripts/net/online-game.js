@@ -30,27 +30,28 @@ import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online
 import { setDimmedPlayers, clearPresence, showWaitingFor, hideWaitingBanner } from './net-overlay.js';
 import { MSG, REASON } from './net-protocol.js';
 
-// How many newer pawn moves may already be queued and STILL let a move glide.
-// The serial queue plays every frame in order; the question is only whether a
-// move animates (cell-by-cell) or snaps (jump) to catch up. We tolerate a small
-// backlog so transient bunching (a plays-again chain, a brief network stall, an
-// opponent rolling mid-glide) animates smoothly, and only fast-forward once the
-// board is genuinely stale — more than this many moves behind the freshest one.
-// Bounded by design: snapping the excess keeps live-lag at ~this many moves, so
-// it can't compound into an ever-growing replay backlog.
-const MAX_MOVE_BACKLOG = 3;
+// How many newer animatable deltas (dice spins + pawn glides) may already be
+// queued and STILL let an older delta play its animation. The serial queue plays
+// every frame in order; the question is only whether a delta animates (dice spin
+// / cell-by-cell glide) or snaps (instant) to catch up. We tolerate a backlog so
+// transient bunching (a bot rolling-and-moving in one beat, a plays-again chain,
+// a brief network stall) plays out smoothly, and only fast-forward once the board
+// is genuinely stale — more than this many deltas behind the freshest one (a
+// hidden tab, a reconnect, a long burst). Bounded by design: snapping the excess
+// keeps live-lag at ~this many deltas, so it can't compound into an ever-growing
+// replay backlog.
+const MAX_DELTA_BACKLOG = 10;
 
 let _started = false;
 let _chain = Promise.resolve();
 // Highest seq applied — frames at or below it are duplicates/stale and dropped.
 let _appliedSeq = 0;
-// Running count of MOVED frames RECEIVED. A move animates while the number of
-// moves received after it (_movesReceived − its ordinal) is within
-// MAX_MOVE_BACKLOG; past that it snaps. A dice spin (lower value) is gated apart
-// on _newestDeltaSeq — it yields to ANY newer delta, so a roll never delays the
-// catch-up and never makes a pawn teleport (the live "still jumps" case).
-let _movesReceived = 0;
-let _newestDeltaSeq = 0;
+// Running count of animatable delta frames (rolls + moves) RECEIVED. A delta
+// animates while the number of deltas received after it (_deltasReceived − its
+// ordinal) is within MAX_DELTA_BACKLOG; past that it snaps. Rolls and moves share
+// one counter so a roll spin and the move that follows it both play, and a real
+// burst still fast-forwards.
+let _deltasReceived = 0;
 // The newest state-bearing frame, kept so a REJECTED intent can re-apply the
 // authoritative snapshot immediately instead of waiting for the next broadcast.
 let _lastState = null;
@@ -98,8 +99,7 @@ export function startOnlineGame({ net, seat, state, seq }) {
     _started = true;
     _chain = Promise.resolve();
     _appliedSeq = seq || 0;
-    _movesReceived = 0;
-    _newestDeltaSeq = seq || 0;
+    _deltasReceived = 0;
     _lastState = state;
 
     enqueue(() => dispatch({
@@ -194,23 +194,18 @@ function isDeltaFrame(msg) {
 /**
  * One frame, start to finish: cosmetic delta first, authoritative snapshot
  * last. `animate` is false only when the board is genuinely stale — more than
- * MAX_MOVE_BACKLOG moves behind the freshest one (a hidden tab, a reconnect, a
+ * MAX_DELTA_BACKLOG deltas behind the freshest one (a hidden tab, a reconnect, a
  * long burst) — in which case state applies and visuals snap to catch up. A
- * small transient backlog still glides; see MAX_MOVE_BACKLOG / _movesReceived.
+ * transient backlog still plays out; see MAX_DELTA_BACKLOG / _deltasReceived.
  */
-async function applyFrame(msg, moveOrdinal) {
-    // A pawn move glides while it's within MAX_MOVE_BACKLOG of the freshest move
-    // received; a deeper backlog snaps to catch up. A dice spin (lower value)
-    // yields to any newer delta. Frames without a seq (no backlog tracking)
-    // always animate.
-    let animate;
-    if (msg.seq == null) {
-        animate = true;
-    } else if (msg.t === MSG.MOVED) {
-        animate = (_movesReceived - moveOrdinal) <= MAX_MOVE_BACKLOG;
-    } else {
-        animate = msg.seq >= _newestDeltaSeq;
-    }
+async function applyFrame(msg, deltaOrdinal) {
+    // A delta (dice spin or pawn glide) plays while it's within MAX_DELTA_BACKLOG
+    // of the freshest delta received; a deeper backlog snaps to catch up. Frames
+    // with no ordinal — no seq (untracked) or a non-delta turn snapshot (no
+    // animation of its own) — always "animate" (the flag is unused for them).
+    const animate = deltaOrdinal === 0
+        ? true
+        : (_deltasReceived - deltaOrdinal) <= MAX_DELTA_BACKLOG;
     const state = msg.state;
 
     if (msg.t === MSG.STATE) {
@@ -263,17 +258,17 @@ export function handleOnlineMessage(msg) {
         case MSG.DROPPED:
         case MSG.ENDED: {
             // Drop duplicates/stale frames (zombie socket racing a reconnect),
-            // then stamp each move with its arrival ordinal so applyFrame can tell,
-            // at animate-time, how many newer moves have since piled up behind it.
-            let moveOrdinal = 0;
+            // then stamp each animatable delta (roll or move) with its arrival
+            // ordinal so applyFrame can tell, at animate-time, how many newer
+            // deltas have since piled up behind it.
+            let deltaOrdinal = 0;
             if (msg.seq != null) {
                 if (msg.seq <= _appliedSeq) return;
                 _appliedSeq = msg.seq;
-                if (isDeltaFrame(msg)) _newestDeltaSeq = Math.max(_newestDeltaSeq, msg.seq);
-                if (msg.t === MSG.MOVED) moveOrdinal = ++_movesReceived;
+                if (isDeltaFrame(msg)) deltaOrdinal = ++_deltasReceived;
             }
             if (msg.state) _lastState = msg.state;
-            enqueue(() => applyFrame(msg, moveOrdinal));
+            enqueue(() => applyFrame(msg, deltaOrdinal));
             break;
         }
         case MSG.REJECTED: {

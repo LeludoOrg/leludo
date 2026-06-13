@@ -1,17 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
- * Online move animation under STREAMED frames.
+ * Online delta animation (dice spins + pawn glides) under STREAMED frames.
  *
- * Regression (the live report "pawns teleport — cell-by-cell motion is gone"):
- * the server stamps the next player's delta-less AWAIT_ROLL snapshot on the wire
- * right after every MOVED. The driver gated the move's glide on "is this still
- * the newest frame received?" — so that trailing snapshot (a higher seq, no
- * motion of its own) classified the move as stale backlog and snapped the pawn
- * straight to its target whenever the move was processed a beat late (any prior
- * animation still in flight). The fix gates on the newest *delta-bearing* frame,
- * so a trailing turn snapshot no longer suppresses the move it follows, while a
- * genuine backlog of moves still fast-forwards.
+ * Regression (the live reports "pawns teleport — cell-by-cell motion is gone"
+ * and "the dice roll gets skipped, especially for bots"): the server stamps the
+ * next frame on the wire right after every delta. Rolls and moves shared no
+ * common backlog gate — a move animated only if few newer MOVES trailed it, but
+ * a roll animated only if it was the very newest delta, so a bot's roll-then-move
+ * in one beat dropped the dice spin entirely (the move bumped the newest-delta
+ * marker past the roll).
+ *
+ * The fix puts rolls and moves on ONE backlog counter: a delta animates while the
+ * number of deltas received behind it is within MAX_DELTA_BACKLOG. So a roll spin
+ * and the move that follows it both play, a trailing turn snapshot (not a delta)
+ * never suppresses the move it follows, and a genuine burst still fast-forwards.
  *
  * dispatch is ASYNC here: an animated NET_APPLY_* holds the driver's serial queue
  * (a controllable gate) exactly like a real multi-cell glide / dice spin spanning
@@ -38,7 +41,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const ofType = (t) => recorded.filter((c) => c.type === t);
 /** Release the in-flight animation gate, if any, and let the queue advance. */
 async function drain() {
-    for (let i = 0; i < 8 && gate.release; i++) {
+    for (let i = 0; i < 32 && gate.release; i++) {
         const r = gate.release; gate.release = null; r(); await tick();
     }
 }
@@ -104,6 +107,35 @@ describe('online move animation under streamed frames', () => {
         expect(moves[0].animate).toBe(true); // the trailing turn-snapshot must not skip it
     });
 
+    it('a dice roll trailed by its own move still spins (bot roll-and-move in one beat)', async () => {
+        // The live "dice roll gets skipped for bots" case: a bot resolves a roll
+        // and the move it produces in the same beat. Pre-fix the move bumped the
+        // newest-delta marker past the roll, so the roll's spin was dropped. Now
+        // rolls share the move backlog counter, so the spin plays. Hold the queue
+        // with a prior in-flight roll so the pair below queue before either runs.
+        handleOnlineMessage({
+            t: MSG.STATE, seq: 1, reason: REASON.ROLLED,
+            state: base([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null], { dice: 2, currentPlayerIndex: 1, phase: 'AWAIT_MOVE', legalMoves: [0] }),
+        });
+        await tick(); // first roll spin in flight, holding the queue
+
+        // A second roll, immediately followed by the move it resolved.
+        handleOnlineMessage({
+            t: MSG.STATE, seq: 2, reason: REASON.ROLLED,
+            state: base([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null], { dice: 5, currentPlayerIndex: 1, phase: 'AWAIT_MOVE', legalMoves: [0] }),
+        });
+        handleOnlineMessage({
+            t: MSG.MOVED, seq: 3, p: 1, token: 0, from: -1, to: 4, caps: [],
+            state: base([[-1, -1, -1, -1], [4, -1, -1, -1], null, null]),
+        });
+
+        await drain();
+
+        const rolls = ofType('NET_APPLY_ROLL');
+        expect(rolls).toHaveLength(2);
+        expect(rolls[1].animate).toBe(true); // the trailing move must not skip the spin
+    });
+
     it('a move trailed by the NEXT player\'s dice spin still animates (a roll must not teleport a pawn)', async () => {
         // The live "still jumps sometimes" case: a bot / auto-rolling opponent's
         // next dice spin arrives while THIS move is still gliding. A newer roll is
@@ -151,17 +183,18 @@ describe('online move animation under streamed frames', () => {
         return ofType('NET_APPLY_MOVE').map((m) => m.animate);
     }
 
-    it('TOLERANCE: a small backlog (<= 3 newer moves) still animates every move', async () => {
+    it('TOLERANCE: a small backlog (<= MAX_DELTA_BACKLOG newer deltas) still animates every move', async () => {
         // Transient bunching — a plays-again chain, a brief stall — should glide,
-        // not teleport. Three moves stacked: the oldest has 2 newer behind it
-        // (within tolerance), so all three animate.
+        // not teleport. Three moves stacked behind one roll: the oldest move has
+        // only a few deltas behind it (well within the cap), so all three animate.
         expect(await queueMoves(3)).toEqual([true, true, true]);
     });
 
-    it('CATCH-UP: a deep backlog (> 3 newer moves) snaps the stale ones only', async () => {
-        // Five moves stacked. Oldest has 4 newer (over the cap) → snap; once the
-        // remaining backlog is within 3 of the freshest, moves glide again. Keeps
+    it('CATCH-UP: a deep backlog (> MAX_DELTA_BACKLOG newer deltas) snaps the stale ones only', async () => {
+        // Twelve moves stacked behind one roll → 13 deltas total. The oldest move
+        // has 11 deltas behind it (over the cap of 10) → snap; once the remaining
+        // backlog is within the cap of the freshest, moves glide again. Keeps
         // live-lag bounded without teleporting on every transient bunch.
-        expect(await queueMoves(5)).toEqual([false, true, true, true, true]);
+        expect(await queueMoves(12)).toEqual([false, ...Array(11).fill(true)]);
     });
 });
