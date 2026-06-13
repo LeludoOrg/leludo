@@ -142,6 +142,23 @@ describe('NetClient auto-reconnect', () => {
         expect(pings(last())).toBe(3);          // ~one every 25s — covers a 60s reap window twice
     });
 
+    it('skips the keepalive when a real frame was just sent (idle-reset)', () => {
+        // A roll/move already keeps the socket warm at the DO, so the ping is
+        // redundant — sending one resets the window instead of firing on top.
+        const net = new NetClient({
+            room: 'ABCD', session: 's-1', onMessage: () => {}, pingMs: 25_000,
+        });
+        net.connect();
+        last().open();
+        vi.advanceTimersByTime(20_000);         // 20s idle — not yet due
+        expect(pings(last())).toBe(0);
+        net.roll();                             // real outbound frame resets the window
+        vi.advanceTimersByTime(20_000);         // 20s since the roll — still inside the window
+        expect(pings(last())).toBe(0);          // no redundant ping piled on the roll
+        vi.advanceTimersByTime(10_000);         // 30s of silence after the roll
+        expect(pings(last())).toBe(1);          // ping only after a full idle window
+    });
+
     it('stops pinging once the socket closes (no leaked interval)', () => {
         const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {}, pingMs: 25_000 });
         net.connect();

@@ -189,14 +189,23 @@ export class NetClient {
     }
 
     // Heartbeat: keep the idle socket warm so intermediaries don't reap it (see
-    // MSG.PING). send() no-ops unless the socket is OPEN, so a stray tick is safe.
-    _startPing() {
+    // MSG.PING). Idle-reset, not a fixed interval — every real outbound frame
+    // (roll, move, lobby edit) reschedules the ping via send(), so we only emit a
+    // PING after a full pingMs of outbound silence. During a player's own turn the
+    // ROLL/MOVE traffic already keeps the connection warm at the DO, so the
+    // redundant ping is skipped. Resetting only on OUTBOUND traffic preserves the
+    // guarantee that the DO receives a client frame at least every pingMs.
+    _startPing() { this._armPing(); }
+
+    _armPing() {
         this._stopPing();
-        this._pingTimer = setInterval(() => this.send({ t: MSG.PING }), this._pingMs);
+        // send() no-ops unless the socket is OPEN, so a stray tick is safe; the
+        // PING it emits re-arms the next tick through send() below.
+        this._pingTimer = setTimeout(() => this.send({ t: MSG.PING }), this._pingMs);
     }
 
     _stopPing() {
-        if (this._pingTimer) { clearInterval(this._pingTimer); this._pingTimer = null; }
+        if (this._pingTimer) { clearTimeout(this._pingTimer); this._pingTimer = null; }
     }
 
     _scheduleReconnect() {
@@ -212,6 +221,9 @@ export class NetClient {
     send(obj) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(obj));
+            // Any real outbound frame keeps the socket warm, so defer the next
+            // keepalive — we only PING after a full idle window (see _armPing).
+            this._armPing();
         }
     }
 
