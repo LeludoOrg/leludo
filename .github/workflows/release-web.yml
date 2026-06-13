@@ -164,11 +164,15 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # --config wrangler.pages.toml → use the Pages config (upload dir =
-          # www/), not the Worker's wrangler.toml. --branch=main → a PRODUCTION
-          # deploy (matches the project's production branch), so it serves on the
-          # leludo.org custom domain. www/ is gitignored, hence --commit-dirty.
-          command: pages deploy --config wrangler.pages.toml --project-name=leludo --branch=main --commit-dirty=true
+          # wrangler logs a benign warning that the repo-root wrangler.toml (the
+          # Worker config) lacks pages_build_output_dir and IGNORES it, then
+          # proceeds — expected. Do NOT try to silence it with --config: Pages
+          # rejects a custom config path ("Pages does not support custom paths
+          # for the Wrangler configuration file") on every wrangler version.
+          # --branch=main → a PRODUCTION deploy (matches the project's production
+          # branch), serving the leludo.org custom domain. www/ is gitignored,
+          # hence --commit-dirty=true.
+          command: pages deploy www --project-name=leludo --branch=main --commit-dirty=true
 
   release:
     name: Publish release (Web)

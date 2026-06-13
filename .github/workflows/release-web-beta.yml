@@ -148,8 +148,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # --config wrangler.pages.toml → Pages config (upload dir = www/), not
-          # the Worker's wrangler.toml. --project-name overrides the config's prod
-          # name. --branch=main → production deploy on the leludo-beta project,
-          # served on beta.leludo.org. www/ is gitignored → --commit-dirty.
-          command: pages deploy --config wrangler.pages.toml --project-name=leludo-beta --branch=main --commit-dirty=true
+          # Benign wrangler.toml warning here too — see release-web.yml; do NOT
+          # add --config, Pages rejects custom config paths. --branch=main →
+          # production deploy on leludo-beta (beta.leludo.org). www/ is gitignored
+          # → --commit-dirty.
+          command: pages deploy www --project-name=leludo-beta --branch=main --commit-dirty=true
