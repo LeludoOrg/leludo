@@ -112,6 +112,12 @@ export class RoomEngine {
         this.transport = opts.transport;
         this.schedule = opts.schedule || ((fn, ms) => setTimeout(fn, ms));
         this.botDelayMs = opts.botDelayMs ?? 600;
+        // Optional persistence hook, called with `this` on every state-changing
+        // broadcast. A hibernating host (Cloudflare DO) writes a snapshot here so
+        // the room survives eviction; the always-resident Node server omits it.
+        // Invoked BEFORE the broadcast so CF's output gate holds the outbound
+        // frames until the write lands — clients never see an unpersisted state.
+        this.persist = opts.persist || null;
         // Public matches auto-start once every human seat is filled; private
         // rooms stay host-managed (the host presses Start).
         this.autoStart = !!opts.autoStart;
@@ -179,10 +185,126 @@ export class RoomEngine {
         this.seq = 0;
     }
 
-    /** Broadcast a frame to the room, stamped with the next sequence number. */
+    /** Broadcast a frame to the room, stamped with the next sequence number.
+     *  Persists first (see `this.persist`) so a crash can't leave clients ahead
+     *  of stored state; the bumped `seq` is part of what gets persisted. */
     _broadcast(frame) {
         frame.seq = ++this.seq;
+        this.persist?.(this);
         this.transport.broadcast(frame);
+    }
+
+    // ---- snapshot / rehydrate -----------------------------------------------
+    // A hibernating host serialises the full authoritative state to storage and
+    // reconstructs it after the runtime evicts the instance. Everything the turn
+    // machine reads must round-trip: the RNG streams (as their resumable 32-bit
+    // state), the lobby seat objects, the derived in-game arrays, and the live
+    // counters. Transient handles (graceTimer) are NOT serialised — they are
+    // re-armed from `graceUntil` by `_resumeTimers` on the way back in.
+
+    /** Full authoritative state as a plain JSON-safe object. */
+    serialize() {
+        return {
+            v: 1,
+            roomId: this.roomId,
+            botNamePool: this.botNamePool,
+            rng: this.rng.getState(),
+            botRng: this.botRng.getState(),
+            autoStart: this.autoStart,
+            botDelayMs: this.botDelayMs,
+            graceMs: this.graceMs,
+            hostSession: this.hostSession,
+            phase: this.phase,
+            started: this.started,
+            waiting: this.waiting,
+            seats: this.seats.map(s => ({
+                type: s.type,
+                sessionId: s.sessionId,
+                name: s.name,
+                personality: s.personality,
+                connected: s.connected,
+                graceUntil: s.graceUntil || 0,
+            })),
+            positions: this.positions.map(p => (p ? p.slice() : null)),
+            playerTypes: this.playerTypes.slice(),
+            playerNames: this.playerNames.slice(),
+            botPersonalities: this.botPersonalities.slice(),
+            currentPlayerIndex: this.currentPlayerIndex,
+            currentDiceRoll: this.currentDiceRoll,
+            turnCount: this.turnCount,
+            consecutiveSixes: this.consecutiveSixes,
+            noMoveStreak: this.noMoveStreak.slice(),
+            captures: this.captures.slice(),
+            ranks: this.ranks.slice(),
+            lastRank: this.lastRank,
+            legalMoves: this.legalMoves.slice(),
+            seq: this.seq,
+        };
+    }
+
+    /** Overwrite this engine's state from a `serialize()` snapshot. Hooks
+     *  (transport/schedule/persist/now) stay as wired by the constructor. */
+    restore(s) {
+        this.roomId = s.roomId;
+        this.botNamePool = s.botNamePool;
+        this.rng.setState(s.rng);
+        this.botRng.setState(s.botRng);
+        this.autoStart = s.autoStart;
+        this.botDelayMs = s.botDelayMs;
+        this.graceMs = s.graceMs;
+        this.hostSession = s.hostSession;
+        this.phase = s.phase;
+        this.started = s.started;
+        this.waiting = s.waiting;
+        this.seats = s.seats.map(x => ({
+            type: x.type,
+            sessionId: x.sessionId,
+            name: x.name,
+            personality: x.personality,
+            connected: x.connected,
+            graceTimer: null,
+            graceUntil: x.graceUntil || 0,
+        }));
+        this.positions = s.positions.map(p => (p ? p.slice() : null));
+        this.playerTypes = s.playerTypes.slice();
+        this.playerNames = s.playerNames.slice();
+        this.botPersonalities = s.botPersonalities.slice();
+        this.currentPlayerIndex = s.currentPlayerIndex;
+        this.currentDiceRoll = s.currentDiceRoll;
+        this.turnCount = s.turnCount;
+        this.consecutiveSixes = s.consecutiveSixes;
+        this.noMoveStreak = s.noMoveStreak.slice();
+        this.captures = s.captures.slice();
+        this.ranks = s.ranks.slice();
+        this.lastRank = s.lastRank;
+        this.legalMoves = s.legalMoves.slice();
+        this.seq = s.seq;
+        return this;
+    }
+
+    /**
+     * After a restore, re-create the timers that live only in memory (a fresh
+     * instance has none). Idempotent intent: call EXACTLY once per reconstruction,
+     * never on a warm instance, or bot turns would double-schedule.
+     *   - Disconnect-grace forfeits resume from their persisted deadline (forfeit
+     *     immediately if the window already lapsed while we were evicted).
+     *   - A bot left mid-turn (AWAIT_ROLL, not held on a human) gets its step
+     *     re-kicked, since its pacing setTimeout was lost with the old instance.
+     */
+    _resumeTimers() {
+        if (this.phase === PHASES.ENDED) return;
+        for (let i = 0; i < 4; i++) {
+            const s = this.seats[i];
+            if (this._isActiveHuman(i) && !s.connected && s.graceUntil > 0) {
+                const remaining = s.graceUntil - this.now();
+                if (remaining <= 0) { this._dropSeat(i); }
+                else { s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._dropSeat(i); }, remaining); }
+            }
+        }
+        if (this.phase === PHASES.AWAIT_ROLL && !this.waiting
+            && this.playerTypes[this.currentPlayerIndex] === 'BOT') {
+            this.schedule(() => this._botStep(), this.botDelayMs);
+        }
     }
 
     // ---- seat helpers -------------------------------------------------------

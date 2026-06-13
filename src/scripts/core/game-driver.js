@@ -22,17 +22,26 @@ import { EVENTS } from '../state/game-reducer.js';
 
 /**
  * Seedable PRNG (mulberry32). Returns a function compatible with Math.random.
+ *
+ * The full generator state is the single 32-bit accumulator `s`, exposed via
+ * `rng.getState()` / `rng.setState(v)` so a server can persist a room's dice
+ * stream and resume it byte-identically after the Durable Object hibernates and
+ * its memory is reconstructed (see server/cf/room-do.js). Plain callers ignore
+ * the accessors and just invoke `rng()`.
  * @param {number} seed
  */
 export function makeRng(seed) {
     let s = seed >>> 0;
-    return function rng() {
+    const rng = function rng() {
         s = (s + 0x6D2B79F5) >>> 0;
         let t = s;
         t = Math.imul(t ^ (t >>> 15), t | 1);
         t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    rng.getState = () => s;
+    rng.setState = (v) => { s = v >>> 0; };
+    return rng;
 }
 
 function cloneBoard(positions) {
