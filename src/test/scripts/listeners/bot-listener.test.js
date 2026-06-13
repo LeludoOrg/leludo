@@ -239,3 +239,125 @@ describe('bot-listener online assists (own turn only)', () => {
         }
     });
 });
+
+// Regression (the live report): online assists did nothing past the OPENING
+// turn. The server, not the local engine, drives the online turn flow, so the
+// authoritative snapshot (NET_STATE_SYNCED) — NOT the local TURN_ADVANCED /
+// MOVABLE_TOKENS_DETERMINED events the older tests fired — is the only signal a
+// new turn/roll arrived. The bot listener ignored it, so a player with "Auto-roll"
+// on still had to tap the dice every turn from turn two on. These drive autoplay
+// the way the live game actually does: through the server snapshot.
+describe('bot-listener online autoplay via server snapshot (NET_STATE_SYNCED)', () => {
+    const SELF = onlineLocalSelf(); // this client's board position (bottom-right)
+    const NOT_SELF = (SELF + 1) % 4;
+
+    function sync(o = {}) {
+        return emit({
+            type: EVENTS.NET_STATE_SYNCED,
+            playerTypes: ['HUMAN', 'HUMAN', 'HUMAN', 'HUMAN'],
+            positions: [[-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]],
+            captures: [0, 0, 0, 0],
+            ranks: [0, 0, 0, 0],
+            currentPlayerIndex: NOT_SELF,
+            turnCount: 1,
+            dice: 0,
+            phase: 'AWAIT_ROLL',
+            legalMoves: [],
+            ...o,
+        });
+    }
+
+    beforeEach(() => {
+        setOnline({}, 2, [0, 1, 2, 3]); // server seat 2, four-player game
+        for (let i = 0; i < 4; i++) state.playerTypes[i] = 'HUMAN';
+        // Seed the dedup key to a non-actionable (opponent's) turn so each test's
+        // own-turn snapshot below is a genuine transition regardless of test order.
+        sync({ currentPlayerIndex: NOT_SELF, phase: 'AWAIT_ROLL' });
+        dispatched = [];
+    });
+
+    it('auto-rolls when a snapshot puts US in AWAIT_ROLL (the post-turn-one path)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_ROLL' });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('auto-moves out of home when a snapshot puts US in AWAIT_MOVE (all home + a six)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoMoveOutOfHome = true;
+            state.assistFlags.autoMoveSingleOption = false;
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_MOVE', dice: 6, legalMoves: [0, 1, 2, 3] });
+            vi.advanceTimersByTime(2000);
+            expect(selects()).toHaveLength(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('auto-moves the single option when a snapshot puts US in AWAIT_MOVE', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoMoveSingleOption = true;
+            const positions = [[-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1], [-1, -1, -1, -1]];
+            positions[SELF] = [10, -1, -1, -1];
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_MOVE', dice: 3, legalMoves: [0], positions });
+            vi.advanceTimersByTime(2000);
+            expect(selects()).toHaveLength(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does NOT auto-roll on another seat\'s snapshot (server drives them)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            // A genuine transition (seed was NOT_SELF) to a DIFFERENT non-self seat,
+            // so this exercises the isMyOnlineTurn gate, not just the dedup key.
+            sync({ currentPlayerIndex: (SELF + 2) % 4, phase: 'AWAIT_ROLL', turnCount: 2 });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fires only ONCE across repeated snapshots of the same actionable turn', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_ROLL' });
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_ROLL' }); // duplicate / REJECTED self-heal
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_ROLL' });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(1); // one intent, not three
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fires the next auto-roll on a plays-again chain (SELECTION → ROLL, same seat)', () => {
+        vi.useFakeTimers();
+        try {
+            state.assistFlags.autoRollDice = true;
+            state.assistFlags.autoMoveOutOfHome = true;
+            // We roll a six and move out (AWAIT_MOVE), then the server grants another
+            // roll for the same seat (AWAIT_ROLL). The phase change must re-arm auto-roll.
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_MOVE', dice: 6, legalMoves: [0, 1, 2, 3] });
+            vi.advanceTimersByTime(2000);
+            expect(selects()).toHaveLength(1);
+            sync({ currentPlayerIndex: SELF, phase: 'AWAIT_ROLL', dice: 0 });
+            vi.advanceTimersByTime(2000);
+            expect(rolls()).toHaveLength(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

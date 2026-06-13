@@ -32,10 +32,14 @@ import { MSG, REASON } from './net-protocol.js';
 
 let _started = false;
 let _chain = Promise.resolve();
-// Highest seq applied (frames at or below it are duplicates) and the highest
-// seq RECEIVED (a queued frame below it is a backlog entry → skip animation).
+// Highest seq applied — frames at or below it are duplicates/stale and dropped.
 let _appliedSeq = 0;
-let _newestSeq = 0;
+// Highest seq among RECEIVED frames that carry a visual delta (a pawn glide or
+// a dice spin). A frame animates iff no NEWER delta frame has arrived yet — so
+// a real backlog of moves still fast-forwards, but the delta-less turn/again
+// snapshot the server stamps right after every MOVED no longer classifies that
+// move as stale (which teleported every pawn straight to its target cell).
+let _newestDeltaSeq = 0;
 // The newest state-bearing frame, kept so a REJECTED intent can re-apply the
 // authoritative snapshot immediately instead of waiting for the next broadcast.
 let _lastState = null;
@@ -83,7 +87,7 @@ export function startOnlineGame({ net, seat, state, seq }) {
     _started = true;
     _chain = Promise.resolve();
     _appliedSeq = seq || 0;
-    _newestSeq = seq || 0;
+    _newestDeltaSeq = seq || 0;
     _lastState = state;
 
     enqueue(() => dispatch({
@@ -166,12 +170,24 @@ function isRollReason(reason) {
 }
 
 /**
+ * A frame carries a visual delta the player should SEE play out: a pawn glide
+ * (MOVED) or a dice spin (a roll-reason STATE). Turn/again/reconnect snapshots,
+ * drops and ends have no motion of their own — they must not advance the
+ * "newest animatable frame" marker, or the move they trail gets skipped.
+ */
+function isDeltaFrame(msg) {
+    return msg.t === MSG.MOVED || (msg.t === MSG.STATE && isRollReason(msg.reason));
+}
+
+/**
  * One frame, start to finish: cosmetic delta first, authoritative snapshot
- * last. `animate` is false when a newer frame has already arrived (backlog
- * catch-up after a hidden tab or a reconnect) — state applies, visuals snap.
+ * last. `animate` is false only when a newer DELTA frame has already arrived
+ * (genuine backlog: a hidden tab, a reconnect, a stream of moves) — state
+ * applies, visuals snap. A trailing delta-less turn/again snapshot does NOT
+ * suppress the move it follows (see _newestDeltaSeq).
  */
 async function applyFrame(msg) {
-    const animate = msg.seq == null || msg.seq >= _newestSeq;
+    const animate = msg.seq == null || msg.seq >= _newestDeltaSeq;
     const state = msg.state;
 
     if (msg.t === MSG.STATE) {
@@ -227,7 +243,7 @@ export function handleOnlineMessage(msg) {
             if (msg.seq != null) {
                 if (msg.seq <= _appliedSeq) return;
                 _appliedSeq = msg.seq;
-                _newestSeq = Math.max(_newestSeq, msg.seq);
+                if (isDeltaFrame(msg)) _newestDeltaSeq = Math.max(_newestDeltaSeq, msg.seq);
             }
             if (msg.state) _lastState = msg.state;
             enqueue(() => applyFrame(msg));
