@@ -48,12 +48,6 @@ const SHIPPED = [
   'components',
   'scripts',
   'assets',
-  // GitHub Pages chrome — copied so the same www/ tree can be used
-  // both for Capacitor (which ignores these) and for Pages deploys
-  // (which need the custom domain CNAME + .nojekyll to opt out of
-  // Jekyll processing).
-  'CNAME',
-  '.nojekyll',
 ];
 
 // Bundle + minify the whole static-import graph into www/app.js. A tiny

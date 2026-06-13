@@ -99,8 +99,6 @@ jobs:
           test -f www/sw.js
           test -f www/version.js
           test -f www/manifest.json
-          test -f www/CNAME
-          test -f www/.nojekyll
           test -f www/styles/base.css
           test -f www/components/wc-board.css
           test -f www/components/wc-board.js

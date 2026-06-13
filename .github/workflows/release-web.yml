@@ -119,11 +119,16 @@ jobs:
           if-no-files-found: error
 
   publish-pages:
-    name: Publish to gh-pages
+    name: Publish to Cloudflare Pages
     needs: [detect-version, build-web]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    # Publishes the built www/ bundle to the Cloudflare Pages project `leludo`,
+    # which serves leludo.org (apex). Decoupled from the MP Worker (mp.leludo.org)
+    # — switching the static host never touches multiplayer, the client dials the
+    # mp. subdomain by hostname (scripts/net/net-client.js). Requires repo secrets
+    # CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) + CLOUDFLARE_ACCOUNT_ID;
+    # absent → FAILS LOUDLY, same rationale as deploy-worker (a silent no-op would
+    # let a green release ship stale assets).
     concurrency:
       group: pages-deploy
       cancel-in-progress: true
@@ -143,17 +148,27 @@ jobs:
       - name: Build www/
         run: node tools/build-www.mjs
 
-      - name: Publish to gh-pages branch
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot publish the web bundle to Cloudflare Pages (project leludo). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with Pages publish."
+
+      - name: Publish to Cloudflare Pages (leludo.org)
+        uses: cloudflare/wrangler-action@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./www
-          publish_branch: gh-pages
-          # tools/build-www.mjs already copies CNAME + .nojekyll into
-          # www/, so peaceiris doesn't need its `cname` / Jekyll flags.
-          commit_message: "deploy: ${{ github.sha }}"
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # --config wrangler.pages.toml → use the Pages config (upload dir =
+          # www/), not the Worker's wrangler.toml. --branch=main → a PRODUCTION
+          # deploy (matches the project's production branch), so it serves on the
+          # leludo.org custom domain. www/ is gitignored, hence --commit-dirty.
+          command: pages deploy --config wrangler.pages.toml --project-name=leludo --branch=main --commit-dirty=true
 
   release:
     name: Publish release (Web)

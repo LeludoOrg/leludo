@@ -1,15 +1,16 @@
 name: Release (Web Beta)
 
-# Beta channel — publishes the current ref to LeludoOrg/leludo-beta
-# (served at beta.leludo.org from main / root). Manual trigger only.
+# Beta channel — publishes the current ref to the Cloudflare Pages
+# project `leludo-beta` (served at beta.leludo.org). Runs on push to
+# main, or manual trigger.
 #
 # Differs from release-web.yml in three ways:
-#   - Retargets www/ for the beta channel (CNAME + SW cache name)
-#     before publishing, so beta runs an isolated service-worker
-#     scope and never fights the prod cache.
-#   - Pushes to a different repo (external_repository), so it needs
-#     BETA_DEPLOY_TOKEN — a fine-grained PAT with contents:write on
-#     LeludoOrg/leludo-beta.
+#   - Retargets www/ for the beta channel (SW cache name) before
+#     publishing, so beta runs an isolated service-worker scope and
+#     never fights the prod cache.
+#   - Deploys to a SEPARATE Pages project (leludo-beta), so beta and
+#     prod static bundles never collide. Same CLOUDFLARE_API_TOKEN as
+#     the Worker deploy — no separate cross-repo PAT needed anymore.
 #   - Does NOT tag or create a GitHub release. Beta is a rolling
 #     channel; bumping VERSION is optional.
 #
@@ -113,9 +114,6 @@ jobs:
       - name: Retarget www/ for beta channel
         run: |
           set -euo pipefail
-          # CNAME for the beta domain.
-          echo "beta.leludo.org" > www/CNAME
-
           # Service worker cache name must be distinct from prod, so
           # beta clients never collide with the leludo-${VERSION}
           # cache served from leludo.org.
@@ -134,13 +132,24 @@ jobs:
           "
           grep -F "$AFTER" www/sw.js >/dev/null
 
-      - name: Publish to leludo-beta main
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot publish the beta web bundle to Cloudflare Pages (project leludo-beta). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with beta Pages publish."
+
+      - name: Publish to Cloudflare Pages (beta.leludo.org)
+        uses: cloudflare/wrangler-action@v3
         with:
-          personal_token: ${{ secrets.BETA_DEPLOY_TOKEN }}
-          external_repository: LeludoOrg/leludo-beta
-          publish_dir: ./www
-          publish_branch: main
-          commit_message: "deploy beta: ${{ github.sha }}"
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # --config wrangler.pages.toml → Pages config (upload dir = www/), not
+          # the Worker's wrangler.toml. --project-name overrides the config's prod
+          # name. --branch=main → production deploy on the leludo-beta project,
+          # served on beta.leludo.org. www/ is gitignored → --commit-dirty.
+          command: pages deploy --config wrangler.pages.toml --project-name=leludo-beta --branch=main --commit-dirty=true
