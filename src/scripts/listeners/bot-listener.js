@@ -137,10 +137,37 @@ function resumeAutoplay() {
     }
 }
 
+// Online the turn flow is server-driven: the authoritative snapshot (NET_STATE_SYNCED)
+// replaces the local TURN_ADVANCED / MOVABLE_TOKENS_DETERMINED signals that fire
+// autoplay offline, and those never fire online. So drive the same assist actions off
+// the snapshot — but only when it FIRST lands us in an actionable phase, keyed on
+// (phase, currentPlayer) so the several snapshot frames per turn (and a REJECTED
+// self-heal re-applying the same one) don't re-dispatch the intent. Plays-again still
+// fires: the phase changes AWAITING_SELECTION → AWAITING_ROLL between the two rolls.
+// maybeAutoRoll / maybeAutoSelect already gate on isMyOnlineTurn + assist flags + pause,
+// so a sync for someone else's turn (or with assists off) is a no-op.
+let _lastOnlineActionKey = null;
+function maybeOnlineAutoplay() {
+    const key = `${state.phase}:${state.currentPlayerIndex}`;
+    if (key === _lastOnlineActionKey) return;
+    _lastOnlineActionKey = key;
+    if (state.phase === PHASES.AWAITING_ROLL) {
+        maybeAutoRoll();
+    } else if (state.phase === PHASES.AWAITING_SELECTION) {
+        maybeAutoSelect(state.movableTokenIndexes);
+    }
+}
+
 export function installBotListener() {
     subscribe((event) => {
         switch (event.type) {
             case EVENTS.GAME_STARTED:
+                // A new game (online included) resets the online dedup key, then
+                // primes it so the server's first snapshot — same phase/player —
+                // doesn't double-fire the opening auto-roll GAME_STARTED triggers.
+                maybeAutoRoll();
+                _lastOnlineActionKey = `${state.phase}:${state.currentPlayerIndex}`;
+                break;
             case EVENTS.GAME_RESUMED:
             case EVENTS.TURN_ADVANCED:
             case EVENTS.TURN_REPEATS:
@@ -148,6 +175,9 @@ export function installBotListener() {
                 break;
             case EVENTS.MOVABLE_TOKENS_DETERMINED:
                 maybeAutoSelect(event.tokenIndexes);
+                break;
+            case EVENTS.NET_STATE_SYNCED:
+                maybeOnlineAutoplay();
                 break;
             case EVENTS.GAME_RESUMED_FROM_PAUSE:
                 resumeAutoplay();
