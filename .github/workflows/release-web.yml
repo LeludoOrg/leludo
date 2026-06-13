@@ -164,10 +164,11 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # --branch=main → a PRODUCTION deploy (matches the project's production
-          # branch), so it serves on the leludo.org custom domain. www/ is
-          # gitignored, hence --commit-dirty=true.
-          command: pages deploy www --project-name=leludo --branch=main --commit-dirty=true
+          # --config wrangler.pages.toml → use the Pages config (upload dir =
+          # www/), not the Worker's wrangler.toml. --branch=main → a PRODUCTION
+          # deploy (matches the project's production branch), so it serves on the
+          # leludo.org custom domain. www/ is gitignored, hence --commit-dirty.
+          command: pages deploy --config wrangler.pages.toml --project-name=leludo --branch=main --commit-dirty=true
 
   release:
     name: Publish release (Web)
