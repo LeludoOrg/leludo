@@ -25,6 +25,12 @@ export const MSG = Object.freeze({
     JOIN: 'join',
     ROLL: 'roll',
     MOVE: 'move',
+    // keepalive: an idle WebSocket (a player waiting through others' turns) has
+    // no traffic, so Cloudflare's edge / NATs / proxies reap it after ~60-100s —
+    // a silent drop with no real network fault. The client sends this on an
+    // interval to keep the single TCP connection warm in BOTH directions. The
+    // server treats it as a no-op (see dispatchIntent).
+    PING: 'ping',
     LOBBY_SIZE: 'lobby_size',
     LOBBY_SEAT: 'lobby_seat',
     LOBBY_KICK: 'lobby_kick',

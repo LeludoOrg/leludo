@@ -139,6 +139,10 @@ export class NetClient {
         // ~30s of retries to match the server's reconnect grace window.
         this._maxReconnect = opts.maxReconnect ?? 12;
         this._reconnectDelayMs = opts.reconnectDelayMs ?? 2500;
+        // Keepalive cadence. Comfortably under the ~60s idle-reap floor so two
+        // pings cover every window; see MSG.PING.
+        this._pingMs = opts.pingMs ?? 25_000;
+        this._pingTimer = null;
     }
 
     connect() {
@@ -160,6 +164,7 @@ export class NetClient {
             const wasReconnecting = this._reconnectAttempts > 0;
             this._reconnectAttempts = 0;
             this._everOpen = true;
+            this._startPing();
             if (wasReconnecting) this.opts.onReconnected?.();
             else this.opts.onOpen?.();
         });
@@ -176,10 +181,31 @@ export class NetClient {
         });
         this.ws.addEventListener('close', (ev) => {
             this.connected = false;
+            this._stopPing();
             this.opts.onClose?.(ev);
             // Auto-reconnect only an unexpected drop of an established session.
             if (!this._closedByUs && this._everOpen) this._scheduleReconnect();
         });
+    }
+
+    // Heartbeat: keep the idle socket warm so intermediaries don't reap it (see
+    // MSG.PING). Idle-reset, not a fixed interval — every real outbound frame
+    // (roll, move, lobby edit) reschedules the ping via send(), so we only emit a
+    // PING after a full pingMs of outbound silence. During a player's own turn the
+    // ROLL/MOVE traffic already keeps the connection warm at the DO, so the
+    // redundant ping is skipped. Resetting only on OUTBOUND traffic preserves the
+    // guarantee that the DO receives a client frame at least every pingMs.
+    _startPing() { this._armPing(); }
+
+    _armPing() {
+        this._stopPing();
+        // send() no-ops unless the socket is OPEN, so a stray tick is safe; the
+        // PING it emits re-arms the next tick through send() below.
+        this._pingTimer = setTimeout(() => this.send({ t: MSG.PING }), this._pingMs);
+    }
+
+    _stopPing() {
+        if (this._pingTimer) { clearTimeout(this._pingTimer); this._pingTimer = null; }
     }
 
     _scheduleReconnect() {
@@ -195,6 +221,9 @@ export class NetClient {
     send(obj) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(obj));
+            // Any real outbound frame keeps the socket warm, so defer the next
+            // keepalive — we only PING after a full idle window (see _armPing).
+            this._armPing();
         }
     }
 
@@ -212,5 +241,5 @@ export class NetClient {
     // keystroke, so it stays one message per deliberate edit.
     setProfile({ name, seat } = {}) { this.send({ t: MSG.LOBBY_PROFILE, name, seat }); }
 
-    close() { this._closedByUs = true; this.ws?.close(); }
+    close() { this._closedByUs = true; this._stopPing(); this.ws?.close(); }
 }

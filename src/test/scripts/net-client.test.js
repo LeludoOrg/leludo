@@ -51,10 +51,11 @@ class FakeWS {
         this.url = url;
         this.readyState = 0;
         this._l = {};
+        this.sent = [];
         FakeWS.instances.push(this);
     }
     addEventListener(type, fn) { (this._l[type] ||= []).push(fn); }
-    send() {}
+    send(data) { this.sent.push(JSON.parse(data)); }
     close() { this.readyState = 3; this._fire('close', {}); }
     _fire(type, ev) { (this._l[type] || []).forEach(fn => fn(ev)); }
     open() { this.readyState = FakeWS.OPEN; this._fire('open', {}); }
@@ -120,6 +121,53 @@ describe('NetClient auto-reconnect', () => {
         vi.advanceTimersByTime(2500);
         expect(last().url).toContain('room=WXYZ'); // back to the same room
         expect(last().url).not.toContain('mode=public'); // not a new public match
+    });
+
+    // Heartbeat regression: an idle socket (a player waiting through others'
+    // turns) used to get reaped by Cloudflare's edge / NATs after ~60s with no
+    // real fault, then forfeit. The client must keep it warm with periodic pings
+    // while connected, and must stop pinging the moment the socket is gone.
+    const pings = (ws) => ws.sent.filter(m => m.t === 'ping').length;
+
+    it('sends keepalive pings on an interval while connected', () => {
+        const net = new NetClient({
+            room: 'ABCD', session: 's-1', onMessage: () => {}, pingMs: 25_000,
+        });
+        net.connect();
+        last().open();
+        expect(pings(last())).toBe(0);          // none yet
+        vi.advanceTimersByTime(25_000);
+        expect(pings(last())).toBe(1);          // first heartbeat
+        vi.advanceTimersByTime(50_000);
+        expect(pings(last())).toBe(3);          // ~one every 25s — covers a 60s reap window twice
+    });
+
+    it('skips the keepalive when a real frame was just sent (idle-reset)', () => {
+        // A roll/move already keeps the socket warm at the DO, so the ping is
+        // redundant — sending one resets the window instead of firing on top.
+        const net = new NetClient({
+            room: 'ABCD', session: 's-1', onMessage: () => {}, pingMs: 25_000,
+        });
+        net.connect();
+        last().open();
+        vi.advanceTimersByTime(20_000);         // 20s idle — not yet due
+        expect(pings(last())).toBe(0);
+        net.roll();                             // real outbound frame resets the window
+        vi.advanceTimersByTime(20_000);         // 20s since the roll — still inside the window
+        expect(pings(last())).toBe(0);          // no redundant ping piled on the roll
+        vi.advanceTimersByTime(10_000);         // 30s of silence after the roll
+        expect(pings(last())).toBe(1);          // ping only after a full idle window
+    });
+
+    it('stops pinging once the socket closes (no leaked interval)', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {}, pingMs: 25_000 });
+        net.connect();
+        last().open();
+        net.close();                            // deliberate close
+        const ws = last();
+        const before = pings(ws);
+        vi.advanceTimersByTime(100_000);
+        expect(pings(ws)).toBe(before);         // no further pings after close
     });
 
     it('gives up after exhausting attempts', () => {
