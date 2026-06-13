@@ -132,30 +132,36 @@ describe('online move animation under streamed frames', () => {
         expect(moves[0].animate).toBe(true); // the move glides; the later dice spin doesn't preempt it
     });
 
-    it('BACKLOG: an older move SNAPS when a newer move is already queued (catch-up preserved)', async () => {
-        // Genuine backlog: two real moves pile up behind an in-flight animation.
-        // The older one fast-forwards (snap), only the newest animates — the
-        // behaviour the seq gate exists to provide must survive the fix.
+    /** Queue `count` moves behind an in-flight animation; return their animate flags in order. */
+    async function queueMoves(count) {
+        // A prior in-flight roll holds the queue so every move below piles up before
+        // any of them is processed.
         handleOnlineMessage({
             t: MSG.STATE, seq: 1, reason: REASON.ROLLED,
             state: base([[-1, -1, -1, -1], [-1, -1, -1, -1], null, null], { dice: 4, currentPlayerIndex: 1, phase: 'AWAIT_MOVE', legalMoves: [0] }),
         });
-        await tick(); // roll spin in flight, holding the queue
-
-        handleOnlineMessage({
-            t: MSG.MOVED, seq: 2, p: 1, token: 0, from: -1, to: 4, caps: [],
-            state: base([[-1, -1, -1, -1], [4, -1, -1, -1], null, null]),
-        });
-        handleOnlineMessage({
-            t: MSG.MOVED, seq: 3, p: 1, token: 1, from: -1, to: 6, caps: [],
-            state: base([[-1, -1, -1, -1], [4, 6, -1, -1], null, null]),
-        });
-
+        await tick();
+        for (let i = 0; i < count; i++) {
+            handleOnlineMessage({
+                t: MSG.MOVED, seq: 2 + i, p: 1, token: 0, from: i - 1, to: i, caps: [],
+                state: base([[i, -1, -1, -1], [-1, -1, -1, -1], null, null]),
+            });
+        }
         await drain();
+        return ofType('NET_APPLY_MOVE').map((m) => m.animate);
+    }
 
-        const moves = ofType('NET_APPLY_MOVE');
-        expect(moves).toHaveLength(2);
-        expect(moves[0].animate).toBe(false); // older move: snap to catch up
-        expect(moves[1].animate).toBe(true);  // newest move: animate
+    it('TOLERANCE: a small backlog (<= 3 newer moves) still animates every move', async () => {
+        // Transient bunching — a plays-again chain, a brief stall — should glide,
+        // not teleport. Three moves stacked: the oldest has 2 newer behind it
+        // (within tolerance), so all three animate.
+        expect(await queueMoves(3)).toEqual([true, true, true]);
+    });
+
+    it('CATCH-UP: a deep backlog (> 3 newer moves) snaps the stale ones only', async () => {
+        // Five moves stacked. Oldest has 4 newer (over the cap) → snap; once the
+        // remaining backlog is within 3 of the freshest, moves glide again. Keeps
+        // live-lag bounded without teleporting on every transient bunch.
+        expect(await queueMoves(5)).toEqual([false, true, true, true, true]);
     });
 });

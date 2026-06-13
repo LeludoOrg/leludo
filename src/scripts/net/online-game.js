@@ -30,20 +30,26 @@ import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online
 import { setDimmedPlayers, clearPresence, showWaitingFor, hideWaitingBanner } from './net-overlay.js';
 import { MSG, REASON } from './net-protocol.js';
 
+// How many newer pawn moves may already be queued and STILL let a move glide.
+// The serial queue plays every frame in order; the question is only whether a
+// move animates (cell-by-cell) or snaps (jump) to catch up. We tolerate a small
+// backlog so transient bunching (a plays-again chain, a brief network stall, an
+// opponent rolling mid-glide) animates smoothly, and only fast-forward once the
+// board is genuinely stale — more than this many moves behind the freshest one.
+// Bounded by design: snapping the excess keeps live-lag at ~this many moves, so
+// it can't compound into an ever-growing replay backlog.
+const MAX_MOVE_BACKLOG = 3;
+
 let _started = false;
 let _chain = Promise.resolve();
 // Highest seq applied — frames at or below it are duplicates/stale and dropped.
 let _appliedSeq = 0;
-// "Newest received" markers that decide whether a frame still animates or snaps
-// to catch up. Two of them, by visual value:
-//   _newestMovedSeq — newest MOVED (pawn glide). A move is superseded ONLY by a
-//     newer MOVE: a real backlog of moves still fast-forwards, but a dice spin
-//     or the delta-less turn/again snapshot the server stamps after every MOVED
-//     must NOT make a pawn teleport to its target (the live "still jumps
-//     sometimes" case — an opponent's next roll landing mid-glide).
-//   _newestDeltaSeq — newest MOVED or roll-STATE. A dice spin is lower value, so
-//     it yields to any newer delta (the move it produced, or the next roll).
-let _newestMovedSeq = 0;
+// Running count of MOVED frames RECEIVED. A move animates while the number of
+// moves received after it (_movesReceived − its ordinal) is within
+// MAX_MOVE_BACKLOG; past that it snaps. A dice spin (lower value) is gated apart
+// on _newestDeltaSeq — it yields to ANY newer delta, so a roll never delays the
+// catch-up and never makes a pawn teleport (the live "still jumps" case).
+let _movesReceived = 0;
 let _newestDeltaSeq = 0;
 // The newest state-bearing frame, kept so a REJECTED intent can re-apply the
 // authoritative snapshot immediately instead of waiting for the next broadcast.
@@ -92,7 +98,7 @@ export function startOnlineGame({ net, seat, state, seq }) {
     _started = true;
     _chain = Promise.resolve();
     _appliedSeq = seq || 0;
-    _newestMovedSeq = seq || 0;
+    _movesReceived = 0;
     _newestDeltaSeq = seq || 0;
     _lastState = state;
 
@@ -187,16 +193,24 @@ function isDeltaFrame(msg) {
 
 /**
  * One frame, start to finish: cosmetic delta first, authoritative snapshot
- * last. `animate` is false only when a newer DELTA frame has already arrived
- * (genuine backlog: a hidden tab, a reconnect, a stream of moves) — state
- * applies, visuals snap. A trailing delta-less turn/again snapshot does NOT
- * suppress the move it follows (see _newestDeltaSeq).
+ * last. `animate` is false only when the board is genuinely stale — more than
+ * MAX_MOVE_BACKLOG moves behind the freshest one (a hidden tab, a reconnect, a
+ * long burst) — in which case state applies and visuals snap to catch up. A
+ * small transient backlog still glides; see MAX_MOVE_BACKLOG / _movesReceived.
  */
-async function applyFrame(msg) {
-    // A MOVED only yields to a newer MOVED; everything else (a roll spin) yields
-    // to any newer delta. So a pawn glide is never cut short by the next roll.
-    const supersededBy = msg.t === MSG.MOVED ? _newestMovedSeq : _newestDeltaSeq;
-    const animate = msg.seq == null || msg.seq >= supersededBy;
+async function applyFrame(msg, moveOrdinal) {
+    // A pawn move glides while it's within MAX_MOVE_BACKLOG of the freshest move
+    // received; a deeper backlog snaps to catch up. A dice spin (lower value)
+    // yields to any newer delta. Frames without a seq (no backlog tracking)
+    // always animate.
+    let animate;
+    if (msg.seq == null) {
+        animate = true;
+    } else if (msg.t === MSG.MOVED) {
+        animate = (_movesReceived - moveOrdinal) <= MAX_MOVE_BACKLOG;
+    } else {
+        animate = msg.seq >= _newestDeltaSeq;
+    }
     const state = msg.state;
 
     if (msg.t === MSG.STATE) {
@@ -248,15 +262,18 @@ export function handleOnlineMessage(msg) {
         case MSG.MOVED:
         case MSG.DROPPED:
         case MSG.ENDED: {
-            // Drop duplicates/stale frames (zombie socket racing a reconnect).
+            // Drop duplicates/stale frames (zombie socket racing a reconnect),
+            // then stamp each move with its arrival ordinal so applyFrame can tell,
+            // at animate-time, how many newer moves have since piled up behind it.
+            let moveOrdinal = 0;
             if (msg.seq != null) {
                 if (msg.seq <= _appliedSeq) return;
                 _appliedSeq = msg.seq;
-                if (msg.t === MSG.MOVED) _newestMovedSeq = Math.max(_newestMovedSeq, msg.seq);
                 if (isDeltaFrame(msg)) _newestDeltaSeq = Math.max(_newestDeltaSeq, msg.seq);
+                if (msg.t === MSG.MOVED) moveOrdinal = ++_movesReceived;
             }
             if (msg.state) _lastState = msg.state;
-            enqueue(() => applyFrame(msg));
+            enqueue(() => applyFrame(msg, moveOrdinal));
             break;
         }
         case MSG.REJECTED: {
