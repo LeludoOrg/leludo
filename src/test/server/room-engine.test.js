@@ -289,13 +289,93 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.started).toBe(false);
     });
 
-    it('promotes a new host when the host leaves the lobby', () => {
-        const { engine } = room(2);
-        engine.handleJoin('h', 'Host');
-        engine.handleJoin('g', 'Guest');
-        engine.handleDisconnect('h');
-        expect(engine.hostSession).toBe('g'); // guest promoted
-        expect(engine.seats[0].sessionId).toBe(null); // host seat reopened
+    // A flaky link must not flip the host the instant a socket closes (the live
+    // bug: device 2 became host "in a split second" when device 1 blipped). The
+    // lobby now holds the chair for the reconnect window — same grace as in-game.
+    describe('lobby disconnect grace', () => {
+        // A lobby seeded on the injectable clock so the grace window is deterministic.
+        function lobbyWith(sessions, size = sessions.length) {
+            const fake = makeFake();
+            const clock = makeClock();
+            const engine = new RoomEngine({
+                roomId: 'r', size, transport: fake.transport, schedule: fake.schedule,
+                graceMs: 30_000, setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+            });
+            sessions.forEach(s => engine.handleJoin(s, s.toUpperCase()));
+            return { fake, clock, engine };
+        }
+
+        it('does NOT change the host on a brief drop — the chair is held', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h'); // host's link blips
+            expect(engine.hostSession).toBe('h');           // STILL the host
+            expect(engine.seats[0].sessionId).toBe('h');    // chair held, not freed
+            expect(engine.seats[0].connected).toBe(false);  // shown as disconnected
+            expect(clock.pending()).toBe(1);                // counting down to eviction
+        });
+
+        it('a reconnecting host keeps the chair AND the host crown', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h');
+            engine.handleJoin('h', 'Host'); // back within the window
+            expect(engine.hostSession).toBe('h');
+            expect(engine.seats[0].sessionId).toBe('h');
+            expect(engine.seats[0].connected).toBe(true);
+            expect(clock.pending()).toBe(0); // grace cancelled, no pending eviction
+        });
+
+        it('promotes a new host only after the grace window lapses', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h');
+            expect(engine.hostSession).toBe('h'); // not yet — still holding
+            clock.fireAll();                      // window elapses with nobody back
+            expect(engine.hostSession).toBe('g');          // guest promoted
+            expect(engine.seats[0].sessionId).toBe(null);  // host chair reopened
+        });
+
+        it('holds a non-host drop too, then reopens the seat on grace expiry', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('g');
+            expect(engine.seats[1].sessionId).toBe('g'); // held, not freed
+            expect(engine.hostSession).toBe('h');        // host untouched
+            clock.fireAll();
+            expect(engine.seats[1].sessionId).toBe(null); // seat reopened
+            expect(engine.hostSession).toBe('h');         // still the host
+        });
+
+        it('a host converting a held seat to a bot cancels the deferred eviction', () => {
+            // Reassigning a still-counting-down chair must kill its grace timer,
+            // or the stale eviction later stomps the bot that took the seat.
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('g');            // seat 1 held, grace armed
+            expect(clock.pending()).toBe(1);
+            engine.handleSetSeat('h', 1, 'BOT');     // host fills it with a bot
+            expect(clock.pending()).toBe(0);         // timer cancelled with the boot
+            const botName = engine.seats[1].name;
+            expect(engine.seats[1].type).toBe('BOT');
+            expect(botName).toBeTruthy();
+            clock.fireAll();                         // no stale timer to fire
+            expect(engine.seats[1].type).toBe('BOT'); // bot untouched
+            expect(engine.seats[1].name).toBe(botName); // name not wiped
+        });
+
+        it('re-arms a held lobby chair across a snapshot restore (hibernation)', () => {
+            const { engine } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h'); // graceUntil stamped at now()+30s
+            const snap = JSON.parse(JSON.stringify(engine.serialize()));
+
+            // Rebuild on a fresh clock whose now() is already past the deadline:
+            // the eviction the evicted instance owed must fire on resume.
+            const fake = makeFake();
+            const fresh = new RoomEngine({
+                roomId: 'r', transport: fake.transport, schedule: fake.schedule,
+                setTimer: (fn) => fn(), clearTimer: () => {}, now: () => 1_000_000,
+            });
+            fresh.restore(snap);
+            fresh._resumeTimers();
+            expect(fresh.hostSession).toBe('g');          // promoted on resume
+            expect(fresh.seats[0].sessionId).toBe(null);  // chair reopened
+        });
     });
 });
 

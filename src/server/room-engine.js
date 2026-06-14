@@ -295,10 +295,17 @@ export class RoomEngine {
         if (this.phase === PHASES.ENDED) return;
         for (let i = 0; i < 4; i++) {
             const s = this.seats[i];
-            if (this._isActiveHuman(i) && !s.connected && s.graceUntil > 0) {
+            // A held seat counting down toward eviction/forfeit: a disconnected
+            // human still claiming an in-game seat, or a disconnected lobby chair
+            // whose grace we deferred. Either way, resume from the stored deadline
+            // (fire immediately if it lapsed while we were evicted).
+            const held = this.phase === PHASES.LOBBY
+                ? (s.sessionId != null && !s.connected)
+                : this._isActiveHuman(i) && !s.connected;
+            if (held && s.graceUntil > 0) {
                 const remaining = s.graceUntil - this.now();
-                if (remaining <= 0) { this._dropSeat(i); }
-                else { s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._dropSeat(i); }, remaining); }
+                if (remaining <= 0) { this._onGraceExpire(i); }
+                else { s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._onGraceExpire(i); }, remaining); }
             }
         }
         if (this.phase === PHASES.AWAIT_ROLL && !this.waiting
@@ -417,6 +424,9 @@ export class RoomEngine {
             return { ok: true, seat };
         }
 
+        // A lobby reconnect (same session resuming a held chair) cancels the
+        // pending eviction; a fresh joiner has no timer, so this no-ops for them.
+        this._clearGrace(seat);
         this._broadcastState(REASON.JOIN);
         this._maybeAutoStart();
         return { ok: true, seat };
@@ -572,11 +582,16 @@ export class RoomEngine {
         s.personality = null;
     }
 
-    /** If a connected human sits here, tell them they were removed, then clear. */
+    /** If a human (connected OR mid-reconnect) sits here, tell them they were
+     *  removed and clear the chair. Cancelling any pending lobby grace is the key
+     *  step: a disconnected seat now lingers through its reconnect window, so a
+     *  host reassigning it (kick / set-to-bot / shrink) must kill the deferred
+     *  eviction — otherwise it fires later and stomps whatever now holds the seat. */
     _bootIfHuman(i) {
         const s = this.seats[i];
         if (s.type === 'PLAYER' && s.sessionId && s.sessionId !== this.hostSession) {
             this.transport.send(i, { t: MSG.KICKED });
+            this._clearGrace(i);
             s.sessionId = null;
             s.connected = false;
             s.name = '';
@@ -635,14 +650,14 @@ export class RoomEngine {
         this.seats[seat].connected = false;
 
         if (this.phase === PHASES.LOBBY) {
-            // Free the seat so someone else can take it; promote a new host if needed.
-            this.seats[seat].sessionId = null;
-            this.seats[seat].name = '';
-            if (sessionId === this.hostSession) {
-                const next = this.seats.find(s => s.sessionId && s.connected);
-                this.hostSession = next ? next.sessionId : null;
-            }
-            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) return this._end(REASON.ABANDONED);
+            // A brief network blip must NOT cost you your lobby seat or hand the
+            // host crown to someone else. Hold the chair (keep sessionId + name)
+            // for the reconnect window — reconnecting restores you exactly, host
+            // and all. Only once the window lapses does _evictLobbySeat free the
+            // seat and promote the next connected human. Mirrors the in-game
+            // reconnect grace so a flaky link behaves the same in the lobby as it
+            // does mid-game.
+            this._startGrace(seat);
             this._broadcastState(REASON.DISCONNECT);
             return;
         }
@@ -714,7 +729,35 @@ export class RoomEngine {
         const s = this.seats[seat];
         if (s.graceTimer) return; // already counting down
         s.graceUntil = this.now() + this.graceMs;
-        s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._dropSeat(seat); }, this.graceMs);
+        s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._onGraceExpire(seat); }, this.graceMs);
+    }
+
+    /** Reconnect window lapsed for `seat`. The same grace clock guards a lobby
+     *  chair and an in-game seat, but the consequence differs: in the lobby we
+     *  release the chair (and reassign the host), in-game we forfeit the pawns.
+     *  One entrypoint so the timer arm/resume paths never branch on phase. */
+    _onGraceExpire(seat) {
+        if (this.phase === PHASES.LOBBY) this._evictLobbySeat(seat);
+        else this._dropSeat(seat);
+    }
+
+    /** Lobby reconnect window elapsed: free the held chair and, if it was the
+     *  host's, promote the next connected human (null if none). Ends the room if
+     *  no connected human is left. The deferred half of the LOBBY disconnect. */
+    _evictLobbySeat(seat) {
+        if (this.phase !== PHASES.LOBBY) return; // game started/ended while we waited
+        const s = this.seats[seat];
+        if (!s || s.connected) return; // raced a reconnect — keep them seated
+        const wasHost = s.sessionId === this.hostSession;
+        this._clearGrace(seat);
+        s.sessionId = null;
+        s.name = '';
+        if (wasHost) {
+            const next = this.seats.find(x => x.sessionId && x.connected);
+            this.hostSession = next ? next.sessionId : null;
+        }
+        if (!this.seats.some(x => x.type === 'PLAYER' && x.connected)) return this._end(REASON.ABANDONED);
+        this._broadcastState(REASON.DISCONNECT);
     }
 
     _clearGrace(seat) {
