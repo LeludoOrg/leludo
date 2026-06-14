@@ -133,9 +133,10 @@ describe('LudoRoomDO (workerd)', () => {
     });
 
     it('arms the leak-guard alarm when every socket drops mid-game', async () => {
-        // A lobby that empties ends synchronously (no alarm needed). The alarm is
-        // for the in-game simultaneous-drop edge: the engine HOLDS on a
-        // disconnected player, so only the zero-connection alarm can reclaim the
+        // The engine now HOLDS a dropped seat for the reconnect window in the
+        // lobby too (a brief blip mustn't reassign the host), so an emptied room
+        // no longer ends synchronously. Whether the last socket drops in the
+        // lobby or mid-game, only the zero-connection alarm can reclaim the
         // admission slot if nobody comes back.
         const hostRes = await SELF.fetch(
             'https://leludo.test/?room=ROOMD&session=host&name=Host&size=2',
