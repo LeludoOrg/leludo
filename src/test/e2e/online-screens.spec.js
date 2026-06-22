@@ -322,6 +322,52 @@ test.describe('Online lobby — create + join', () => {
         await page.getByTestId('online-seat-1-bot').click();            // flip → Bot
         await expect(page.getByTestId('online-seat-1')).toContainText('Bot');
     });
+
+    // Regression: a typo'd / stale code used to silently spin up a brand-new empty
+    // room, dropping the player alone into a ghost lobby that no friend was in.
+    // Joining a code nobody created must now bounce back to the setup screen with
+    // an error, NOT hand out a fresh room.
+    test('joining a room code that was never created is rejected', async ({ page }) => {
+        await openOnline(page, 'Lost');
+        // A well-formed code (right length + alphabet) that no host ever created.
+        await page.getByTestId('online-code-input').fill('ZZZZ');
+        await page.getByTestId('online-join').click();
+        // Bounced back to the entry screen (no room code banner) with an error.
+        await expect(page.getByTestId('online-create')).toBeVisible();
+        await expect(page.locator('wc-game-room')).toHaveCount(0);
+        await expect(page.getByTestId('online-status')).toContainText(/no room/i);
+    });
+
+    // Regression: online is human-vs-human — a lone host must NOT be able to start
+    // a solo-vs-bots match. The Start button is disabled until a second human is
+    // seated, and only enables once the guest joins.
+    test('host cannot start until a second human joins', async ({ browser }) => {
+        const ctxHost = await browser.newContext();
+        const ctxGuest = await browser.newContext();
+        const host = await ctxHost.newPage();
+        const guest = await ctxGuest.newPage();
+
+        await openOnline(host, 'Hosty');
+        await host.getByTestId('online-create').click();
+        const code = (await host.getByTestId('online-room-code').textContent())?.trim();
+
+        // Solo host: even after dropping a bot into a seat, Start stays disabled —
+        // a bot doesn't count toward the two-human minimum.
+        await host.getByTestId('online-seat-1-bot').click();
+        await expect(host.getByTestId('online-seat-1')).toContainText('Bot');
+        await expect(host.getByTestId('online-start')).toBeVisible();   // visible…
+        await expect(host.getByTestId('online-start')).toBeDisabled();  // …but greyed out
+
+        // A second human joins → Start enables.
+        await openOnline(guest, 'Guesty');
+        await guest.getByTestId('online-code-input').fill(code);
+        await guest.getByTestId('online-join').click();
+        await expect(host.getByTestId('online-seat-2')).toContainText('Guesty');
+        await expect(host.getByTestId('online-start')).toBeEnabled();
+
+        await ctxHost.close();
+        await ctxGuest.close();
+    });
 });
 
 test.describe('Online — invite links', () => {

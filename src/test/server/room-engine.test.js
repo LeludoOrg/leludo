@@ -76,6 +76,20 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
     });
 
+    // An online game is human-vs-human: a lone host can't start a solo-vs-bots
+    // match (that's offline play). Two REAL players must be seated first — a bot
+    // in the other chair doesn't satisfy the minimum.
+    it('rejects start until a second human joins (a bot does not count)', () => {
+        const { engine } = room(4);
+        engine.handleJoin('h', 'Host');          // 1 human
+        engine.handleSetSeat('h', 1, 'BOT');     // + a bot, still only 1 human
+        expect(engine.handleStart('h')).toEqual({ ok: false, error: 'NEED_TWO_PLAYERS' });
+        expect(engine.started).toBe(false);
+        engine.handleJoin('g', 'Guest');         // a 2nd human arrives
+        expect(engine.handleStart('h')).toEqual({ ok: true });
+        expect(engine.started).toBe(true);
+    });
+
     // The seat index doubles as the player's colour, so a joiner can request
     // their colour by asking for that seat. Honoured when free, else fall back.
     it('seats a joiner in their requested colour when it is free', () => {
@@ -180,12 +194,15 @@ describe('RoomEngine — host lobby', () => {
     });
 
     it('fills open human seats with bots on start', () => {
-        const { engine } = room(3);     // 3 seats, only the host joins
+        const { engine } = room(3);     // 3 seats: host + a guest join, one stays open
         engine.handleJoin('h', 'Host');
+        engine.handleJoin('g', 'Guest'); // a 2nd human is required to start
         engine.handleStart('h');
-        expect(engine.playerTypes[0]).toBe('PLAYER'); // host
-        expect(engine.playerTypes[1]).toBe('BOT');    // open -> bot
-        expect(engine.playerTypes[2]).toBe('BOT');    // open -> bot
+        // The two seated humans keep their seats; the leftover open seat becomes a
+        // bot, and the closed 4th seat stays out of the game.
+        expect(engine.playerTypes.filter(t => t === 'PLAYER')).toHaveLength(2);
+        expect(engine.playerTypes.filter(t => t === 'BOT')).toHaveLength(1);
+        expect(engine.playerTypes[3]).toBeUndefined();
     });
 
     it('host can grow and shrink the room size', () => {
@@ -228,9 +245,10 @@ describe('RoomEngine — host lobby', () => {
             transport: fake.transport, schedule: fake.schedule,
         });
         engine.handleJoin('h', 'Host');
-        engine.handleStart('h'); // 3 open seats become bots
+        engine.handleJoin('g', 'Guest'); // 2 humans seat diagonally; the other 2 seats bot-fill
+        engine.handleStart('h');
         const botNames = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
-        expect(botNames).toHaveLength(3);
+        expect(botNames).toHaveLength(2);
         for (const n of botNames) expect(BOT_NAME_POOLS.hindi).toContain(n);
     });
 
@@ -238,7 +256,8 @@ describe('RoomEngine — host lobby', () => {
         const fake = makeFake();
         const engine = new RoomEngine({ roomId: 'r', size: 4, transport: fake.transport, schedule: fake.schedule });
         engine.handleJoin('h', 'Host');
-        engine.handleStart('h'); // seats 1..3 fill with bots
+        engine.handleJoin('g', 'Guest'); // 2 humans; the remaining seats fill with bots
+        engine.handleStart('h');
         const names = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
         expect(new Set(names).size).toBe(names.length);
     });
@@ -507,14 +526,15 @@ describe('RoomEngine — rules fidelity', () => {
 
 describe('RoomEngine — server-driven bots', () => {
     it('auto-plays a bot seat with no client input', () => {
-        const { engine } = room(2);
-        engine.handleJoin('h', 'Human');
-        engine.handleSetSeat('h', 1, 'BOT'); // host adds a bot
+        const { engine } = room(4);
+        engine.handleJoin('h', 'Human');     // seat 0 (host)
+        engine.handleJoin('g', 'Guest');     // seat 2 (diagonal) — the required 2nd human
+        engine.handleSetSeat('h', 1, 'BOT'); // a bot sits between them in the rotation
         engine.handleStart('h');
         expect(engine.playerTypes[1]).toBe('BOT');
-        engine.rng = () => 0.7; // dice 5: all-home rolls pass
-        engine.handleRoll('h');  // human passes -> bot takes its turn synchronously -> back to human
-        expect(engine.currentPlayerIndex).toBe(0);
+        engine.rng = () => 0.7; // dice 5: every all-home roll passes (no move)
+        engine.handleRoll('h');  // host passes -> bot(seat1) takes its turn synchronously -> 2nd human
+        expect(engine.currentPlayerIndex).toBe(2); // advanced past the bot to the guest
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
     });
 });

@@ -6,7 +6,7 @@ import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../script
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor, setUsername, setOnlineColor} from "../scripts/net/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
-import {MSG} from "../scripts/net/net-protocol.js";
+import {MSG, ERR} from "../scripts/net/net-protocol.js";
 import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
 import {SCREENS} from "../scripts/platform/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
@@ -704,6 +704,18 @@ class QuickStart extends HTMLElement {
                 replaceTo(SCREENS.ONLINE)
                 this._setOnlineStatus('The host removed you from the room.')
                 break
+            case MSG.ERROR:
+                // Pre-game errors: today the only one is a join to a code nobody
+                // created. Bounce back to the setup screen so the player can fix
+                // the code (or create their own). _leaveOnline closes the socket,
+                // so net-client won't auto-retry the dead code.
+                if (msg.error === ERR.ROOM_NOT_FOUND) {
+                    this._leaveOnline()
+                    this.showOnlineScreen()
+                    replaceTo(SCREENS.ONLINE)
+                    this._setOnlineStatus('No room found with that code. Check it and try again, or create your own.')
+                }
+                break
             case MSG.BUSY:
                 this._gameRoom?.onBusy()
                 this._setSearchStatus('Servers are busy right now — please try again in a few minutes.')
@@ -754,7 +766,12 @@ class QuickStart extends HTMLElement {
         const players = create ? (this._onlinePlayers || 2) : 2
         // The colour picker is the HOST's colour: only the room creator forwards
         // a preferred seat. A joiner takes whatever seat the server assigns.
-        const params = { size: String(players) }
+        // Tell the server our intent: `create` mints the room, `join` enters an
+        // existing one — a join to a code nobody created is rejected (the server
+        // won't silently spin up a ghost room) so a typo'd code fails loudly.
+        const params = create
+            ? { size: String(players), create: '1' }
+            : { size: String(players), join: '1' }
         // Only the creator seeds the room: their colour pick + bot-name pool so the
         // room's auto-filled bots get cheeky names in the host's chosen language.
         if (create) {

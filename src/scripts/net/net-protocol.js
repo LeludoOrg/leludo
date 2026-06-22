@@ -81,6 +81,10 @@ export const REASON = Object.freeze({
 
 /** `error` — rejection codes the server sends on a `rejected` / `error` frame. */
 export const ERR = Object.freeze({
+    // A join-by-code hit a room that was never created (no host). The server
+    // refuses to silently auto-create it, so a typo'd / stale code is rejected
+    // instead of dropping the player into an empty ghost room.
+    ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
     ROOM_FULL: 'ROOM_FULL',
     NOT_SEATED: 'NOT_SEATED',
     NOT_HOST: 'NOT_HOST',

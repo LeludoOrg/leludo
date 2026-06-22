@@ -114,6 +114,47 @@ describe('LudoRoomDO (workerd)', () => {
         host.close(); guest.close();
     });
 
+    it('rejects a join-by-code into a room nobody created (ROOM_NOT_FOUND)', async () => {
+        // A `join=1` connect to a fresh code must NOT silently spin up a ghost
+        // room — the server closes the socket with ROOM_NOT_FOUND instead.
+        const res = await SELF.fetch(
+            'https://leludo.test/?room=GHOST&session=stranger&name=Lost&join=1',
+            { headers: { Upgrade: 'websocket' } },
+        );
+        expect(res.status).toBe(101);
+        const ws = res.webSocket; ws.accept();
+        const msgs = collect(ws);
+
+        const err = await waitFor(msgs, 'error');
+        expect(err.error).toBe('ROOM_NOT_FOUND');
+        // Never seated, and nothing was persisted for the ghost code.
+        expect(msgs.find((m) => m.t === 'seated')).toBeUndefined();
+        expect(await readSnap('GHOST')).toBeFalsy();
+    });
+
+    it('lets the host create a room, then a guest join it by code', async () => {
+        // The mirror of the reject: `create=1` mints the room, and a later
+        // `join=1` to the SAME code is admitted (the engine now exists).
+        const hostRes = await SELF.fetch(
+            'https://leludo.test/?room=MADE&session=host&name=Host&size=2&create=1',
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const host = hostRes.webSocket; host.accept();
+        await waitFor(collect(host), 'seated');
+
+        const guestRes = await SELF.fetch(
+            'https://leludo.test/?room=MADE&session=guest&name=Guest&join=1',
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const guest = guestRes.webSocket; guest.accept();
+        const guestMsgs = collect(guest);
+        const seated = await waitFor(guestMsgs, 'seated');
+        expect(seated.playerIndex).toBeGreaterThan(0); // joined an existing room, not host
+        expect(guestMsgs.find((m) => m.t === 'error')).toBeUndefined();
+
+        host.close(); guest.close();
+    });
+
     it('auto-answers the keepalive ping without invoking the engine', async () => {
         const res = await SELF.fetch(
             'https://leludo.test/?room=ROOMC&session=host&name=Host&size=2',
