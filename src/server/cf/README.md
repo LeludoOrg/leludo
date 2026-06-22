@@ -55,10 +55,18 @@ make that resolve:
 
 ## Free-tier safety
 
-Caps in `[vars]` (`MAX_GAMES_PER_DAY=250`, `MAX_CONCURRENT_GAMES=40`) keep usage
+Caps in `[vars]` (`MAX_GAMES_PER_DAY=45`, `MAX_CONCURRENT_GAMES=15`) keep usage
 inside the free plan; `AdmissionDO` returns a friendly `{ t:"busy" }` before any
-limit is hit. Rooms are **pinned in memory** (not hibernated) so the engine's
-plain timers work — this spends duration while idle, but on the free plan an
-over-limit throttles rather than bills. WebSocket Hibernation (zero idle
-duration) is the documented follow-up; it needs the engine persisted +
-rehydrated across eviction (incl. a resumable RNG). See `room-do.js` header.
+limit is hit. The binding free-tier limit is **SQL rows written: 100,000/day**,
+shared account-wide across prod + beta (one free bucket). Real-play cost (live
+prod data) ≈ 570 rows per 2-player game, ~1,668 per 4-player game — higher than
+the clean-room estimate once reconnects + grace alarms are counted — so a
+worst-case all-4p day across prod (45) + beta (5) ≈ 83k rows, under the 100k cap.
+
+Duration is **not** the binding limit, but note: **only idle, human-only games
+hibernate** (~0.4 GB-s). A game with a **bot** or an active **disconnect-grace
+window** stays pinned in memory (the engine's `setTimeout` bot-pacing / grace
+isn't converted to DO alarms) and burns **~13+ GB-s** — measured ~13 GB-s for a
+2-human + 2-bot game. The 13,000 GB-s/day duration ceiling still isn't hit before
+the rows cap, so it's safe on free; revisit on the paid plan (see
+`docs/multiplayer-plan.md`). Raise the caps only on the $5 Workers Paid plan.

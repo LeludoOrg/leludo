@@ -3,6 +3,7 @@ import { RoomEngine, PHASES } from '../../server/room-engine.js';
 import { PITY_SIX_CEIL } from '../../scripts/core/game-logic.js';
 import { BOT_NAME_POOLS } from '../../scripts/core/bot-names.js';
 import { PERSONALITIES } from '../../scripts/core/bot-ai.js';
+import { makeRng } from '../../scripts/core/game-driver.js';
 
 /**
  * Authority + host-lobby tests. A fake transport collects every broadcast /
@@ -73,6 +74,20 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.handleStart('h')).toEqual({ ok: true });
         expect(engine.started).toBe(true);
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
+    });
+
+    // An online game is human-vs-human: a lone host can't start a solo-vs-bots
+    // match (that's offline play). Two REAL players must be seated first — a bot
+    // in the other chair doesn't satisfy the minimum.
+    it('rejects start until a second human joins (a bot does not count)', () => {
+        const { engine } = room(4);
+        engine.handleJoin('h', 'Host');          // 1 human
+        engine.handleSetSeat('h', 1, 'BOT');     // + a bot, still only 1 human
+        expect(engine.handleStart('h')).toEqual({ ok: false, error: 'NEED_TWO_PLAYERS' });
+        expect(engine.started).toBe(false);
+        engine.handleJoin('g', 'Guest');         // a 2nd human arrives
+        expect(engine.handleStart('h')).toEqual({ ok: true });
+        expect(engine.started).toBe(true);
     });
 
     // The seat index doubles as the player's colour, so a joiner can request
@@ -179,12 +194,15 @@ describe('RoomEngine — host lobby', () => {
     });
 
     it('fills open human seats with bots on start', () => {
-        const { engine } = room(3);     // 3 seats, only the host joins
+        const { engine } = room(3);     // 3 seats: host + a guest join, one stays open
         engine.handleJoin('h', 'Host');
+        engine.handleJoin('g', 'Guest'); // a 2nd human is required to start
         engine.handleStart('h');
-        expect(engine.playerTypes[0]).toBe('PLAYER'); // host
-        expect(engine.playerTypes[1]).toBe('BOT');    // open -> bot
-        expect(engine.playerTypes[2]).toBe('BOT');    // open -> bot
+        // The two seated humans keep their seats; the leftover open seat becomes a
+        // bot, and the closed 4th seat stays out of the game.
+        expect(engine.playerTypes.filter(t => t === 'PLAYER')).toHaveLength(2);
+        expect(engine.playerTypes.filter(t => t === 'BOT')).toHaveLength(1);
+        expect(engine.playerTypes[3]).toBeUndefined();
     });
 
     it('host can grow and shrink the room size', () => {
@@ -227,9 +245,10 @@ describe('RoomEngine — host lobby', () => {
             transport: fake.transport, schedule: fake.schedule,
         });
         engine.handleJoin('h', 'Host');
-        engine.handleStart('h'); // 3 open seats become bots
+        engine.handleJoin('g', 'Guest'); // 2 humans seat diagonally; the other 2 seats bot-fill
+        engine.handleStart('h');
         const botNames = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
-        expect(botNames).toHaveLength(3);
+        expect(botNames).toHaveLength(2);
         for (const n of botNames) expect(BOT_NAME_POOLS.hindi).toContain(n);
     });
 
@@ -237,7 +256,8 @@ describe('RoomEngine — host lobby', () => {
         const fake = makeFake();
         const engine = new RoomEngine({ roomId: 'r', size: 4, transport: fake.transport, schedule: fake.schedule });
         engine.handleJoin('h', 'Host');
-        engine.handleStart('h'); // seats 1..3 fill with bots
+        engine.handleJoin('g', 'Guest'); // 2 humans; the remaining seats fill with bots
+        engine.handleStart('h');
         const names = engine.seats.filter(s => s.type === 'BOT').map(s => s.name);
         expect(new Set(names).size).toBe(names.length);
     });
@@ -288,13 +308,93 @@ describe('RoomEngine — host lobby', () => {
         expect(engine.started).toBe(false);
     });
 
-    it('promotes a new host when the host leaves the lobby', () => {
-        const { engine } = room(2);
-        engine.handleJoin('h', 'Host');
-        engine.handleJoin('g', 'Guest');
-        engine.handleDisconnect('h');
-        expect(engine.hostSession).toBe('g'); // guest promoted
-        expect(engine.seats[0].sessionId).toBe(null); // host seat reopened
+    // A flaky link must not flip the host the instant a socket closes (the live
+    // bug: device 2 became host "in a split second" when device 1 blipped). The
+    // lobby now holds the chair for the reconnect window — same grace as in-game.
+    describe('lobby disconnect grace', () => {
+        // A lobby seeded on the injectable clock so the grace window is deterministic.
+        function lobbyWith(sessions, size = sessions.length) {
+            const fake = makeFake();
+            const clock = makeClock();
+            const engine = new RoomEngine({
+                roomId: 'r', size, transport: fake.transport, schedule: fake.schedule,
+                graceMs: 30_000, setTimer: clock.setTimer, clearTimer: clock.clearTimer, now: clock.now,
+            });
+            sessions.forEach(s => engine.handleJoin(s, s.toUpperCase()));
+            return { fake, clock, engine };
+        }
+
+        it('does NOT change the host on a brief drop — the chair is held', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h'); // host's link blips
+            expect(engine.hostSession).toBe('h');           // STILL the host
+            expect(engine.seats[0].sessionId).toBe('h');    // chair held, not freed
+            expect(engine.seats[0].connected).toBe(false);  // shown as disconnected
+            expect(clock.pending()).toBe(1);                // counting down to eviction
+        });
+
+        it('a reconnecting host keeps the chair AND the host crown', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h');
+            engine.handleJoin('h', 'Host'); // back within the window
+            expect(engine.hostSession).toBe('h');
+            expect(engine.seats[0].sessionId).toBe('h');
+            expect(engine.seats[0].connected).toBe(true);
+            expect(clock.pending()).toBe(0); // grace cancelled, no pending eviction
+        });
+
+        it('promotes a new host only after the grace window lapses', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h');
+            expect(engine.hostSession).toBe('h'); // not yet — still holding
+            clock.fireAll();                      // window elapses with nobody back
+            expect(engine.hostSession).toBe('g');          // guest promoted
+            expect(engine.seats[0].sessionId).toBe(null);  // host chair reopened
+        });
+
+        it('holds a non-host drop too, then reopens the seat on grace expiry', () => {
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('g');
+            expect(engine.seats[1].sessionId).toBe('g'); // held, not freed
+            expect(engine.hostSession).toBe('h');        // host untouched
+            clock.fireAll();
+            expect(engine.seats[1].sessionId).toBe(null); // seat reopened
+            expect(engine.hostSession).toBe('h');         // still the host
+        });
+
+        it('a host converting a held seat to a bot cancels the deferred eviction', () => {
+            // Reassigning a still-counting-down chair must kill its grace timer,
+            // or the stale eviction later stomps the bot that took the seat.
+            const { engine, clock } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('g');            // seat 1 held, grace armed
+            expect(clock.pending()).toBe(1);
+            engine.handleSetSeat('h', 1, 'BOT');     // host fills it with a bot
+            expect(clock.pending()).toBe(0);         // timer cancelled with the boot
+            const botName = engine.seats[1].name;
+            expect(engine.seats[1].type).toBe('BOT');
+            expect(botName).toBeTruthy();
+            clock.fireAll();                         // no stale timer to fire
+            expect(engine.seats[1].type).toBe('BOT'); // bot untouched
+            expect(engine.seats[1].name).toBe(botName); // name not wiped
+        });
+
+        it('re-arms a held lobby chair across a snapshot restore (hibernation)', () => {
+            const { engine } = lobbyWith(['h', 'g']);
+            engine.handleDisconnect('h'); // graceUntil stamped at now()+30s
+            const snap = JSON.parse(JSON.stringify(engine.serialize()));
+
+            // Rebuild on a fresh clock whose now() is already past the deadline:
+            // the eviction the evicted instance owed must fire on resume.
+            const fake = makeFake();
+            const fresh = new RoomEngine({
+                roomId: 'r', transport: fake.transport, schedule: fake.schedule,
+                setTimer: (fn) => fn(), clearTimer: () => {}, now: () => 1_000_000,
+            });
+            fresh.restore(snap);
+            fresh._resumeTimers();
+            expect(fresh.hostSession).toBe('g');          // promoted on resume
+            expect(fresh.seats[0].sessionId).toBe(null);  // chair reopened
+        });
     });
 });
 
@@ -426,14 +526,15 @@ describe('RoomEngine — rules fidelity', () => {
 
 describe('RoomEngine — server-driven bots', () => {
     it('auto-plays a bot seat with no client input', () => {
-        const { engine } = room(2);
-        engine.handleJoin('h', 'Human');
-        engine.handleSetSeat('h', 1, 'BOT'); // host adds a bot
+        const { engine } = room(4);
+        engine.handleJoin('h', 'Human');     // seat 0 (host)
+        engine.handleJoin('g', 'Guest');     // seat 2 (diagonal) — the required 2nd human
+        engine.handleSetSeat('h', 1, 'BOT'); // a bot sits between them in the rotation
         engine.handleStart('h');
         expect(engine.playerTypes[1]).toBe('BOT');
-        engine.rng = () => 0.7; // dice 5: all-home rolls pass
-        engine.handleRoll('h');  // human passes -> bot takes its turn synchronously -> back to human
-        expect(engine.currentPlayerIndex).toBe(0);
+        engine.rng = () => 0.7; // dice 5: every all-home roll passes (no move)
+        engine.handleRoll('h');  // host passes -> bot(seat1) takes its turn synchronously -> 2nd human
+        expect(engine.currentPlayerIndex).toBe(2); // advanced past the bot to the guest
         expect(engine.phase).toBe(PHASES.AWAIT_ROLL);
     });
 });
@@ -686,5 +787,85 @@ describe('RoomEngine — frame sequencing + input hardening', () => {
         // Fractional / out-of-range indexes are rejected the same way.
         expect(engine.handleSetSeat('h', 1.5, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
         expect(engine.handleSetSeat('h', 7, 'BOT')).toEqual({ ok: false, error: 'BAD_SEAT' });
+    });
+});
+
+/**
+ * Hibernation round-trip. A Cloudflare DO evicts the engine from memory between
+ * moves to save duration, then reconstructs it from a `serialize()` snapshot.
+ * These guard that the reconstruction is byte-identical — board, seats, counters
+ * AND the dice RNG stream — so a resumed game plays on exactly as it would have.
+ */
+describe('RoomEngine — snapshot / restore', () => {
+    const sid = ['h', 'g'];
+    const step = (e) => {
+        const seat = e.currentPlayerIndex;
+        if (e.phase === PHASES.AWAIT_ROLL) e.handleRoll(sid[seat]);
+        else if (e.phase === PHASES.AWAIT_MOVE) e.handleMove(sid[seat], e.legalMoves[0]);
+    };
+
+    it('makeRng resumes an identical stream from getState/setState', () => {
+        const a = makeRng(0xC0FFEE);
+        for (let i = 0; i < 5; i++) a();          // advance into the stream
+        const saved = a.getState();
+        const expected = [a(), a(), a(), a()];
+        const b = makeRng(1);                      // different seed...
+        b.setState(saved);                         // ...rewound to a's position
+        expect([b(), b(), b(), b()]).toEqual(expected);
+    });
+
+    it('round-trips full mid-game state, internals included', () => {
+        const { engine } = started2();
+        for (let i = 0; i < 12 && engine.phase !== PHASES.ENDED; i++) step(engine); // churn real state
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({ roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule });
+        restored.restore(engine.serialize());
+
+        // serialize() captures everything the turn machine reads — public view,
+        // hostSession, counters, legalMoves, seq, and both RNG states — so a deep
+        // equality of the snapshot is a complete round-trip assertion.
+        expect(restored.serialize()).toEqual(engine.serialize());
+        expect(restored._publicState()).toEqual(engine._publicState());
+        expect(restored.rng.getState()).toBe(engine.rng.getState());
+    });
+
+    it('resumes the dice stream so the next roll is identical', () => {
+        const { engine } = started2();
+        for (let i = 0; i < 9 && engine.phase !== PHASES.ENDED; i++) step(engine);
+        if (engine.phase === PHASES.ENDED) return; // unlucky fast finish — nothing to resume
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({ roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule });
+        restored.restore(engine.serialize());
+
+        // One more identical action on each: a resumed RNG must roll the SAME
+        // dice, so the resulting states stay byte-identical. A diverged stream
+        // would roll differently and this would fail.
+        step(engine);
+        step(restored);
+        expect(restored.serialize()).toEqual(engine.serialize());
+    });
+
+    it('re-arms and fires a lapsed reconnect-grace forfeit on resume', () => {
+        // A DO evicted DURING a grace window loses the setTimeout; on the next
+        // wake _resumeTimers must forfeit a seat whose deadline already passed.
+        const { engine } = started2();
+        const snap = engine.serialize();
+        snap.seats[1].connected = false;   // guest dropped mid-game...
+        snap.seats[1].graceUntil = 500;    // ...and the window lapsed (< now below)
+
+        const fake2 = makeFake();
+        const restored = new RoomEngine({
+            roomId: 'r', size: 2, transport: fake2.transport, schedule: fake2.schedule,
+            setTimer: (fn) => fn(), now: () => 10_000,
+        });
+        restored.restore(snap);
+        restored._resumeTimers();
+
+        // Two-human game minus the forfeiting seat → the match ends for the survivor.
+        expect(restored.seats[1].type).toBe(null);
+        expect(restored.phase).toBe(PHASES.ENDED);
+        expect(fake2.broadcasts.some(b => b.t === 'ended')).toBe(true);
     });
 });

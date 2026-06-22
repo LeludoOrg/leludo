@@ -25,6 +25,12 @@ export const MSG = Object.freeze({
     JOIN: 'join',
     ROLL: 'roll',
     MOVE: 'move',
+    // keepalive: an idle WebSocket (a player waiting through others' turns) has
+    // no traffic, so Cloudflare's edge / NATs / proxies reap it after ~60-100s —
+    // a silent drop with no real network fault. The client sends this on an
+    // interval to keep the single TCP connection warm in BOTH directions. The
+    // server treats it as a no-op (see dispatchIntent).
+    PING: 'ping',
     LOBBY_SIZE: 'lobby_size',
     LOBBY_SEAT: 'lobby_seat',
     LOBBY_KICK: 'lobby_kick',
@@ -75,6 +81,10 @@ export const REASON = Object.freeze({
 
 /** `error` — rejection codes the server sends on a `rejected` / `error` frame. */
 export const ERR = Object.freeze({
+    // A join-by-code hit a room that was never created (no host). The server
+    // refuses to silently auto-create it, so a typo'd / stale code is rejected
+    // instead of dropping the player into an empty ghost room.
+    ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
     ROOM_FULL: 'ROOM_FULL',
     NOT_SEATED: 'NOT_SEATED',
     NOT_HOST: 'NOT_HOST',

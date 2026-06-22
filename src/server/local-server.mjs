@@ -27,7 +27,7 @@ import { RoomEngine } from './room-engine.js';
 import { Matchmaker } from './matchmaker.js';
 import { mintRoomCode } from '../scripts/core/room-code.js';
 import { spreadSeatPlan } from '../scripts/core/seat-allocation.js';
-import { MSG, REASON, BUSY } from '../scripts/net/net-protocol.js';
+import { MSG, REASON, BUSY, ERR } from '../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams, clampSeats } from './transport-shell.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
@@ -126,7 +126,7 @@ wss.on('connection', (ws, req) => {
     const q = new URL(req.url, 'http://localhost').searchParams;
     // `name`/`color`/`pool`/`mode`/`sizeRaw` are the cross-runtime fields; the
     // session fallback (and prod room-id casing) are runtime-specific.
-    const { name, color, pool, mode, room: roomId, sizeRaw } = parseConnParams(q);
+    const { name, color, pool, mode, room: roomId, sizeRaw, join } = parseConnParams(q);
     const sessionId = q.get('session') || `anon-${Math.random().toString(36).slice(2)}`;
 
     // Per-connection state. `room` is null until bound (immediately for private
@@ -151,6 +151,13 @@ wss.on('connection', (ws, req) => {
     } else {
         // Private room (by code): find or create, admit, bind immediately.
         let room = rooms.get(roomId);
+        if (!room && join) {
+            // Join-by-code into a room nobody created: refuse instead of spinning
+            // up a ghost room (mirrors the CF DO). `create=1` still creates below.
+            safeSend(ws, { t: MSG.ERROR, error: ERR.ROOM_NOT_FOUND });
+            ws.close();
+            return;
+        }
         if (!room) {
             const verdict = admission.tryAdmit(roomId);
             if (!verdict.ok) {

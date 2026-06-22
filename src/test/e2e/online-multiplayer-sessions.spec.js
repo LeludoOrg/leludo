@@ -262,19 +262,25 @@ test.describe('Online multiplayer — recorded sessions', () => {
         }
     });
 
-    test('host vs bots: one human fills the table with bots and plays', async ({ browser }) => {
-        const scenario = 'host-vs-bots';
+    test('two humans fill the rest of the table with bots and play', async ({ browser }) => {
+        const scenario = 'humans-plus-bots';
         const users = [];
         try {
-            const host = await makeUser(browser, { name: 'Solo' });
-            users.push(host);
+            // Online needs two real players (a lone host can't start solo-vs-bots),
+            // so the host + a guest fill the remaining seats with bots.
+            const host = await makeUser(browser, { name: 'Hosty' });
+            const guest = await makeUser(browser, { name: 'Mate' });
+            users.push(host, guest);
 
-            await createRoom(host);
+            const code = await createRoom(host);
+            await joinByCode(guest, code);
+            await expectAllSeated(host, users); // guest seated before we bot-fill the rest
+
             const bots = await fillOpenSeatsWithBots(host);
-            expect(bots).toHaveLength(3); // 3 open seats → 3 bots
+            expect(bots).toHaveLength(2); // 2 humans seated → the other 2 seats → bots
 
             await startAndMount(host, users);
-            await drivePlies(users, { minTurns: 8 }); // longer run: bot turns auto-advance
+            await drivePlies(users, { minTurns: 8 });
 
             assertNoErrors(users);
         } finally {
@@ -286,27 +292,34 @@ test.describe('Online multiplayer — recorded sessions', () => {
         const scenario = 'kick-refill';
         const users = [];
         try {
+            // Two guests join: the host kicks one, but a second human remains so the
+            // game can still start (online requires two real players).
             const host = await makeUser(browser, { name: 'Boss' });
-            const guest = await makeUser(browser, { name: 'Leaver' });
-            users.push(host, guest);
+            const leaver = await makeUser(browser, { name: 'Leaver' });
+            const stayer = await makeUser(browser, { name: 'Stayer' });
+            users.push(host, leaver, stayer);
 
             const code = await createRoom(host);
-            await joinByCode(guest, code);
+            await joinByCode(leaver, code);
+            await joinByCode(stayer, code);
+            await expect(host.page.locator('.seat-list')).toContainText('Leaver');
+            await expect(host.page.locator('.seat-list')).toContainText('Stayer');
 
-            // Find the guest's seat row and kick it.
-            const guestSeat = await mySeatIndex(guest.page);
-            expect(guestSeat).toBeGreaterThanOrEqual(0);
-            await expect(host.page.getByTestId(`online-seat-${guestSeat}-kick`)).toBeVisible();
-            await host.page.getByTestId(`online-seat-${guestSeat}-kick`).click();
+            // Find the leaver's seat row and kick it.
+            const leaverSeat = await mySeatIndex(leaver.page);
+            expect(leaverSeat).toBeGreaterThanOrEqual(0);
+            await expect(host.page.getByTestId(`online-seat-${leaverSeat}-kick`)).toBeVisible();
+            await host.page.getByTestId(`online-seat-${leaverSeat}-kick`).click();
 
-            // Guest is bounced back to the online menu with a "removed" notice.
-            await expect(guest.page.getByTestId('online-create')).toBeVisible();
-            await expect(guest.page.getByTestId('online-status')).toContainText(/removed/i);
+            // Leaver is bounced back to the online menu with a "removed" notice.
+            await expect(leaver.page.getByTestId('online-create')).toBeVisible();
+            await expect(leaver.page.getByTestId('online-status')).toContainText(/removed/i);
 
-            // Host refills the freed seat (and the rest) with bots, then plays solo.
+            // Host refills the freed seat (and any other open seat) with bots, then
+            // the host + the remaining human play out the table.
             await fillOpenSeatsWithBots(host);
-            await startAndMount(host, [host]);
-            await drivePlies([host], { minTurns: 6 });
+            await startAndMount(host, [host, stayer]);
+            await drivePlies([host, stayer], { minTurns: 6 });
 
             assertNoErrors(users);
         } finally {

@@ -9,16 +9,35 @@ dev + e2e) shipped first; the Cloudflare transport shell now lives in
 [release-web.yml](../.github/workflows/release-web.yml). See
 [server/cf/README.md](../server/cf/README.md) for the deploy runbook.
 
-**Launch deviation — rooms are pinned, not hibernated.** `LudoRoomDO` accepts
-sockets with `server.accept()` (standard), so the runtime keeps the DO resident
-while a client is connected and the engine's plain `setTimeout` bot-pacing +
-reconnect-grace timers work unchanged. This spends duration (GB-s) while a game
-idles between moves; on the **free plan an over-limit throttles rather than
-bills**, so the "structurally unspendable" guarantee still holds. WebSocket
-Hibernation (zero idle duration, §"Why Durable Objects") is a follow-up — it
-needs the engine persisted + rehydrated across eviction, including a resumable
-RNG. A zero-connection leak-guard alarm in `LudoRoomDO` covers the one case
-pinning misses (every client drops at once → DO evicted → grace timers lost).
+**Hibernation landed, but bot games pin the DO.** v0.24.5 added WebSocket
+Hibernation: the engine serialises + rehydrates across eviction (resumable RNG
+included), and idle keepalive pings are answered by `setWebSocketAutoResponse`
+without waking the DO. A clean, idle, **human-only** game now hibernates between
+moves and burns ~zero duration — measured **~0.4 GB-s for a full 2-player game**.
+
+The catch: the engine's bot-pacing (`schedule`) and reconnect-grace (`setTimer`)
+still default to plain `setTimeout`, and `LudoRoomDO._engineOpts` does **not**
+inject alarm-based versions. A pending `setTimeout` blocks eviction, so any game
+with a **bot** (a next-turn timer is almost always pending) or an active
+**disconnect-grace window** stays resident for its whole wall-clock — measured
+**~13 GB-s for a 2-human + 2-bot game** (≈34× the clean 2p game). Most real games
+fill empty seats with bots, so hibernation's savings are largely unrealised in
+practice. A zero-connection leak-guard alarm covers the one case pinning misses
+(every client drops at once → DO evicted → grace timers lost).
+
+This does **not** threaten the free tier: even at ~13–110 GB-s/game the duration
+ceiling (13,000 GB-s/day) is only hit after ~120–1,000 games/day, while **SQL
+rows written (100k/day) binds first at ~60–175 games/day** (see Budget). So caps
+are sized on rows, not duration.
+
+**TODO — revisit on a paid plan.** On the paid plan duration is *billed*, not
+throttled, and bot games make it the fastest-filling bucket: ~400k GB-s/month
+included ÷ ~13 GB-s ≈ **31k games** (or ÷110 for long games ≈ 3.6k), vs ~730k if
+they hibernated. If/when we move to paid, evaluate converting bot-pacing + grace
+`setTimeout` → DO alarms (or just accepting the cost). For **bots** the duration
+is largely *inherent active compute* (the DO genuinely runs AI every ~600ms), so
+the realistic reclaim is the **grace** window (a 60s pin per disconnect). Overage
+is cheap (~$0.00016/game) — likely not worth the complexity until volume is real.
 
 **Public matchmaking is deployed but not wired client-side.** The launch client
 is private-rooms-only; `MatchmakingDO` exists for parity. Turning it on needs a
@@ -118,8 +137,8 @@ Config (via Worker env vars — operator-tunable, no redeploy of logic).
 **Launch values are sized to stay inside the free tier** (see Budget):
 
 ```
-MAX_CONCURRENT_GAMES = 40    // simultaneous rooms (soft-realtime guard)
-MAX_GAMES_PER_DAY    = 250   // new games / UTC day — headroom under ~330 req ceiling
+MAX_CONCURRENT_GAMES = 15    // simultaneous rooms (soft-realtime guard)
+MAX_GAMES_PER_DAY    = 45    // new games / UTC day — under the SQL-rows-written ceiling
 RECONNECT_GRACE_MS   = 60000 // disconnect grace before forfeit
 MATCH_FILL_MS        = 20000 // public-queue wait before bot-fill
 ```
@@ -147,11 +166,13 @@ Admission is **mode-agnostic** — both private (room-code) and public
 (matchmade) games call `admit` before a room opens, so the caps protect every
 path. A public match counts as one game (not per-player).
 
-**Why a hard cap below the free limit?** The free plan throttles at 100k
-req/day, but a throttle is an ugly 429 mid-game. By capping games *ourselves*
-(e.g. 250/day ≈ well under the ~300-game request budget) we (a) reject new
-games cleanly at the lobby with a friendly message, (b) never let an in-progress
-game die from a throttle, (c) guarantee we never tip into paid overage.
+**Why a hard cap below the free limit?** The free plan throttles at its daily
+limits — the binding one is **100k SQL rows written/day**, shared account-wide
+across prod + beta — but a throttle is an ugly mid-game failure. By capping games
+*ourselves* (45/day prod + 5/day beta ≈ 83k rows worst-case all-4p, under 100k)
+we (a) reject new games cleanly at the lobby with a friendly message, (b) never
+let an in-progress game die from a throttle, (c) guarantee we never tip into paid
+overage.
 
 ### 2b. MatchmakingDO (singleton — public queue)
 

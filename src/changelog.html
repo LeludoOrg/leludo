@@ -43,6 +43,115 @@
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.25.3</div>
+                        <div class="cl-entry-date">June 22, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal code cleanup: online multiplayer session ids now use crypto-grade randomness (<code>crypto.randomUUID</code>) instead of <code>Math.random</code>. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.25.2</div>
+                        <div class="cl-entry-date">June 22, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Online: entering a room code that doesn't exist now shows a clear error instead of dropping you into an empty room.</li>
+                                    <li>Online: a game only starts once two real players have joined — the host's Start button stays disabled until then. Bots still fill any empty seats once you begin.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.25.1</div>
+                        <div class="cl-entry-date">June 22, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal dependency security update: bumped the undici library used by build/test tooling to a patched release. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.25.0</div>
+                        <div class="cl-entry-date">June 22, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Online multiplayer is here, in Beta: play Ludo with friends on any device. Host a room, share the 4-character code, and they join in seconds. No sign-up, no account, still free.</li>
+                                    <li>New On this device / Online toggle on the home screen — the Online tab is badged Beta while we keep polishing it. Single-player is unchanged.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.24.6</div>
+                        <div class="cl-entry-date">June 14, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Multiplayer fix: a brief network blip no longer makes another player suddenly become the host. The lobby now holds your seat (and the host role) through a short reconnect window — the same grace already used mid-game — and only hands off if you don't come back.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.24.5</div>
+                        <div class="cl-entry-date">June 13, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal: the multiplayer server now hibernates idle games instead of staying fully awake between moves, sharply cutting hosting cost so the free tier serves far more games. Reconnect, bot turns and the full game state all survive a hibernation cycle unchanged. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
                         <div class="cl-entry-version">v0.24.4</div>
                         <div class="cl-entry-date">June 13, 2026</div>
                     </div>
@@ -52,7 +161,7 @@
                             <div class="section-label cl-section-label">Highlights</div>
                             <div class="surface-card cl-card">
                                 <ul>
-                                    <li>Internal code cleanup: online multiplayer session ids now use crypto-grade randomness (<code>crypto.randomUUID</code>) instead of <code>Math.random</code>. No gameplay or UI changes.</li>
+                                    <li>Online: fixed players being dropped and forfeited mid-game with no real network problem. The connection now sends a quiet keepalive so an idle wait through other players&rsquo; turns no longer gets your seat reaped.</li>
                                 </ul>
                             </div>
                         </section>

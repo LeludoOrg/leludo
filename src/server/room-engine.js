@@ -112,6 +112,12 @@ export class RoomEngine {
         this.transport = opts.transport;
         this.schedule = opts.schedule || ((fn, ms) => setTimeout(fn, ms));
         this.botDelayMs = opts.botDelayMs ?? 600;
+        // Optional persistence hook, called with `this` on every state-changing
+        // broadcast. A hibernating host (Cloudflare DO) writes a snapshot here so
+        // the room survives eviction; the always-resident Node server omits it.
+        // Invoked BEFORE the broadcast so CF's output gate holds the outbound
+        // frames until the write lands — clients never see an unpersisted state.
+        this.persist = opts.persist || null;
         // Public matches auto-start once every human seat is filled; private
         // rooms stay host-managed (the host presses Start).
         this.autoStart = !!opts.autoStart;
@@ -179,10 +185,133 @@ export class RoomEngine {
         this.seq = 0;
     }
 
-    /** Broadcast a frame to the room, stamped with the next sequence number. */
+    /** Broadcast a frame to the room, stamped with the next sequence number.
+     *  Persists first (see `this.persist`) so a crash can't leave clients ahead
+     *  of stored state; the bumped `seq` is part of what gets persisted. */
     _broadcast(frame) {
         frame.seq = ++this.seq;
+        this.persist?.(this);
         this.transport.broadcast(frame);
+    }
+
+    // ---- snapshot / rehydrate -----------------------------------------------
+    // A hibernating host serialises the full authoritative state to storage and
+    // reconstructs it after the runtime evicts the instance. Everything the turn
+    // machine reads must round-trip: the RNG streams (as their resumable 32-bit
+    // state), the lobby seat objects, the derived in-game arrays, and the live
+    // counters. Transient handles (graceTimer) are NOT serialised — they are
+    // re-armed from `graceUntil` by `_resumeTimers` on the way back in.
+
+    /** Full authoritative state as a plain JSON-safe object. */
+    serialize() {
+        return {
+            v: 1,
+            roomId: this.roomId,
+            botNamePool: this.botNamePool,
+            rng: this.rng.getState(),
+            botRng: this.botRng.getState(),
+            autoStart: this.autoStart,
+            botDelayMs: this.botDelayMs,
+            graceMs: this.graceMs,
+            hostSession: this.hostSession,
+            phase: this.phase,
+            started: this.started,
+            waiting: this.waiting,
+            seats: this.seats.map(s => ({
+                type: s.type,
+                sessionId: s.sessionId,
+                name: s.name,
+                personality: s.personality,
+                connected: s.connected,
+                graceUntil: s.graceUntil || 0,
+            })),
+            positions: this.positions.map(p => (p ? p.slice() : null)),
+            playerTypes: this.playerTypes.slice(),
+            playerNames: this.playerNames.slice(),
+            botPersonalities: this.botPersonalities.slice(),
+            currentPlayerIndex: this.currentPlayerIndex,
+            currentDiceRoll: this.currentDiceRoll,
+            turnCount: this.turnCount,
+            consecutiveSixes: this.consecutiveSixes,
+            noMoveStreak: this.noMoveStreak.slice(),
+            captures: this.captures.slice(),
+            ranks: this.ranks.slice(),
+            lastRank: this.lastRank,
+            legalMoves: this.legalMoves.slice(),
+            seq: this.seq,
+        };
+    }
+
+    /** Overwrite this engine's state from a `serialize()` snapshot. Hooks
+     *  (transport/schedule/persist/now) stay as wired by the constructor. */
+    restore(s) {
+        this.roomId = s.roomId;
+        this.botNamePool = s.botNamePool;
+        this.rng.setState(s.rng);
+        this.botRng.setState(s.botRng);
+        this.autoStart = s.autoStart;
+        this.botDelayMs = s.botDelayMs;
+        this.graceMs = s.graceMs;
+        this.hostSession = s.hostSession;
+        this.phase = s.phase;
+        this.started = s.started;
+        this.waiting = s.waiting;
+        this.seats = s.seats.map(x => ({
+            type: x.type,
+            sessionId: x.sessionId,
+            name: x.name,
+            personality: x.personality,
+            connected: x.connected,
+            graceTimer: null,
+            graceUntil: x.graceUntil || 0,
+        }));
+        this.positions = s.positions.map(p => (p ? p.slice() : null));
+        this.playerTypes = s.playerTypes.slice();
+        this.playerNames = s.playerNames.slice();
+        this.botPersonalities = s.botPersonalities.slice();
+        this.currentPlayerIndex = s.currentPlayerIndex;
+        this.currentDiceRoll = s.currentDiceRoll;
+        this.turnCount = s.turnCount;
+        this.consecutiveSixes = s.consecutiveSixes;
+        this.noMoveStreak = s.noMoveStreak.slice();
+        this.captures = s.captures.slice();
+        this.ranks = s.ranks.slice();
+        this.lastRank = s.lastRank;
+        this.legalMoves = s.legalMoves.slice();
+        this.seq = s.seq;
+        return this;
+    }
+
+    /**
+     * After a restore, re-create the timers that live only in memory (a fresh
+     * instance has none). Idempotent intent: call EXACTLY once per reconstruction,
+     * never on a warm instance, or bot turns would double-schedule.
+     *   - Disconnect-grace forfeits resume from their persisted deadline (forfeit
+     *     immediately if the window already lapsed while we were evicted).
+     *   - A bot left mid-turn (AWAIT_ROLL, not held on a human) gets its step
+     *     re-kicked, since its pacing setTimeout was lost with the old instance.
+     */
+    _resumeTimers() {
+        if (this.phase === PHASES.ENDED) return;
+        for (let i = 0; i < 4; i++) {
+            const s = this.seats[i];
+            // A held seat counting down toward eviction/forfeit: a disconnected
+            // human still claiming an in-game seat, or a disconnected lobby chair
+            // whose grace we deferred. Either way, resume from the stored deadline
+            // (fire immediately if it lapsed while we were evicted).
+            const held = this.phase === PHASES.LOBBY
+                ? (s.sessionId != null && !s.connected)
+                : this._isActiveHuman(i) && !s.connected;
+            if (held && s.graceUntil > 0) {
+                const remaining = s.graceUntil - this.now();
+                if (remaining <= 0) { this._onGraceExpire(i); }
+                else { s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._onGraceExpire(i); }, remaining); }
+            }
+        }
+        if (this.phase === PHASES.AWAIT_ROLL && !this.waiting
+            && this.playerTypes[this.currentPlayerIndex] === 'BOT') {
+            this.schedule(() => this._botStep(), this.botDelayMs);
+        }
     }
 
     // ---- seat helpers -------------------------------------------------------
@@ -201,6 +330,14 @@ export class RoomEngine {
 
     _activeCount() {
         return this.seats.filter(s => s.type).length;
+    }
+
+    /** Human seats actually claimed by a person (not bots, not open seats).
+     *  This — not _activeCount, which counts bots too — gates the host Start:
+     *  an online game needs two real players, so a lone host can't kick off a
+     *  solo-vs-bots match (that's what offline play is for). */
+    _seatedHumanCount() {
+        return this.seats.filter(s => s.type === 'PLAYER' && s.sessionId != null).length;
     }
 
     _firstActive() {
@@ -295,6 +432,9 @@ export class RoomEngine {
             return { ok: true, seat };
         }
 
+        // A lobby reconnect (same session resuming a held chair) cancels the
+        // pending eviction; a fresh joiner has no timer, so this no-ops for them.
+        this._clearGrace(seat);
         this._broadcastState(REASON.JOIN);
         this._maybeAutoStart();
         return { ok: true, seat };
@@ -413,11 +553,12 @@ export class RoomEngine {
         return { ok: true, seat: from };
     }
 
-    /** Host: start the game. Open human seats fill with bots. */
+    /** Host: start the game. Needs two real humans seated (bots don't count);
+     *  any remaining open human seats fill with bots on start. */
     handleStart(sessionId) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
-        if (this._activeCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.NEED_TWO_PLAYERS);
+        if (this._seatedHumanCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.NEED_TWO_PLAYERS);
         this._startGame();
         return { ok: true };
     }
@@ -450,11 +591,16 @@ export class RoomEngine {
         s.personality = null;
     }
 
-    /** If a connected human sits here, tell them they were removed, then clear. */
+    /** If a human (connected OR mid-reconnect) sits here, tell them they were
+     *  removed and clear the chair. Cancelling any pending lobby grace is the key
+     *  step: a disconnected seat now lingers through its reconnect window, so a
+     *  host reassigning it (kick / set-to-bot / shrink) must kill the deferred
+     *  eviction — otherwise it fires later and stomps whatever now holds the seat. */
     _bootIfHuman(i) {
         const s = this.seats[i];
         if (s.type === 'PLAYER' && s.sessionId && s.sessionId !== this.hostSession) {
             this.transport.send(i, { t: MSG.KICKED });
+            this._clearGrace(i);
             s.sessionId = null;
             s.connected = false;
             s.name = '';
@@ -513,14 +659,14 @@ export class RoomEngine {
         this.seats[seat].connected = false;
 
         if (this.phase === PHASES.LOBBY) {
-            // Free the seat so someone else can take it; promote a new host if needed.
-            this.seats[seat].sessionId = null;
-            this.seats[seat].name = '';
-            if (sessionId === this.hostSession) {
-                const next = this.seats.find(s => s.sessionId && s.connected);
-                this.hostSession = next ? next.sessionId : null;
-            }
-            if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) return this._end(REASON.ABANDONED);
+            // A brief network blip must NOT cost you your lobby seat or hand the
+            // host crown to someone else. Hold the chair (keep sessionId + name)
+            // for the reconnect window — reconnecting restores you exactly, host
+            // and all. Only once the window lapses does _evictLobbySeat free the
+            // seat and promote the next connected human. Mirrors the in-game
+            // reconnect grace so a flaky link behaves the same in the lobby as it
+            // does mid-game.
+            this._startGrace(seat);
             this._broadcastState(REASON.DISCONNECT);
             return;
         }
@@ -592,7 +738,35 @@ export class RoomEngine {
         const s = this.seats[seat];
         if (s.graceTimer) return; // already counting down
         s.graceUntil = this.now() + this.graceMs;
-        s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._dropSeat(seat); }, this.graceMs);
+        s.graceTimer = this.setTimer(() => { s.graceTimer = null; this._onGraceExpire(seat); }, this.graceMs);
+    }
+
+    /** Reconnect window lapsed for `seat`. The same grace clock guards a lobby
+     *  chair and an in-game seat, but the consequence differs: in the lobby we
+     *  release the chair (and reassign the host), in-game we forfeit the pawns.
+     *  One entrypoint so the timer arm/resume paths never branch on phase. */
+    _onGraceExpire(seat) {
+        if (this.phase === PHASES.LOBBY) this._evictLobbySeat(seat);
+        else this._dropSeat(seat);
+    }
+
+    /** Lobby reconnect window elapsed: free the held chair and, if it was the
+     *  host's, promote the next connected human (null if none). Ends the room if
+     *  no connected human is left. The deferred half of the LOBBY disconnect. */
+    _evictLobbySeat(seat) {
+        if (this.phase !== PHASES.LOBBY) return; // game started/ended while we waited
+        const s = this.seats[seat];
+        if (!s || s.connected) return; // raced a reconnect — keep them seated
+        const wasHost = s.sessionId === this.hostSession;
+        this._clearGrace(seat);
+        s.sessionId = null;
+        s.name = '';
+        if (wasHost) {
+            const next = this.seats.find(x => x.sessionId && x.connected);
+            this.hostSession = next ? next.sessionId : null;
+        }
+        if (!this.seats.some(x => x.type === 'PLAYER' && x.connected)) return this._end(REASON.ABANDONED);
+        this._broadcastState(REASON.DISCONNECT);
     }
 
     _clearGrace(seat) {
