@@ -523,9 +523,9 @@ class QuickStart extends HTMLElement {
             // Always a 4-seat room; the host fills empty seats with bots from the
             // live seat list in the room.
             this._onlinePlayers = 4
-            this._enterLobby(mintRoomCode(), { create: true })
+            this._createRoom(mintRoomCode())
         } else if (kind === 'join') {
-            this._enterLobby(code, { create: false })
+            this._joinRoom(code)
         }
     }
 
@@ -601,7 +601,7 @@ class QuickStart extends HTMLElement {
 
         this.showOnlineScreen()
         goTo(SCREENS.ONLINE)
-        if (getUsername()) this._enterLobby(code, { create: false })
+        if (getUsername()) this._joinRoom(code)
         else this._playOnline?.prefillJoin(code)
     }
 
@@ -642,6 +642,14 @@ class QuickStart extends HTMLElement {
 
     _setOnlineStatus(text) { this._playOnline?.setStatus(text) }
 
+    // Friendly copy for a join rejection shown back on the setup screen. Keep
+    // these short — they sit on one status line under the code field.
+    _joinErrorText(error) {
+        if (error === ERR.ROOM_FULL) return 'That room is full.'
+        if (error === ERR.ROOM_NOT_FOUND) return 'No room with that code.'
+        return 'Couldn’t join that room.'
+    }
+
     _myName() {
         return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
     }
@@ -680,6 +688,16 @@ class QuickStart extends HTMLElement {
                 // Host-ness is derived from state.hostSeat in <wc-game-room>;
                 // we only need our own seat index here.
                 this._mySeat = msg.playerIndex
+                // A validated join: we connected from the setup screen and the
+                // server has now confirmed our seat (the code was real and had
+                // room). NOW mount the room screen + navigate; the STATE that
+                // follows renders the lobby into it.
+                if (this._pendingJoin) {
+                    this._pendingJoin = false
+                    this._playOnline?.setChecking(false)
+                    this._mountGameRoom(this._roomCode || msg.roomId)
+                    goTo(SCREENS.ONLINE_LOBBY)
+                }
                 break
             case MSG.STATE:
                 this._gameRoom?.renderLobby(msg.state, this._mySeat)
@@ -704,18 +722,24 @@ class QuickStart extends HTMLElement {
                 replaceTo(SCREENS.ONLINE)
                 this._setOnlineStatus('The host removed you from the room.')
                 break
-            case MSG.ERROR:
-                // Pre-game errors: today the only one is a join to a code nobody
-                // created. Bounce back to the setup screen so the player can fix
-                // the code (or create their own). _leaveOnline closes the socket,
-                // so net-client won't auto-retry the dead code.
-                if (msg.error === ERR.ROOM_NOT_FOUND) {
-                    this._leaveOnline()
+            case MSG.ERROR: {
+                // A pre-game join failure: a bad/stale code (ROOM_NOT_FOUND) or a
+                // full/closed room (ROOM_FULL). _leaveOnline closes the socket so
+                // net-client won't auto-retry the dead code. For a validated join
+                // we never left the setup screen — just clear the checking state
+                // and show why (keeping the typed code). If we somehow already
+                // navigated, rebuild the setup screen.
+                const wasPending = this._pendingJoin
+                this._pendingJoin = false
+                this._leaveOnline()
+                if (!wasPending && this._gameRoom) {
                     this.showOnlineScreen()
                     replaceTo(SCREENS.ONLINE)
-                    this._setOnlineStatus('No room found with that code. Check it and try again, or create your own.')
                 }
+                this._playOnline?.setChecking(false)
+                this._setOnlineStatus(this._joinErrorText(msg.error))
                 break
+            }
             case MSG.BUSY:
                 this._gameRoom?.onBusy()
                 this._setSearchStatus('Servers are busy right now — please try again in a few minutes.')
@@ -743,6 +767,15 @@ class QuickStart extends HTMLElement {
             params: { ...params, ...extra },
             onClose: () => {
                 if (this._net !== client || isOnlineGameStarted()) return
+                // A join we were validating dropped before the server seated us
+                // (server unreachable). Stay on the setup screen and surface it,
+                // re-enabling the join button.
+                if (this._pendingJoin) {
+                    this._pendingJoin = false
+                    this._playOnline?.setChecking(false)
+                    this._setOnlineStatus('Couldn’t reach the server. Check your connection and try again.')
+                    return
+                }
                 // Surface a dead/unreachable server instead of spinning forever
                 // on "Finding players…". Both setters no-op off their screen.
                 this._gameRoom?.setConnecting(false)
@@ -760,29 +793,38 @@ class QuickStart extends HTMLElement {
         return client
     }
 
-    _enterLobby(code, { create }) {
+    // Create + enter a brand-new room as the host. The code is minted client-side
+    // so there's nothing to validate — mount the room screen, navigate, then wire
+    // the socket. The creator seeds the room: their colour pick + bot-name pool so
+    // the auto-filled bots get cheeky names in the host's chosen language.
+    _createRoom(code) {
         this._isPublic = false
         this._roomCode = code
-        const players = create ? (this._onlinePlayers || 2) : 2
-        // The colour picker is the HOST's colour: only the room creator forwards
-        // a preferred seat. A joiner takes whatever seat the server assigns.
-        // Tell the server our intent: `create` mints the room, `join` enters an
-        // existing one — a join to a code nobody created is rejected (the server
-        // won't silently spin up a ghost room) so a typo'd code fails loudly.
-        const params = create
-            ? { size: String(players), create: '1' }
-            : { size: String(players), join: '1' }
-        // Only the creator seeds the room: their colour pick + bot-name pool so the
-        // room's auto-filled bots get cheeky names in the host's chosen language.
-        if (create) {
-            params.color = String(getOnlineColor())
-            params.pool = getActivePoolKey()
+        const params = {
+            size: String(this._onlinePlayers || 2),
+            create: '1',
+            color: String(getOnlineColor()),
+            pool: getActivePoolKey(),
         }
         // Navigate setup → room: mount <wc-game-room>, then wire the socket. The
         // 'online-lobby' history entry means back returns to <wc-play-online>.
         this._mountGameRoom(code)
         goTo(SCREENS.ONLINE_LOBBY)
         this._connect({ room: code, params })
+    }
+
+    // Join an existing room by code. The join socket IS the validation: we connect
+    // from the setup screen and only navigate into the room once the server
+    // confirms our seat (SEATED — see _onNetMessage). A bad/stale code
+    // (ROOM_NOT_FOUND) or a full room (ROOM_FULL) comes back as an ERROR and we
+    // stay right here with a message — no flashing into the room screen and back.
+    _joinRoom(code) {
+        this._isPublic = false
+        this._roomCode = code
+        this._playOnline?.setChecking(true)
+        this._connect({ room: code, params: { size: '2', join: '1' } })
+        // Set AFTER _connect: it runs _leaveOnline first, which clears this flag.
+        this._pendingJoin = true
     }
 
     _enterMatchmaking(size) {
@@ -835,6 +877,7 @@ class QuickStart extends HTMLElement {
         this._net = null
         this._mySeat = -1
         this._inGame = false
+        this._pendingJoin = false // cancel any in-flight join validation
         // NB: don't reset _isPublic here — _connect() calls _leaveOnline() right
         // before wiring the public socket, so clearing it here would clobber the
         // flag _enterMatchmaking just set. It's reset at true leave points

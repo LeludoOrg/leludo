@@ -116,15 +116,19 @@ async function createRoom(host) {
 async function joinByCode(user, code) {
     await user.page.getByTestId('online-code-input').fill(code);
     await user.page.getByTestId('online-join').click();
-    await expect(user.page.getByTestId('online-room-code')).toHaveText(code);
+    // The join is validated against the server before navigating into the room,
+    // so the code banner appears once we're seated — allow a round-trip's headroom.
+    await expect(user.page.getByTestId('online-room-code')).toHaveText(code, { timeout: 15_000 });
 }
 
 /** Invite-link join: the name is already saved (makeUser typed it), so opening
  *  ?join=CODE drops the player straight into the room lobby. */
 async function joinByLink(user, code) {
     await user.page.goto(`/?join=${code}`);
-    await expect(user.page.locator('wc-game-room')).toHaveCount(1);
-    await expect(user.page.getByTestId('online-room-code')).toHaveText(code);
+    // The join is validated against the server before navigating into the room,
+    // so the room screen appears once we're seated — allow a round-trip's headroom.
+    await expect(user.page.locator('wc-game-room')).toHaveCount(1, { timeout: 15_000 });
+    await expect(user.page.getByTestId('online-room-code')).toHaveText(code, { timeout: 15_000 });
 }
 
 /** Assert every player shows in the host's lobby. The host's own name lives in
