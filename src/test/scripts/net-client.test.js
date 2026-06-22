@@ -36,6 +36,16 @@ describe('resolveServerUrl', () => {
         expect(resolveServerUrl('wss://leludo-mp.acme.workers.dev'))
             .toBe('wss://leludo-mp.acme.workers.dev');
     });
+
+    // Regression: the shipped Capacitor APK serves from https://localhost, so
+    // hostname looks like local dev and used to resolve ws://localhost:8890 — a
+    // dev server that doesn't exist on a phone, so Online could never connect.
+    // window.Capacitor.isNativePlatform() is the real signal: native dials prod.
+    it('dials production from the Capacitor APK despite the localhost hostname', () => {
+        stubHost('localhost', 'https:');
+        vi.stubGlobal('window', { Capacitor: { isNativePlatform: () => true } });
+        expect(resolveServerUrl()).toBe('wss://mp.leludo.org');
+    });
 });
 
 /**

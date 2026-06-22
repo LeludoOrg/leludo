@@ -15,8 +15,8 @@
 import { BUSY } from '../scripts/net/net-protocol.js';
 
 export const ADMISSION_DEFAULTS = Object.freeze({
-    maxConcurrentGames: 40,   // simultaneous rooms (soft-realtime guard)
-    maxGamesPerDay: 250,      // new games / UTC day — headroom under the request ceiling
+    maxConcurrentGames: 25,   // simultaneous rooms (soft-realtime guard)
+    maxGamesPerDay: 70,       // new games / UTC day — free-tier safe: ~1,015 SQL rows/4p game vs the 100k/day account-wide rows-written cap (shared with beta)
 });
 
 const MS_PER_DAY = 86_400_000;

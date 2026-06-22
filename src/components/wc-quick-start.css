@@ -246,6 +246,22 @@ wc-quick-start .home-mode-seg svg {
     flex-shrink: 0;
 }
 
+/* "Beta" badge on the Online segment — online multiplayer is live but still in
+   beta. Inverted fg-on-bg pill so it reads as a distinct badge in both themes;
+   dims with its parent segment's opacity until the Online tab is selected. */
+wc-quick-start .home-mode-beta {
+    margin-left: -1px;
+    padding: 2px 5px;
+    border-radius: var(--radius-pill);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--color-fg) 72%, transparent);
+    color: var(--color-bg);
+}
+
 @media (prefers-reduced-motion: reduce) {
     wc-quick-start .home-mode-thumb { transition: none; }
 }

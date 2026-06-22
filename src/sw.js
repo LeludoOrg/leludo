@@ -53,7 +53,6 @@ const PRECACHE = [
   'scripts/state/game-state.js',
   'scripts/state/game-store.js',
   'scripts/state/god-mode.js',
-  'scripts/platform/feature-flags.js',
   'scripts/render/ko-capture.js',
   'scripts/render/home-arrival.js',
   'scripts/render/overlay-base.js',

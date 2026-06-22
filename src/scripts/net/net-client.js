@@ -9,6 +9,7 @@
 
 import { MSG } from "./net-protocol.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
+import { isCapacitorNative } from "../platform/platform.js";
 
 const DEFAULT_PORT = 8890;
 
@@ -27,6 +28,10 @@ const BETA_HOST = 'beta.leludo.org';
 /** Build the ws:// URL from connection options + query overrides. */
 export function resolveServerUrl(explicit) {
     if (explicit) return explicit;
+    // The shipped Capacitor APK serves from https://localhost, so location.hostname
+    // lies — it looks like local dev. The native runtime flag is the real signal:
+    // a native build always dials production (there is no dev ws server on a phone).
+    if (isCapacitorNative()) return PROD_SERVER_URL;
     const host = location.hostname;
     // Local dev / e2e: `npm run dev` runs the Node ws server (local-server.mjs)
     // on 8890 alongside the static site, so online play works out of the box.
