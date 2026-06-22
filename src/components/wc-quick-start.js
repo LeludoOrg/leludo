@@ -8,7 +8,6 @@ import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scri
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
 import {MSG} from "../scripts/net/net-protocol.js";
 import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
-import {isOnlineEnabled} from "../scripts/platform/feature-flags.js";
 import {SCREENS} from "../scripts/platform/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
 import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_BACK, ICON_CLOSE, ICON_USER, ICON_BOT, ICON_PENCIL, ICON_GLOBE, ICON_DEVICE} from "./wc-icons.js";
@@ -108,13 +107,6 @@ class QuickStart extends HTMLElement {
         if (this.querySelector('#seat-list')) this._renderSeats()
     }
 
-    // Re-render the home screen if it's the screen currently showing. Used when
-    // the online feature flag is toggled in settings so the CTA stack updates
-    // without a full reload. No-op mid-game or on any other screen.
-    refreshHomeIfShowing() {
-        if (!this._inGame && this.querySelector('.home-frame')) this.showHomeScreen()
-    }
-
     showHomeScreen() {
         // Returning home (incl. exiting an online game, whose driver already
         // closed the socket): drop any stale online references.
@@ -127,14 +119,11 @@ class QuickStart extends HTMLElement {
         this.innerHTML = ""
 
         const saved = this._readSavedGame()
-        // Online is gated behind the dev/beta feature flag. When off (prod /
-        // APK) the home shows a single "New game" button; when on, a segmented
-        // mode toggle (On this device / Online) sits above the same single
-        // button, and the button routes by the selected mode.
-        const online = isOnlineEnabled()
-        // Mode persists across in-session home re-renders; force device when
-        // online is off so the CTA never tries an unavailable path.
-        if (!online || this._homeMode == null) this._homeMode = 'device'
+        // Home is a segmented mode toggle (On this device / Online) above a single
+        // "New game" button that routes by the selected mode. Online multiplayer
+        // is live for everyone but still in beta — flagged by the "Beta" badge on
+        // the Online segment. Mode persists across in-session home re-renders.
+        if (this._homeMode == null) this._homeMode = 'device'
         const mode = this._homeMode
 
         const html = /*html*/ `
@@ -154,12 +143,11 @@ class QuickStart extends HTMLElement {
                 ${saved ? this._resumeCardHtml(saved) : ''}
 
                 <div class="frame-footer home-cta-stack">
-                    ${online ? /*html*/ `
                     <div class="home-mode-toggle" role="tablist" aria-label="Game mode" data-mode="${mode}">
                         <div class="home-mode-thumb" aria-hidden="true"></div>
                         <button class="home-mode-seg" role="tab" data-mode="device" data-testid="home-mode-device" aria-selected="${mode === 'device'}">${ICON_DEVICE}<span>On this device</span></button>
-                        <button class="home-mode-seg" role="tab" data-mode="online" data-testid="home-mode-online" aria-selected="${mode === 'online'}">${ICON_GLOBE}<span>Online</span></button>
-                    </div>` : ''}
+                        <button class="home-mode-seg" role="tab" data-mode="online" data-testid="home-mode-online" aria-selected="${mode === 'online'}">${ICON_GLOBE}<span>Online</span><span class="home-mode-beta">Beta</span></button>
+                    </div>
                     <button class="new-game-btn cta-primary" data-testid="home-new-game"><span>New game</span></button>
                     <p class="home-cta-sub" data-testid="home-cta-sub">${this._modeSubtext(mode)}</p>
                 </div>

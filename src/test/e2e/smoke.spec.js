@@ -16,10 +16,8 @@ test.describe('Home screen', () => {
         await expect(title).toContainText('ludo');
 
         // Home is a "mode toggle + one button" design: a segmented On this
-        // device / Online control over a single New game CTA. Online is gated
-        // behind the dev/beta feature flag (scripts/platform/feature-flags.js);
-        // under Playwright the static server runs on localhost, where it's on,
-        // so both segments show.
+        // device / Online control over a single New game CTA. Online multiplayer
+        // is live for everyone (beta), so both segments always show.
         await expect(page.getByTestId('home-mode-device')).toBeVisible();
         await expect(page.getByTestId('home-mode-online')).toBeVisible();
         await expect(page.getByTestId('home-new-game')).toContainText(/new game/i);
