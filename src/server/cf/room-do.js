@@ -6,40 +6,37 @@
  * engine, same `transport` contract ({broadcast, send, release}), same intent
  * switch. All rules live in scripts/* — this only moves bytes and owns sockets.
  *
- * Memory model — HIBERNATED.
- *   Sockets are accepted with the WebSocket Hibernation API
- *   (`state.acceptWebSocket`), so while a game idles between moves the runtime
- *   evicts the instance from memory and stops billing duration (GB-s) — the
- *   dominant cost of a long Ludo game, most of whose wall-clock is humans
- *   thinking. The trade-off is that in-memory state does NOT survive eviction,
- *   so the engine is serialised to storage on every state-changing broadcast
- *   (`persist` hook) and reconstructed in the constructor on the next wake.
+ * Memory model — RESIDENT, NOT hibernated (deliberate).
+ *   The engine keeps live state (board, RNG stream, bot/grace setTimeout timers)
+ *   in this instance's memory. We accept WebSockets with `server.accept()`
+ *   (standard, not the Hibernation API) so the runtime keeps the DO resident
+ *   while ≥1 client is connected — exactly like the Node process the engine was
+ *   written for, so its plain setTimeout-based bot pacing and reconnect grace
+ *   work without change.
  *
- *   Keepalive pings ({"t":"ping"}) are answered by the runtime via
- *   `setWebSocketAutoResponse` WITHOUT waking the DO, so the heartbeat that
- *   keeps the socket warm (net-client.js) costs zero duration.
- *
- *   Pending setTimeout timers (bot pacing, reconnect grace) suppress hibernation
- *   while armed, so they fire normally during their bounded windows; routine
- *   hibernation only happens with none pending (a human's turn). `_resumeTimers`
- *   in the engine re-arms them from persisted deadlines after a non-hibernation
- *   eviction (deploy/crash) so a bot turn or grace forfeit can't be stranded.
+ *   We tried WebSocket Hibernation (v0.24.5) to cut idle duration (GB-s), but it
+ *   forced a snapshot write to storage on EVERY broadcast (so state survives
+ *   eviction) and CF's output gate then held each roll/move frame until that
+ *   write landed — visible per-action lag — while a cold wake on the first move
+ *   after a player's think-time added more. On the FREE plan the binding limit is
+ *   SQL rows-written, NOT duration (idle 2p ≈ 0.4 GB-s; duration never binds), so
+ *   the snapshot writes were inflating the cost dimension that actually binds AND
+ *   hurting latency. Resident sockets respond instantly and write no per-move
+ *   rows. The duration cost of staying resident through human think-time is real
+ *   but unbilled on free; revisit hibernation (with non-gating async persist
+ *   and/or alarm-based bot/grace timers) only on a paid plan where GB-s bills.
  *
  * Leak guard: when the last socket closes mid-game (every client dropped at
- * once), a storage alarm armed on the zero-connection transition force-releases
- * the admission slot if nobody reconnects within the grace window. Alarms wake a
- * hibernated DO, so the guard fires even while evicted. (A room that empties
- * cleanly already ends + releases synchronously via the engine.)
+ * once), the DO can be evicted and its in-memory grace timers lost — which would
+ * leak the admission slot. A storage alarm armed on the zero-connection
+ * transition force-releases the slot if nobody reconnects within the grace
+ * window. (A room that empties cleanly already ends + releases synchronously via
+ * the engine, so the alarm only fires for the simultaneous-drop edge.)
  */
-import { RoomEngine, PHASES } from '../room-engine.js';
+import { RoomEngine } from '../room-engine.js';
 import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
-
-// The keepalive frame net-client.js sends, byte-for-byte. The runtime auto-
-// answers an exact match without waking the DO; the client ignores the reply.
-const PING_REQUEST = JSON.stringify({ t: MSG.PING });
-const PONG_RESPONSE = JSON.stringify({ t: 'pong' });
 
 export class LudoRoomDO {
     constructor(state, env) {
@@ -53,77 +50,24 @@ export class LudoRoomDO {
         // injected primitive stringifies before the error-swallowing safeSend.
         this.sockets = new SessionSockets((ws, msg) => safeSend(ws, JSON.stringify(msg)));
         this.graceMs = numEnv(env.RECONNECT_GRACE_MS, 60_000);
-
-        // Reconstruct after a (possibly hibernated) eviction before serving any
-        // request: rehydrate the engine from storage, re-adopt the surviving
-        // sockets, and re-arm the in-memory timers. blockConcurrencyWhile holds
-        // incoming events until this finishes.
-        this.state.blockConcurrencyWhile(async () => {
-            try {
-                this.state.setWebSocketAutoResponse(
-                    new WebSocketRequestResponsePair(PING_REQUEST, PONG_RESPONSE),
-                );
-            } catch { /* older runtime: pings fall through to the PING no-op instead */ }
-
-            const snap = await this.state.storage.get('snapshot');
-            // A finished game's snapshot is kept only until _release deletes it;
-            // never rehydrate one (a reused room code would resurrect a dead game).
-            if (snap && snap.phase !== PHASES.ENDED) this._rebuild(snap);
-            this._rebuildSockets();
-            if (this.engine) this.engine._resumeTimers();
-        });
     }
 
     _admissionStub() {
         return this.env.ADMISSION.get(this.env.ADMISSION.idFromName(ADMISSION_NAME));
     }
 
-    /** Shared engine wiring — the transport + the persistence hook, both bound to
-     *  this instance. `extra` carries the per-construction bits (size/seed). */
-    _engineOpts(extra) {
-        return {
-            roomId: this.roomId,
-            graceMs: this.graceMs,
-            transport: engineTransport(this.sockets, () => this.engine, () => this._release()),
-            persist: (engine) => this._persist(engine),
-            ...extra,
-        };
-    }
-
-    /** Persist the full engine state. Fire-and-forget: CF's output gate holds the
-     *  outbound frames the engine sends right after this call until the write
-     *  lands, so a client never observes a state we haven't stored. */
-    _persist(engine) {
-        this.state.storage.put('snapshot', engine.serialize()).catch(() => {});
-    }
-
     _ensureEngine(cfg) {
         if (this.engine) return;
-        this.engine = new RoomEngine(this._engineOpts({
+        this.engine = new RoomEngine({
+            roomId: this.roomId,
             size: cfg.size,
             botNamePool: cfg.pool,
+            graceMs: this.graceMs,
             // Fresh per-room dice stream — prod must NOT be the fixed seed the dev
             // harness uses, or every game would roll an identical sequence.
             seed: randomSeed(),
-        }));
-    }
-
-    /** Rebuild a live engine from a storage snapshot after eviction. */
-    _rebuild(snap) {
-        this.roomId = snap.roomId;
-        this.admitted = true;     // the slot was consumed before we were evicted
-        this.released = false;
-        this.engine = new RoomEngine(this._engineOpts({ seed: 1 })); // seed overridden by restore
-        this.engine.restore(snap);
-    }
-
-    /** Re-adopt the sockets that outlived the eviction, keyed by the sessionId we
-     *  stashed on each as a hibernation-surviving attachment. */
-    _rebuildSockets() {
-        for (const ws of this.state.getWebSockets()) {
-            const att = ws.deserializeAttachment();
-            if (att && att.sessionId) this.sockets.add(att.sessionId, ws);
-        }
+            transport: engineTransport(this.sockets, () => this.engine, () => this._release()),
+        });
     }
 
     async fetch(request) {
@@ -136,19 +80,21 @@ export class LudoRoomDO {
         const { name, color, pool } = p;
         const size = clampSeats(p.sizeRaw, 2);
 
-        // Join-by-code into a room that doesn't exist: the constructor only
-        // builds `this.engine` from a live snapshot, so a missing engine here
-        // means no host ever created this code. Refuse instead of auto-creating
-        // a ghost room — and do it BEFORE the admission round-trip so a typo'd
-        // code can't burn a slot. `create=1` (and any non-join connect, e.g. a
-        // public-match redial) still falls through to _ensureEngine below.
+        // Join-by-code into a room that doesn't exist: a resident DO only holds
+        // `this.engine` while its host is connected (or within the eviction-free
+        // life of the room), so a missing engine on a `join=1` connect means no
+        // host ever created this code (or the room was evicted on deploy). Refuse
+        // instead of auto-creating a ghost room — and do it BEFORE the admission
+        // round-trip so a typo'd code can't burn a slot. `create=1` (and any
+        // non-join connect, e.g. a public-match redial) still falls through to
+        // _ensureEngine below.
         if (!this.engine && p.join) {
             return wsReject({ t: MSG.ERROR, error: ERR.ROOM_NOT_FOUND });
         }
 
         // First connection to this room consumes an admission slot; later joiners
-        // (and reconnects into a rehydrated room, where `admitted` was restored)
-        // ride the already-open room without the round-trip.
+        // ride the already-open room (Admission treats a re-admit of a live room
+        // as a free no-op, but we skip the round-trip entirely once admitted).
         if (!this.admitted) {
             const res = await this._admissionStub().fetch(
                 `https://do/admit?room=${encodeURIComponent(this.roomId)}`,
@@ -164,11 +110,7 @@ export class LudoRoomDO {
         const pair = new WebSocketPair();
         const client = pair[0];
         const server = pair[1];
-        // Hibernatable accept — the runtime may evict this DO between messages.
-        this.state.acceptWebSocket(server);
-        // sessionId must survive that eviction: stash it on the socket so the
-        // message/close handlers can recover it after a cold reconstruction.
-        server.serializeAttachment({ sessionId });
+        server.accept();
         // A new connection cancels any pending zero-connection cleanup.
         this.state.storage.deleteAlarm().catch(() => {});
 
@@ -177,37 +119,28 @@ export class LudoRoomDO {
         const joined = this.engine.handleJoin(sessionId, name, color);
         if (!joined.ok) safeSend(server, JSON.stringify({ t: MSG.ERROR, error: joined.error }));
 
+        server.addEventListener('message', (ev) => {
+            let msg;
+            try { msg = JSON.parse(ev.data); } catch { return; }
+            this._onMessage(sessionId, msg);
+        });
+        const onGone = () => this._onClose(sessionId, server);
+        server.addEventListener('close', onGone);
+        server.addEventListener('error', onGone);
+
         return new Response(null, { status: 101, webSocket: client });
     }
 
-    // ---- Hibernation API handlers (replace addEventListener) ----------------
-
-    async webSocketMessage(ws, message) {
-        let msg;
-        try {
-            msg = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message));
-        } catch { return; }
-        const att = ws.deserializeAttachment();
-        const sessionId = att && att.sessionId;
-        if (sessionId && this.engine) dispatchIntent(this.engine, sessionId, msg);
+    _onMessage(sessionId, msg) {
+        if (this.engine) dispatchIntent(this.engine, sessionId, msg);
     }
 
-    async webSocketClose(ws) {
-        this._onGone(ws);
-    }
-
-    async webSocketError(ws) {
-        this._onGone(ws);
-    }
-
-    _onGone(ws) {
-        const att = ws.deserializeAttachment();
-        const sessionId = att && att.sessionId;
-        if (sessionId && this.sockets.remove(sessionId, ws)) this.engine?.handleDisconnect(sessionId);
-        // Last socket gone from a live game → arm the leak-guard alarm. If the
-        // room hasn't already ended+released, the alarm releases the slot once
-        // the grace window lapses with nobody back.
-        if (this.engine && this.sockets.size === 0 && !this.released) {
+    _onClose(sessionId, ws) {
+        if (this.sockets.remove(sessionId, ws)) this.engine?.handleDisconnect(sessionId);
+        // Last socket gone → arm the leak-guard alarm (see header). If a fully
+        // empty room hasn't already ended+released synchronously, the alarm
+        // releases the slot once the grace window lapses with nobody back.
+        if (this.sockets.size === 0 && !this.released) {
             this.state.storage.setAlarm(Date.now() + this.graceMs + 5_000).catch(() => {});
         }
     }
@@ -230,8 +163,5 @@ export class LudoRoomDO {
             }
         } catch { /* best-effort; the slot is small and admit re-checks liveness */ }
         this.state.storage.deleteAlarm().catch(() => {});
-        // Drop the snapshot so a future reuse of this room code starts clean
-        // instead of rehydrating the finished game.
-        this.state.storage.delete('snapshot').catch(() => {});
     }
 }
