@@ -108,5 +108,10 @@ export function parseConnParams(q) {
         pool: q.get('pool') || undefined,
         mode: q.get('mode'),
         sizeRaw: q.get('size') ?? q.get('humans'),
+        // The client's intent: `create=1` mints a new private room, `join=1`
+        // enters an existing one. A `join` to a room that doesn't exist is
+        // rejected (ROOM_NOT_FOUND) instead of silently auto-creating it — a
+        // typo'd or stale code must not drop the player into an empty ghost room.
+        join: q.get('join') === '1',
     };
 }

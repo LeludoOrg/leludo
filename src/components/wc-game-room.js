@@ -173,8 +173,16 @@ class GameRoom extends HTMLElement {
         // First real state ends the connecting/skeleton phase.
         this.setConnecting(false)
         const isHost = state.hostSeat === mySeat && mySeat !== -1
+        // An online game needs two real people. Bots fill the remaining seats on
+        // start, but they don't count toward the minimum — so the host's Start
+        // stays disabled (visible, greyed) until a second human joins. The server
+        // enforces the same rule (handleStart → NEED_TWO_PLAYERS); this is the UX.
+        const humans = (state.seats || []).filter(s => s.type === 'PLAYER' && s.claimed).length
         const startBtn = this.querySelector('[data-testid="online-start"]')
-        if (startBtn) startBtn.hidden = !isHost || state.started
+        if (startBtn) {
+            startBtn.hidden = !isHost || state.started
+            startBtn.disabled = humans < 2
+        }
 
         const isHostEl = this.querySelector('[data-testid="online-is-host"]')
         if (isHostEl) isHostEl.textContent = String(isHost)
@@ -208,7 +216,11 @@ class GameRoom extends HTMLElement {
         if (state.started) {
             this.setStatus('Game starting…')
         } else if (isHost) {
-            this.setStatus(`You're the host. ${joined} player${joined === 1 ? '' : 's'} in — start when ready.`)
+            // Until a second human is in, the host can't start — prompt them to
+            // share the code rather than dangle a dead Start button.
+            this.setStatus(humans < 2
+                ? 'Share the room code — you need one more player to start.'
+                : `You're the host. ${joined} player${joined === 1 ? '' : 's'} in — start when ready.`)
         } else {
             this.setStatus('Waiting for the host to start…')
         }

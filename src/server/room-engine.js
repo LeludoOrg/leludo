@@ -332,6 +332,14 @@ export class RoomEngine {
         return this.seats.filter(s => s.type).length;
     }
 
+    /** Human seats actually claimed by a person (not bots, not open seats).
+     *  This — not _activeCount, which counts bots too — gates the host Start:
+     *  an online game needs two real players, so a lone host can't kick off a
+     *  solo-vs-bots match (that's what offline play is for). */
+    _seatedHumanCount() {
+        return this.seats.filter(s => s.type === 'PLAYER' && s.sessionId != null).length;
+    }
+
     _firstActive() {
         return this.playerTypes.findIndex(t => t !== undefined);
     }
@@ -545,11 +553,12 @@ export class RoomEngine {
         return { ok: true, seat: from };
     }
 
-    /** Host: start the game. Open human seats fill with bots. */
+    /** Host: start the game. Needs two real humans seated (bots don't count);
+     *  any remaining open human seats fill with bots on start. */
     handleStart(sessionId) {
         const guard = this._hostLobbyGuard(sessionId);
         if (guard) return guard;
-        if (this._activeCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.NEED_TWO_PLAYERS);
+        if (this._seatedHumanCount() < MIN_PLAYERS) return this._reject(this._seatOf(sessionId), ERR.NEED_TWO_PLAYERS);
         this._startGame();
         return { ok: true };
     }

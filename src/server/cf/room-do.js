@@ -33,7 +33,7 @@
  */
 import { RoomEngine, PHASES } from '../room-engine.js';
 import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
-import { MSG } from '../../scripts/net/net-protocol.js';
+import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
 
 // The keepalive frame net-client.js sends, byte-for-byte. The runtime auto-
@@ -135,6 +135,16 @@ export class LudoRoomDO {
         const sessionId = p.session || `anon-${crypto.randomUUID()}`;
         const { name, color, pool } = p;
         const size = clampSeats(p.sizeRaw, 2);
+
+        // Join-by-code into a room that doesn't exist: the constructor only
+        // builds `this.engine` from a live snapshot, so a missing engine here
+        // means no host ever created this code. Refuse instead of auto-creating
+        // a ghost room — and do it BEFORE the admission round-trip so a typo'd
+        // code can't burn a slot. `create=1` (and any non-join connect, e.g. a
+        // public-match redial) still falls through to _ensureEngine below.
+        if (!this.engine && p.join) {
+            return wsReject({ t: MSG.ERROR, error: ERR.ROOM_NOT_FOUND });
+        }
 
         // First connection to this room consumes an admission slot; later joiners
         // (and reconnects into a rehydrated room, where `admitted` was restored)

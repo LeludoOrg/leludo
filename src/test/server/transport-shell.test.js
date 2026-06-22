@@ -101,10 +101,10 @@ describe('dispatchIntent', () => {
 
 describe('parseConnParams', () => {
     it('reads the common fields, leaving runtime transforms to the caller', () => {
-        const q = new URLSearchParams('room=ABCD&session=s1&name=Vee&color=2&pool=hindi&mode=public&humans=3');
+        const q = new URLSearchParams('room=ABCD&session=s1&name=Vee&color=2&pool=hindi&mode=public&humans=3&join=1');
         expect(parseConnParams(q)).toEqual({
             room: 'ABCD', session: 's1', name: 'Vee', color: 2,
-            pool: 'hindi', mode: 'public', sizeRaw: '3',
+            pool: 'hindi', mode: 'public', sizeRaw: '3', join: true,
         });
     });
 
@@ -113,5 +113,6 @@ describe('parseConnParams', () => {
         expect(p.room).toBe('default');
         expect(p.color).toBe(null);
         expect(p.sizeRaw).toBe(null);
+        expect(p.join).toBe(false); // only `join=1` opts into the existing-room check
     });
 });
