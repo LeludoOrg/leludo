@@ -76,6 +76,18 @@ class PlayOnline extends HTMLElement {
         if (el) el.textContent = text
     }
 
+    /** Toggle the "checking the code" state while a join is validated against the
+     *  server: disable the input + button so the player can't double-submit, and
+     *  show a status line. The controller (wc-quick-start) clears it on success
+     *  (navigating into the room) or on an error message. */
+    setChecking(on) {
+        const btn = this.querySelector('.online-join-btn')
+        const input = this.querySelector('.online-code-input')
+        if (btn) btn.disabled = on
+        if (input) input.disabled = on
+        if (on) this.setStatus('Checking room…')
+    }
+
     /** Arrived via a shared invite link without a saved name: drop the code into
      *  the join field so one tap joins the room (name + colour are picked in the
      *  lobby afterwards). */

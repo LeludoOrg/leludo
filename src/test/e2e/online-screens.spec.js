@@ -325,17 +325,21 @@ test.describe('Online lobby — create + join', () => {
 
     // Regression: a typo'd / stale code used to silently spin up a brand-new empty
     // room, dropping the player alone into a ghost lobby that no friend was in.
-    // Joining a code nobody created must now bounce back to the setup screen with
-    // an error, NOT hand out a fresh room.
+    // The join is now validated against the server BEFORE navigating, so a code
+    // nobody created never mounts the room screen at all — the player stays on the
+    // setup screen with an error and their typed code intact (no flash-and-bounce).
     test('joining a room code that was never created is rejected', async ({ page }) => {
         await openOnline(page, 'Lost');
         // A well-formed code (right length + alphabet) that no host ever created.
         await page.getByTestId('online-code-input').fill('ZZZZ');
         await page.getByTestId('online-join').click();
-        // Bounced back to the entry screen (no room code banner) with an error.
-        await expect(page.getByTestId('online-create')).toBeVisible();
-        await expect(page.locator('wc-game-room')).toHaveCount(0);
+        // We never leave the setup screen: no room screen is mounted, the typed
+        // code is preserved, and an error explains why.
         await expect(page.getByTestId('online-status')).toContainText(/no room/i);
+        await expect(page.locator('wc-game-room')).toHaveCount(0);
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+        await expect(page.getByTestId('online-code-input')).toHaveValue('ZZZZ');
+        await expect(page.getByTestId('online-create')).toBeVisible();
     });
 
     // Regression: online is human-vs-human — a lone host must NOT be able to start
@@ -410,8 +414,10 @@ test.describe('Online — invite links', () => {
         await guest.goto(`/?join=${code}`);
 
         // Lands in the game room (not the setup screen), seated in the host's room
-        // diagonally opposite the host (seat 2).
-        await expect(guest.locator('wc-game-room')).toHaveCount(1);
+        // diagonally opposite the host (seat 2). The join is validated against the
+        // server before navigating, so the room screen appears once we're seated —
+        // allow a server-round-trip's headroom (matches the other online specs).
+        await expect(guest.locator('wc-game-room')).toHaveCount(1, { timeout: 15_000 });
         await expect(guest.locator('wc-play-online')).toHaveCount(0);
         await expect(guest.getByTestId('online-room-code')).toHaveText(code);
         await expect(host.getByTestId('online-seat-2')).toContainText('Linky');
