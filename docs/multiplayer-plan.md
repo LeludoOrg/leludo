@@ -9,7 +9,24 @@ dev + e2e) shipped first; the Cloudflare transport shell now lives in
 [release-web.yml](../.github/workflows/release-web.yml). See
 [server/cf/README.md](../server/cf/README.md) for the deploy runbook.
 
-**Hibernation landed, but bot games pin the DO.** v0.24.5 added WebSocket
+**Hibernation was reverted (it cost latency, not just GB-s).** `LudoRoomDO` is
+now **resident** again (`server.accept()`, no per-broadcast snapshot). The
+section below is kept for the history + the paid-plan plan, but hibernation is
+**off** in prod. Why it was pulled: surviving eviction required persisting the
+engine to storage on **every** broadcast, and CF's output gate then held each
+roll/move frame until that write landed (visible per-action lag), plus a cold
+wake on the first move after a player's think-time. On the **free** plan the
+binding limit is **rows-written, not duration**, so those persist writes were
+inflating the *binding* cost while only saving the *non-binding* one — a net
+loss on top of the lag. Resident sockets respond instantly and write ~no
+per-game rows. **Revisit only on a paid plan**, and then with a *non-gating*
+async persist (broadcast first, persist after) + alarm-based bot/grace timers so
+the lag doesn't come back.
+
+---
+
+**[HISTORY — superseded by the revert above] Hibernation landed, but bot games
+pin the DO.** v0.24.5 added WebSocket
 Hibernation: the engine serialises + rehydrates across eviction (resumable RNG
 included), and idle keepalive pings are answered by `setWebSocketAutoResponse`
 without waking the DO. A clean, idle, **human-only** game now hibernates between

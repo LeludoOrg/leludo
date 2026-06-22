@@ -81,6 +81,33 @@ test.describe('Home — offline / online split', () => {
         expect(divider.y).toBeLessThan(create.y);  // separator above the Create card
     });
 
+    // Regression: the code field used to allow 6 chars and spaces, so a player
+    // could type a value the server would never accept. Room codes are exactly 4
+    // chars from a fixed alphabet (no spaces, no ambiguous 0/O/1/I/L). The field
+    // must up-case and filter live, and a sub-4 entry must not attempt a join.
+    test('the room-code field filters to four valid uppercase chars', async ({ page }) => {
+        await page.goto('/');
+        await goHomeOnline(page);
+        const input = page.getByTestId('online-code-input');
+
+        await expect(input).toHaveAttribute('maxlength', '4');
+
+        // Typed live, lower-case up-cases and spaces / out-of-alphabet chars
+        // (1, O) are stripped per keystroke, so they never persist or eat a slot:
+        // 'a 1b2c' → 'AB2C'.
+        await input.pressSequentially('a 1b2c');
+        await expect(input).toHaveValue('AB2C');
+
+        // A code that filters down to fewer than 4 chars can't be submitted —
+        // clicking Join surfaces the prompt and stays on the entry screen.
+        await input.fill('');
+        await input.pressSequentially('1 ol');      // digit 1, space, O, L all stripped → empty
+        await expect(input).toHaveValue('');
+        await page.getByTestId('online-join').click();
+        await expect(page.getByTestId('online-status')).toContainText(/4-character/i);
+        await expect(page.locator('wc-play-online')).toHaveCount(1);
+    });
+
     // Your own seat carries an editable name inline (like the offline setup); your
     // row is the one tagged "(you)". The host lands on seat 0.
     test('your seat shows your name inline and is tagged (you)', async ({ page }) => {

@@ -1,6 +1,18 @@
 import { htmlToElement } from "./index.js";
 import { playClickSound } from "../scripts/index.js";
 import { ICON_BACK, ICON_GLOBE, ICON_CHEVRON, QUAD_CHIP_SVG } from "./wc-icons.js";
+import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../scripts/core/room-code.js";
+
+// Strip anything a room code can't contain: upper-case, then keep only the
+// canonical alphabet (no spaces, no ambiguous 0/O/1/I/L, no punctuation) and
+// cap at the fixed length. One source of truth shared with the minter, so the
+// field can never hold a code the server would reject.
+function sanitizeCode(raw) {
+    return [...(raw || '').toUpperCase()]
+        .filter(c => ROOM_CODE_CHARS.includes(c))
+        .join('')
+        .slice(0, ROOM_CODE_LENGTH);
+}
 
 // The "Play online" entry screen: join a friend's room by code (the primary
 // action) or create your own. It owns no socket and no identity — your name and
@@ -23,7 +35,7 @@ class PlayOnline extends HTMLElement {
                     <div class="online-join">
                         <span class="section-label">Join a friend&rsquo;s room</span>
                         <p class="online-join-lead">Enter the 4-character code they shared with you.</p>
-                        <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" placeholder="ENTER CODE" aria-label="Room code" />
+                        <input class="online-code-input" data-testid="online-code-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="4" placeholder="ENTER CODE" aria-label="Room code" />
                         <button class="online-join-btn cta-primary" data-testid="online-join">${ICON_GLOBE}<span>Join room</span></button>
                         <p class="online-status" data-testid="online-status"></p>
                     </div>
@@ -50,9 +62,9 @@ class PlayOnline extends HTMLElement {
 
         const codeInput = el.querySelector(".online-code-input")
         const doJoin = () => {
-            const code = (codeInput.value || '').trim().toUpperCase()
-            if (code.length < 4) {
-                this.setStatus("Enter the 4-letter room code your host shared.")
+            const code = sanitizeCode(codeInput.value)
+            if (code.length !== ROOM_CODE_LENGTH) {
+                this.setStatus("Enter the 4-character room code your host shared.")
                 codeInput.focus()
                 return
             }
@@ -60,8 +72,14 @@ class PlayOnline extends HTMLElement {
             this._emit('join', { code })
         }
         el.querySelector(".online-join-btn").addEventListener("click", doJoin)
-        // Clear any "enter a code" prompt as soon as the player starts typing.
-        codeInput.addEventListener("input", () => { if ((codeInput.value || '').trim()) this.setStatus("") })
+        // Filter the field down to a valid code on every keystroke (strips spaces,
+        // lower-case, and out-of-alphabet chars), then clear any prompt once the
+        // player has typed something usable.
+        codeInput.addEventListener("input", () => {
+            const cleaned = sanitizeCode(codeInput.value)
+            if (cleaned !== codeInput.value) codeInput.value = cleaned
+            if (cleaned) this.setStatus("")
+        })
         codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doJoin() } })
 
         this.appendChild(el)
@@ -92,7 +110,7 @@ class PlayOnline extends HTMLElement {
      *  the join field so one tap joins the room (name + colour are picked in the
      *  lobby afterwards). */
     prefillJoin(code) {
-        const c = (code || '').trim().toUpperCase()
+        const c = sanitizeCode(code)
         const codeInput = this.querySelector('.online-code-input')
         if (codeInput) codeInput.value = c
         this.setStatus(`Tap Join to enter room ${c}.`)

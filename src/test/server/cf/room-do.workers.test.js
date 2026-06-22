@@ -3,14 +3,15 @@
  * workers) with the production wrangler.toml bindings. The pure engine has its
  * own happy-dom suite; THIS file guards the Cloudflare-specific seams that have
  * no equivalent in the Node dev server and so were previously untested:
- *   - WebSocket Hibernation accept (state.acceptWebSocket) + frame delivery
- *   - webSocketMessage → engine intent dispatch
- *   - persistence of engine state to DO storage on every broadcast
- *   - the {"t":"ping"} keepalive answered by setWebSocketAutoResponse
+ *   - resident `server.accept()` + frame delivery
+ *   - message → engine intent dispatch (roll advances the broadcast state)
+ *   - the join-by-code ROOM_NOT_FOUND reject vs the create→join happy path
+ *   - the {"t":"ping"} keepalive being a harmless no-op (no reply, socket alive)
  *   - the zero-connection leak-guard alarm
  *
- * Rehydration-after-eviction is covered by the engine serialize/restore unit
- * tests — miniflare doesn't expose a way to force a hibernation eviction here.
+ * The DO is RESIDENT, not hibernated (see room-do.js header): there is no
+ * per-broadcast snapshot write and no setWebSocketAutoResponse pong, so these
+ * tests assert on the frames clients actually receive rather than on DO storage.
  */
 import { env, SELF, runInDurableObject, runDurableObjectAlarm } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
@@ -38,28 +39,8 @@ async function waitFor(msgs, pred, timeout = 3000) {
     throw new Error(`no matching frame in ${timeout}ms; saw [${msgs.map((m) => m.t).join(', ')}]`);
 }
 
-/** Read the persisted engine snapshot straight out of the room DO's storage. */
-async function readSnap(room) {
-    let snap;
-    await runInDurableObject(env.ROOM.getByName(room), async (_inst, state) => {
-        snap = await state.storage.get('snapshot');
-    });
-    return snap;
-}
-
-async function waitSnap(room, pred, timeout = 3000) {
-    const start = Date.now();
-    let last;
-    while (Date.now() - start < timeout) {
-        last = await readSnap(room);
-        if (last && pred(last)) return last;
-        await sleep(20);
-    }
-    throw new Error(`snapshot condition unmet in ${timeout}ms; last=${JSON.stringify(last)}`);
-}
-
 describe('LudoRoomDO (workerd)', () => {
-    it('accepts a socket, seats the host, and persists a snapshot', async () => {
+    it('accepts a socket and seats the host', async () => {
         const res = await SELF.fetch(
             'https://leludo.test/?room=ROOMA&session=host&name=Host&size=2',
             { headers: { Upgrade: 'websocket' } },
@@ -72,17 +53,13 @@ describe('LudoRoomDO (workerd)', () => {
         const seated = await waitFor(msgs, 'seated');
         expect(seated.playerIndex).toBe(0);
         expect(seated.isHost).toBe(true);
-        await waitFor(msgs, 'state'); // lobby broadcast
-
-        // The DO must have written the engine to storage (hibernation depends on it).
-        const snap = await waitSnap('ROOMA', (s) => !!s);
-        expect(snap.roomId).toBe('ROOMA');
-        expect(snap.phase).toBe('LOBBY');
+        const lobby = await waitFor(msgs, 'state'); // lobby broadcast
+        expect(lobby.state.phase).toBe('LOBBY');
 
         ws.close();
     });
 
-    it('dispatches a roll over the socket and advances the persisted state', async () => {
+    it('dispatches a roll over the socket and advances the broadcast state', async () => {
         const hostRes = await SELF.fetch(
             'https://leludo.test/?room=ROOMB&session=host&name=Host&size=2',
             { headers: { Upgrade: 'websocket' } },
@@ -100,16 +77,19 @@ describe('LudoRoomDO (workerd)', () => {
         await waitFor(guestMsgs, 'seated');
 
         host.send(JSON.stringify({ t: 'lobby_start' }));
-        const started = await waitSnap('ROOMB', (s) => s.phase === 'AWAIT_ROLL' && s.started);
+        // Both clients see the game start (AWAIT_ROLL); the highest seq so far is
+        // our "before" mark — a processed roll must broadcast a higher one.
+        const started = await waitFor(hostMsgs, (m) => m.t === 'state' && m.state.phase === 'AWAIT_ROLL' && m.state.started);
         const seqBefore = started.seq;
-        const current = started.currentPlayerIndex;
-        const roller = current === 0 ? host : guest;
+        const roller = started.state.currentPlayerIndex === 0 ? host : guest;
+        const rollerMsgs = started.state.currentPlayerIndex === 0 ? hostMsgs : guestMsgs;
 
         roller.send(JSON.stringify({ t: 'roll' }));
-        // A processed roll broadcasts (and persists) at least once more.
-        const after = await waitSnap('ROOMB', (s) => s.seq > seqBefore);
+        // A processed roll broadcasts a fresh state frame with a higher seq and a
+        // resolved die, still mid-game (rolled → AWAIT_MOVE, or no-move/again).
+        const after = await waitFor(rollerMsgs, (m) => m.t === 'state' && m.seq > seqBefore);
         expect(after.seq).toBeGreaterThan(seqBefore);
-        expect(['AWAIT_ROLL', 'AWAIT_MOVE']).toContain(after.phase); // still mid-game
+        expect(['AWAIT_ROLL', 'AWAIT_MOVE']).toContain(after.state.phase); // still mid-game
 
         host.close(); guest.close();
     });
@@ -127,9 +107,8 @@ describe('LudoRoomDO (workerd)', () => {
 
         const err = await waitFor(msgs, 'error');
         expect(err.error).toBe('ROOM_NOT_FOUND');
-        // Never seated, and nothing was persisted for the ghost code.
+        // Never seated.
         expect(msgs.find((m) => m.t === 'seated')).toBeUndefined();
-        expect(await readSnap('GHOST')).toBeFalsy();
     });
 
     it('lets the host create a room, then a guest join it by code', async () => {
@@ -155,7 +134,7 @@ describe('LudoRoomDO (workerd)', () => {
         host.close(); guest.close();
     });
 
-    it('auto-answers the keepalive ping without invoking the engine', async () => {
+    it('treats the keepalive ping as a harmless no-op (no reply, socket stays live)', async () => {
         const res = await SELF.fetch(
             'https://leludo.test/?room=ROOMC&session=host&name=Host&size=2',
             { headers: { Upgrade: 'websocket' } },
@@ -163,12 +142,21 @@ describe('LudoRoomDO (workerd)', () => {
         const ws = res.webSocket; ws.accept();
         const msgs = collect(ws);
         await waitFor(msgs, 'seated');
+        const seenBefore = msgs.length;
 
-        // The engine never replies to a ping — only setWebSocketAutoResponse does,
-        // so receiving a pong proves the runtime answered it (and didn't wake the DO).
+        // The engine ignores a ping (the inbound frame just keeps the socket warm
+        // at the DO). It must NOT reply and must NOT error or close the socket.
         ws.send(JSON.stringify({ t: 'ping' }));
-        const pong = await waitFor(msgs, 'pong');
-        expect(pong.t).toBe('pong');
+        await sleep(120);
+        expect(msgs.length).toBe(seenBefore);
+        expect(msgs.find((m) => m.t === 'pong' || m.t === 'error')).toBeUndefined();
+
+        // The socket is still usable afterwards — a real intent still broadcasts
+        // a fresh state frame past everything seen before the ping.
+        const seqBefore = msgs[msgs.length - 1]?.seq ?? 0;
+        ws.send(JSON.stringify({ t: 'lobby_size', size: 3 }));
+        const fresh = await waitFor(msgs, (m) => m.t === 'state' && m.seq > seqBefore);
+        expect(fresh.seq).toBeGreaterThan(seqBefore);
 
         ws.close();
     });
@@ -184,7 +172,8 @@ describe('LudoRoomDO (workerd)', () => {
             { headers: { Upgrade: 'websocket' } },
         );
         const host = hostRes.webSocket; host.accept();
-        await waitFor(collect(host), 'seated');
+        const hostMsgs = collect(host);
+        await waitFor(hostMsgs, 'seated');
 
         const guestRes = await SELF.fetch(
             'https://leludo.test/?room=ROOMD&session=guest&name=Guest&size=2',
@@ -194,12 +183,12 @@ describe('LudoRoomDO (workerd)', () => {
         await waitFor(collect(guest), 'seated');
 
         host.send(JSON.stringify({ t: 'lobby_start' }));
-        await waitSnap('ROOMD', (s) => s.started);
+        await waitFor(hostMsgs, (m) => m.t === 'state' && m.state.started);
 
         host.close();
         guest.close();
 
-        // After the last socket goes mid-game, _onGone sets a storage alarm.
+        // After the last socket goes mid-game, _onClose sets a storage alarm.
         let alarmAt = null;
         const start = Date.now();
         while (Date.now() - start < 3000 && !alarmAt) {
