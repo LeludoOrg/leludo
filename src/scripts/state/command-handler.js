@@ -848,16 +848,16 @@ function handleGamePause(emit) {
     exitBtns.forEach(el => el.addEventListener("click", onExitClick));
 }
 
-// How long the exit confirmation stays open before it leaves on its own. Short
-// enough to read as a deliberate "are you sure?", well under the server's
-// reconnect grace so "Stay" can always reel us back in. An `?exitCountdown=`
-// query param (seconds) shortens it for e2e.
+// How long the exit confirmation stays open before it leaves on its own. Long
+// enough to reconsider, still under the server's reconnect grace so "Stay" can
+// always reel us back in. An `?exitCountdown=` query param (seconds) shortens it
+// for e2e.
 const EXIT_COUNTDOWN_MS = (() => {
     try {
         const s = Number(new URLSearchParams(location.search).get('exitCountdown'));
         if (Number.isFinite(s) && s > 0) return Math.round(s * 1000);
     } catch { /* non-browser */ }
-    return 10_000;
+    return 30_000;
 })();
 
 /**
