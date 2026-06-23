@@ -66,8 +66,8 @@ custom_domain = true
 # be repeated here. `[[migrations]]` IS shared from the top level, so the beta
 # Worker's DOs get the same v1 SQLite classes (do NOT redeclare it).
 [env.beta.vars]
-MAX_CONCURRENT_GAMES = "4"
-MAX_GAMES_PER_DAY = "5"
+MAX_CONCURRENT_GAMES = "15"
+MAX_GAMES_PER_DAY = "45"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
 
