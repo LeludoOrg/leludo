@@ -6,6 +6,7 @@ export * from "./state/game-state.js"
 export * from "./state/game-store.js"
 export * from "./state/command-handler.js"
 export * from "./state/god-mode.js"
+export * from "./net/online-state.js"
 export * from "./render/end-highlights.js"
 export * from "./platform/platform.js"
 

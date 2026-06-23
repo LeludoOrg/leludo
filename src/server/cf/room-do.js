@@ -31,12 +31,25 @@
  * leak the admission slot. A storage alarm armed on the zero-connection
  * transition force-releases the slot if nobody reconnects within the grace
  * window. (A room that empties cleanly already ends + releases synchronously via
- * the engine, so the alarm only fires for the simultaneous-drop edge.)
+ * the engine, so the alarm only fires for the simultaneous-drop edge.) The room
+ * id is persisted alongside that alarm so a cold instance (evicted before the
+ * alarm fires) can still release the right slot — its in-memory roomId is gone.
+ *
+ * Room teardown: a released room drops its in-memory engine (see _release). The
+ * resident DO is reused across games on the same code, so a lingering ended /
+ * abandoned engine would make a fresh join-by-code hit "no open seat" (ROOM_FULL)
+ * instead of "no such room" (ROOM_NOT_FOUND). Nulling the engine on release keeps
+ * the DO in lockstep with the Node twin, which deletes the room outright.
  */
 import { RoomEngine } from '../room-engine.js';
 import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
+
+// Storage key for the room id, persisted only when the room empties (see
+// _onClose). A cold instance woken by alarm() after eviction has no in-memory
+// this.roomId, so it reads this to release the right admission slot.
+const ROOM_KEY = 'roomId';
 
 export class LudoRoomDO {
     constructor(state, env) {
@@ -139,22 +152,32 @@ export class LudoRoomDO {
         if (this.sockets.remove(sessionId, ws)) this.engine?.handleDisconnect(sessionId);
         // Last socket gone → arm the leak-guard alarm (see header). If a fully
         // empty room hasn't already ended+released synchronously, the alarm
-        // releases the slot once the grace window lapses with nobody back.
+        // releases the slot once the grace window lapses with nobody back. Persist
+        // the room id with it so a cold instance (evicted before the alarm fires)
+        // still knows which slot to release.
         if (this.sockets.size === 0 && !this.released) {
+            this.state.storage.put(ROOM_KEY, this.roomId).catch(() => {});
             this.state.storage.setAlarm(Date.now() + this.graceMs + 5_000).catch(() => {});
         }
     }
 
     async alarm() {
         // Fires only for a room left with zero connections. If still empty, the
-        // game is dead — hand the admission slot back so it isn't leaked.
-        if (this.sockets.size === 0) await this._release();
+        // game is dead — hand the admission slot back so it isn't leaked. A cold
+        // instance has no in-memory roomId; recover it from storage first.
+        if (this.sockets.size !== 0) return;
+        if (!this.roomId) this.roomId = await this.state.storage.get(ROOM_KEY);
+        await this._release();
     }
 
     async _release() {
         if (this.released) return;
         this.released = true;
         this.admitted = false;
+        // Drop the engine so this resident DO reads as GONE, not FULL, when the
+        // same code is dialled again — a join-by-code now hits the no-engine
+        // ROOM_NOT_FOUND path instead of seating into the dead game's full lobby.
+        this.engine = null;
         try {
             if (this.roomId) {
                 await this._admissionStub().fetch(
@@ -163,5 +186,6 @@ export class LudoRoomDO {
             }
         } catch { /* best-effort; the slot is small and admit re-checks liveness */ }
         this.state.storage.deleteAlarm().catch(() => {});
+        this.state.storage.delete(ROOM_KEY).catch(() => {});
     }
 }

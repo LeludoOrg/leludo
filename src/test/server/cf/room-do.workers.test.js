@@ -203,4 +203,55 @@ describe('LudoRoomDO (workerd)', () => {
         const ran = await runDurableObjectAlarm(env.ROOM.getByName('ROOMD'));
         expect(ran).toBe(true);
     });
+
+    it('drops the engine on release so a re-join reads GONE (ROOM_NOT_FOUND), not FULL', async () => {
+        // Regression: a private room that releases its admission slot (the game
+        // ended / was abandoned) must read as ROOM_NOT_FOUND when the same code is
+        // dialled again — NOT ROOM_FULL. The resident DO used to keep its old
+        // engine after release, so a fresh join hit the no-open-seat path
+        // (ROOM_FULL, since the dead lobby's seats were all still claimed) instead
+        // of the no-engine path. _release now nulls the engine. We force the
+        // release directly on the SAME resident instance (a socket stays open so
+        // it isn't evicted), which is exactly the in-memory state production hits
+        // when _end → transport.release fires while a client is still attached.
+        const room = 'GONEROOM';
+        const hostRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=host&name=Host&size=2&create=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const host = hostRes.webSocket; host.accept();
+        const hostMsgs = collect(host);
+        await waitFor(hostMsgs, 'seated');
+
+        const guestRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=guest&name=Guest&join=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const guest = guestRes.webSocket; guest.accept();
+        await waitFor(collect(guest), 'seated');
+        guest.close();
+
+        // Release the slot on the live, resident instance — then assert the engine
+        // is gone (the fix) rather than lingering with a full lobby (the bug).
+        await runInDurableObject(env.ROOM.getByName(room), async (instance) => {
+            expect(instance.engine).not.toBeNull(); // sanity: it WAS resident
+            await instance._release();
+            expect(instance.engine).toBeNull();     // the fix: torn down on release
+        });
+
+        // Re-enter the same code on that same resident instance: no engine now →
+        // ROOM_NOT_FOUND (gone), never ROOM_FULL (what a lingering engine produced).
+        const againRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=newcomer&name=New&join=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const again = againRes.webSocket; again.accept();
+        const againMsgs = collect(again);
+        const err = await waitFor(againMsgs, 'error');
+        expect(err.error).toBe('ROOM_NOT_FOUND');
+        expect(againMsgs.find((m) => m.t === 'seated')).toBeUndefined();
+
+        host.close();
+        again.close();
+    });
 });

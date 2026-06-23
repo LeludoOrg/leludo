@@ -87,6 +87,11 @@ export const COMMANDS = Object.freeze({
     RESUME: 'RESUME',
     RESTART_GAME: 'RESTART_GAME',
     ONLINE_NEW_GAME: 'ONLINE_NEW_GAME',
+    // Online counterpart of PAUSE: a live match can't be paused (the server plays
+    // on), so the in-game menu button instead asks to LEAVE — a confirmation with
+    // a countdown that drops our socket so the others see a disconnect while we
+    // decide. See handleOnlineExit.
+    ONLINE_EXIT: 'ONLINE_EXIT',
     EXIT_TO_HOME: 'EXIT_TO_HOME',
     SET_ASSIST_FLAG: 'SET_ASSIST_FLAG',
     GOD_TELEPORT: 'GOD_TELEPORT',
@@ -843,6 +848,93 @@ function handleGamePause(emit) {
     exitBtns.forEach(el => el.addEventListener("click", onExitClick));
 }
 
+// How long the exit confirmation stays open before it leaves on its own. Short
+// enough to read as a deliberate "are you sure?", well under the server's
+// reconnect grace so "Stay" can always reel us back in. An `?exitCountdown=`
+// query param (seconds) shortens it for e2e.
+const EXIT_COUNTDOWN_MS = (() => {
+    try {
+        const s = Number(new URLSearchParams(location.search).get('exitCountdown'));
+        if (Number.isFinite(s) && s > 0) return Math.round(s * 1000);
+    } catch { /* non-browser */ }
+    return 10_000;
+})();
+
+/**
+ * Online "leave the match" flow — the in-game menu button when online. A live
+ * server game can't be paused, so instead of the pause menu we confirm the
+ * leave with a countdown. Opening it DROPS our socket (suspend), so to everyone
+ * else we're a disconnected player: the game holds on our turn and dims our
+ * pawns, exactly as a network drop would. "Stay" reopens the socket (the server
+ * reconnects us, cancelling the forfeit); "Leave" — or the countdown expiring —
+ * exits to home with the socket still down, so the seat forfeits through the
+ * SAME reconnect-grace path, releasing the room once everyone has gone.
+ */
+function handleOnlineExit(emit) {
+    // Safety net: never reachable offline (the board only dispatches this online),
+    // but if it is, fall back to the normal pause.
+    if (!isOnlineActive()) return handleGamePause(emit);
+
+    const overlay = document.getElementById("online-exit-menu");
+    const net = onlineNet();
+    // Headless / missing markup: nothing to confirm against, just leave.
+    if (!overlay) { try { net?.suspend(); } catch { /* ignore */ } return exitToHome(emit); }
+
+    // Behave like a disconnection to the others for as long as we're deciding.
+    try { net?.suspend(); } catch { /* ignore */ }
+
+    const stayBtn = document.getElementById("oe-stay");
+    const leaveBtn = document.getElementById("oe-leave");
+    const countdownEl = document.getElementById("oe-countdown");
+    overlay.classList.remove("hidden");
+    goTo(SCREENS.PAUSE);
+
+    const endAt = Date.now() + EXIT_COUNTDOWN_MS;
+    const renderCountdown = () => {
+        const secs = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+        if (countdownEl) countdownEl.textContent = String(secs);
+    };
+    renderCountdown();
+
+    let interval = setInterval(renderCountdown, 250);
+    let timer = setTimeout(() => leave(), EXIT_COUNTDOWN_MS);
+
+    const cleanup = () => {
+        if (interval) { clearInterval(interval); interval = null; }
+        if (timer) { clearTimeout(timer); timer = null; }
+        stayBtn?.removeEventListener("click", onStayClick);
+        leaveBtn?.removeEventListener("click", onLeaveClick);
+        overlay.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+        overlay.classList.add("hidden");
+    };
+    // Stay: reel the socket back in (server treats it as a reconnect) and resume.
+    const stay = () => {
+        cleanup();
+        _pauseCloseHandler = null;
+        try { net?.resume(); } catch { /* ignore */ }
+    };
+    // Leave for good: socket stays down, so the seat forfeits via grace server-side.
+    const leave = () => {
+        cleanup();
+        _pauseCloseHandler = null;
+        exitToHome(emit);
+    };
+
+    const onStayClick = () => { playClickSound(); navBack(); };
+    const onLeaveClick = () => { playClickSound(); leave(); };
+    const onBackdrop = (e) => { if (e.target === overlay) { playClickSound(); navBack(); } };
+    const onKey = (e) => { if (e.key === "Escape") { playClickSound(); navBack(); } };
+
+    // Back / Escape / backdrop all mean "Stay" (the safe choice); leaving is the
+    // explicit button or the timeout.
+    _pauseCloseHandler = stay;
+    stayBtn?.addEventListener("click", onStayClick);
+    leaveBtn?.addEventListener("click", onLeaveClick);
+    overlay.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onKey);
+}
+
 registerScreenHandler(SCREENS.PAUSE, () => {
     if (_pauseCloseHandler) _pauseCloseHandler();
 });
@@ -852,7 +944,8 @@ registerScreenHandler(SCREENS.GAME_END, () => {
 });
 
 registerScreenHandler(GAME_BACK_ACTION, () => {
-    dispatch({ type: COMMANDS.PAUSE });
+    // Online has no pause — back from a live match opens the leave confirmation.
+    dispatch({ type: isOnlineActive() ? COMMANDS.ONLINE_EXIT : COMMANDS.PAUSE });
 });
 
 // --- public selectors ---
@@ -907,6 +1000,8 @@ export function commandHandler(currentState, command, services, emit) {
             return selectToken(command.playerIndex, command.tokenIndex, emit);
         case COMMANDS.PAUSE:
             return handleGamePause(emit);
+        case COMMANDS.ONLINE_EXIT:
+            return handleOnlineExit(emit);
         case COMMANDS.RESUME:
             resumeGameLogic();
             emit({ type: EVENTS.GAME_RESUMED_FROM_PAUSE });
