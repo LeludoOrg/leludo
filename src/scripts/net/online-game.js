@@ -93,8 +93,40 @@ export function buildSeatLayout(net, seat, state) {
     return { playerTypes, playerNames, positions, colorMap };
 }
 
+// A native WebView freezes its JS (and lets its socket die) while backgrounded,
+// so we can't keep the connection warm from inside — the moment we're back is
+// our first chance to act. On every foreground signal, poke the live socket to
+// redial NOW instead of waiting out the dead-socket detection + backoff, which
+// otherwise burns the server's reconnect grace (and on a long freeze forfeits
+// the seat). reconnectNow() no-ops on a healthy socket, so firing this on any
+// resume is safe. Installed once; harmless when no online game is running.
+function onForeground() {
+    if (!_started) return;
+    try { onlineNet()?.reconnectNow?.(); } catch { /* best effort */ }
+}
+
+let _foregroundWired = false;
+function wireForegroundReconnect() {
+    if (_foregroundWired) return;
+    _foregroundWired = true;
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) onForeground(); });
+    }
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', onForeground); // network came back
+        window.addEventListener('focus', onForeground);
+        // Capacitor native lifecycle: the reliable Android/iOS foreground signal
+        // (visibilitychange is flaky in a WebView). Mirrors nav-history's plugin
+        // access; absent on web, where the listeners above cover it.
+        const App = window.Capacitor?.Plugins?.App;
+        App?.addListener?.('resume', onForeground);
+        App?.addListener?.('appStateChange', (s) => { if (s?.isActive) onForeground(); });
+    }
+}
+
 /** Hand off from the lobby: mount the board from the first started snapshot. */
 export function startOnlineGame({ net, seat, state, seq }) {
+    wireForegroundReconnect();
     const layout = buildSeatLayout(net, seat, state);
     _started = true;
     _chain = Promise.resolve();
