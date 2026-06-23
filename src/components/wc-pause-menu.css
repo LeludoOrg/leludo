@@ -24,14 +24,29 @@
     margin-bottom: 8px;
 }
 
-#pause-menu .pause-body {
+#pause-menu .pause-body,
+#online-exit-menu .pause-body {
     text-align: center;
 }
 
-#pause-menu .pause-body .body-helper {
+#pause-menu .pause-body .body-helper,
+#online-exit-menu .pause-body .body-helper {
     margin: 0 auto;
     max-width: none;
     padding-bottom: var(--space-8);
+}
+
+/* ============================================================
+   #online-exit-menu — the online "leave the match" confirmation
+   (index.html), driven by command-handler.handleOnlineExit. Shares the
+   pause overlay's centred body; adds the leave countdown number.
+   ============================================================ */
+#online-exit-menu .online-exit-countdown {
+    margin-top: var(--space-2);
+    font-size: 3.5rem;
+    line-height: 1;
+    color: hsl(var(--player-0));
+    font-variant-numeric: tabular-nums;
 }
 
 #pause-menu .pause-body .pause-scoreboard,

@@ -1,11 +1,14 @@
 import {
     htmlToElement
 } from "./index.js"
-import { ICON_SETTINGS } from "./wc-icons.js"
+import { ICON_SETTINGS, ICON_PAUSE, ICON_EXIT } from "./wc-icons.js"
 import {
     dispatch,
+    subscribe,
+    EVENTS,
     COMMANDS,
     playClickSound,
+    isOnlineActive,
     isGodModeEnabled,
     getGodSelection,
     setGodSelection,
@@ -32,8 +35,8 @@ const BOARD_HTML = /*html*/ `
     <div class="board-frame">
         <!-- Top bar -->
         <div class="board-topbar">
-            <button id="g-pause-btn" class="icon-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            <button id="g-pause-btn" class="icon-btn" aria-label="Pause">
+                ${ICON_PAUSE}
             </button>
             <div style="flex:1"></div>
             <div id="turn-counter" class="turn-counter">Turn 0</div>
@@ -210,9 +213,23 @@ class Board extends HTMLElement {
     connectedCallback() {
         const boardElement = htmlToElement(BOARD_HTML)
 
-        boardElement.querySelector("#g-pause-btn").addEventListener("click", () => {
+        const menuBtn = boardElement.querySelector("#g-pause-btn")
+        menuBtn.addEventListener("click", () => {
             playClickSound()
-            dispatch({ type: COMMANDS.PAUSE })
+            // Online has no shared pause — the button is "leave the match", which
+            // opens the exit confirmation (and meanwhile reads as a disconnect to
+            // the others). Offline it opens the local pause menu.
+            dispatch({ type: isOnlineActive() ? COMMANDS.ONLINE_EXIT : COMMANDS.PAUSE })
+        })
+
+        // Swap the glyph + label to match the mode at every game start (online =
+        // exit door, offline = pause bars). Read online state at GAME_STARTED, by
+        // which point startOnlineGame has already flipped it on for online games.
+        subscribe((event) => {
+            if (event.type !== EVENTS.GAME_STARTED) return
+            const online = isOnlineActive()
+            menuBtn.innerHTML = online ? ICON_EXIT : ICON_PAUSE
+            menuBtn.setAttribute("aria-label", online ? "Leave game" : "Pause")
         })
 
         const cellIdPattern = /^(h-\d-\d|m\d+|p\ds[1-6])$/;

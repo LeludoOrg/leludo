@@ -148,6 +148,7 @@ export class NetClient {
         this._room = opts.room;
         this._params = { ...(opts.params || {}) };
         this._closedByUs = false;
+        this._suspended = false;   // dropped via suspend(), awaiting resume()
         this._everOpen = false;
         this._reconnectAttempts = 0;
         // ~30s of retries to match the server's reconnect grace window.
@@ -243,6 +244,29 @@ export class NetClient {
 
     roll() { this.send({ t: MSG.ROLL }); }
     move(token) { this.send({ t: MSG.MOVE, token }); }
+
+    // Voluntarily drop the socket WITHOUT auto-reconnecting — the server sees a
+    // plain disconnect (it starts this seat's reconnect grace and holds the game,
+    // exactly as a network drop would), but unlike close() this stays resumable.
+    // Backs the in-game "exit" confirmation: while the player decides, they read
+    // as disconnected to everyone else; resume() reels them back in.
+    suspend() {
+        if (this._suspended) return;
+        this._suspended = true;
+        this._closedByUs = true; // suppress _scheduleReconnect on this close
+        this._stopPing();
+        try { this.ws?.close(); } catch { /* already gone */ }
+    }
+
+    /** Reopen after suspend() — redial the SAME session/room, which the server
+     *  treats as a reconnect (cancels the forfeit grace, un-dims the seat). */
+    resume() {
+        if (!this._suspended) return;
+        this._suspended = false;
+        this._closedByUs = false;
+        this._reconnectAttempts = 0;
+        this._open();
+    }
 
     // Host-only lobby controls (the server rejects them from non-hosts).
     setSize(n) { this.send({ t: MSG.LOBBY_SIZE, n }); }
