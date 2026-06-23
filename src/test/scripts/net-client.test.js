@@ -55,7 +55,10 @@ describe('resolveServerUrl', () => {
  * A fake WebSocket lets us script open / message / drop deterministically.
  */
 class FakeWS {
+    static CONNECTING = 0;
     static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
     static instances = [];
     constructor(url) {
         this.url = url;
@@ -191,5 +194,109 @@ describe('NetClient auto-reconnect', () => {
         // Each retry opens a socket that immediately drops again.
         for (let i = 0; i < 3; i++) { last().drop(); vi.advanceTimersByTime(1000); }
         expect(onGiveUp).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * reconnectNow() — the app-resume fast path. A native WebView freezes its JS
+ * (and lets its socket die) while backgrounded, so the keepalive can't fire and
+ * the normal close-then-2.5s-backoff doesn't run until we're back — by which
+ * point the server's reconnect grace is draining and, on a long freeze, the seat
+ * gets force-forfeited (the user saw an instant "Your seat was forfeited" on
+ * returning to the app). On any foreground signal we redial immediately instead
+ * of waiting out the backoff.
+ */
+describe('NetClient reconnectNow (foreground resume)', () => {
+    beforeEach(() => {
+        FakeWS.instances = [];
+        vi.stubGlobal('WebSocket', FakeWS);
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    it('redials immediately on resume, skipping the 2.5s backoff', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();
+        last().drop();                       // socket lost; a 2.5s backoff is now queued
+        expect(FakeWS.instances.length).toBe(1);
+
+        net.reconnectNow();                  // app returns to foreground
+        expect(FakeWS.instances.length).toBe(2);   // fresh socket NOW, no wait
+        expect(last().url).toContain('session=s-1');
+
+        // The queued backoff was cancelled — it must not open a third socket.
+        vi.advanceTimersByTime(5000);
+        expect(FakeWS.instances.length).toBe(2);
+    });
+
+    it('only probes (pings) a still-healthy socket — never churns a live connection', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();                       // readyState OPEN
+        net.reconnectNow();
+        expect(FakeWS.instances.length).toBe(1);                 // no new socket
+        expect(last().sent.some(m => m.t === 'ping')).toBe(true); // probed instead
+    });
+
+    it('is a no-op while suspended for the exit confirmation', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();
+        net.suspend();                       // exit-confirmation: deliberately down, resumable
+        net.reconnectNow();                  // a stray resume must not reel us back in
+        expect(FakeWS.instances.length).toBe(1);
+    });
+
+    it('a superseded zombie socket\'s late close does not fire a second redial', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        const zombie = last();
+        zombie.open();
+        zombie.readyState = FakeWS.CLOSING;  // dying, but close hasn't surfaced yet
+        net.reconnectNow();                  // resume opens a fresh socket past the zombie
+        expect(FakeWS.instances.length).toBe(2);
+
+        zombie._fire('close', { code: 1006 });   // the OS finally surfaces the old close
+        vi.advanceTimersByTime(5000);
+        expect(FakeWS.instances.length).toBe(2);  // ignored — no duplicate connection
+    });
+});
+
+/**
+ * Transport selection. On a Capacitor Android build with the native socket
+ * plugin present, net-client must dial through the NATIVE socket (kept warm off
+ * the WebView's throttle-prone JS thread) instead of the WebView's WebSocket —
+ * the whole point of the native plugin. Anywhere else it uses the WebView socket.
+ */
+describe('NetClient transport selection', () => {
+    afterEach(() => { vi.unstubAllGlobals(); delete window.Capacitor; });
+
+    it('uses the native socket plugin on a Capacitor build when it is present', async () => {
+        const connect = vi.fn(() => Promise.resolve());
+        window.Capacitor = {
+            isNativePlatform: () => true,
+            Plugins: { LeludoSocket: { connect, send: () => {}, close: () => {}, addListener: () => Promise.resolve({ remove() {} }) } },
+        };
+        // If the factory wrongly fell through to the WebView socket, this fake
+        // would record an instance instead.
+        FakeWS.instances = [];
+        vi.stubGlobal('WebSocket', FakeWS);
+
+        new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} }).connect();
+        for (let i = 0; i < 4; i++) await Promise.resolve(); // shim dials after listeners register
+        expect(connect).toHaveBeenCalledTimes(1);   // dialled through the native plugin
+        expect(FakeWS.instances.length).toBe(0);    // NOT the WebView socket
+    });
+
+    it('uses the WebView WebSocket when not native (web build)', () => {
+        window.Capacitor = { isNativePlatform: () => false };
+        FakeWS.instances = [];
+        vi.stubGlobal('WebSocket', FakeWS);
+        new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} }).connect();
+        expect(FakeWS.instances.length).toBe(1);
     });
 });

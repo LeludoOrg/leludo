@@ -10,6 +10,7 @@
 import { MSG } from "./net-protocol.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
 import { isCapacitorNative } from "../platform/platform.js";
+import { NativeWebSocket, nativeSocketAvailable } from "./native-socket.js";
 
 const DEFAULT_PORT = 8890;
 
@@ -158,11 +159,24 @@ export class NetClient {
         // pings cover every window; see MSG.PING.
         this._pingMs = opts.pingMs ?? 25_000;
         this._pingTimer = null;
+        // Pending backoff redial (see _scheduleReconnect). Stored so reconnectNow()
+        // can cancel the wait and dial immediately when the app returns to the
+        // foreground, and so close()/suspend() can cancel a queued attempt.
+        this._reconnectTimer = null;
     }
 
     connect() {
         this._open();
         return this;
+    }
+
+    /** Pick the transport: on a Capacitor Android build the native OkHttp socket
+     *  (kept warm off the WebView's throttle-prone JS thread) when the plugin is
+     *  present, else the WebView's own WebSocket. Both expose the same surface,
+     *  so the rest of net-client is transport-agnostic. */
+    _makeSocket(url) {
+        if (isCapacitorNative() && nativeSocketAvailable()) return new NativeWebSocket(url);
+        return new WebSocket(url);
     }
 
     _open() {
@@ -173,17 +187,25 @@ export class NetClient {
             ...this._params,
         });
         if (this._room) q.set('room', this._room); // omitted in public matchmaking
-        this.ws = new WebSocket(`${base}/?${q.toString()}`);
-        this.ws.addEventListener('open', () => {
+        const sock = this._makeSocket(`${base}/?${q.toString()}`);
+        this.ws = sock;
+        // A reconnectNow() (app resume) can replace this.ws while an old socket is
+        // still mid-close; ignore events from any socket we've already superseded
+        // so a zombie's late `close` can't fire a second redial.
+        const isCurrent = () => this.ws === sock;
+        sock.addEventListener('open', () => {
+            if (!isCurrent()) return;
             this.connected = true;
             const wasReconnecting = this._reconnectAttempts > 0;
             this._reconnectAttempts = 0;
             this._everOpen = true;
+            if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
             this._startPing();
             if (wasReconnecting) this.opts.onReconnected?.();
             else this.opts.onOpen?.();
         });
-        this.ws.addEventListener('message', (ev) => {
+        sock.addEventListener('message', (ev) => {
+            if (!isCurrent()) return;
             let msg;
             try { msg = JSON.parse(ev.data); } catch { return; }
             // Pin the reconnect target to the seated room and stop re-queueing as
@@ -194,7 +216,8 @@ export class NetClient {
             }
             this.opts.onMessage(msg);
         });
-        this.ws.addEventListener('close', (ev) => {
+        sock.addEventListener('close', (ev) => {
+            if (!isCurrent()) return; // superseded by a newer socket — its lifecycle owns reconnect
             this.connected = false;
             this._stopPing();
             this.opts.onClose?.(ev);
@@ -230,7 +253,34 @@ export class NetClient {
         }
         this._reconnectAttempts++;
         this.opts.onReconnecting?.(this._reconnectAttempts, this._maxReconnect);
-        setTimeout(() => { if (!this._closedByUs) this._open(); }, this._reconnectDelayMs);
+        this._reconnectTimer = setTimeout(() => {
+            this._reconnectTimer = null;
+            if (!this._closedByUs) this._open();
+        }, this._reconnectDelayMs);
+    }
+
+    /**
+     * Foreground regained — the app resumed or the tab became visible. A native
+     * WebView FREEZES its JS while backgrounded: the keepalive PING can't fire,
+     * so the socket gets reaped by the edge/NAT, and our own `close` handler +
+     * 2.5s backoff don't run until we're back — by then a chunk of the server's
+     * reconnect-grace window is already gone (and on Android a long freeze can
+     * blow past it entirely, forfeiting the seat). Skip the wait: if we're not
+     * already connected (and weren't closed on purpose), redial immediately.
+     *
+     * No-op when the socket is healthy (just probe it with a PING + re-arm the
+     * keepalive) or when we deliberately suspended for the exit confirmation.
+     */
+    reconnectNow() {
+        if (this._closedByUs || this._suspended || !this._everOpen) return;
+        const state = this.ws?.readyState;
+        if (state === WebSocket.CONNECTING) return; // a redial is already in flight
+        if (state === WebSocket.OPEN) { this.send({ t: MSG.PING }); return; } // alive — probe + re-arm
+        // CLOSED / CLOSING / no socket: cancel any queued backoff and dial now.
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+        this._reconnectAttempts = 0;
+        this.opts.onReconnecting?.(0, this._maxReconnect);
+        this._open();
     }
 
     send(obj) {
@@ -255,6 +305,7 @@ export class NetClient {
         this._suspended = true;
         this._closedByUs = true; // suppress _scheduleReconnect on this close
         this._stopPing();
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         try { this.ws?.close(); } catch { /* already gone */ }
     }
 
@@ -279,5 +330,10 @@ export class NetClient {
     // keystroke, so it stays one message per deliberate edit.
     setProfile({ name, seat } = {}) { this.send({ t: MSG.LOBBY_PROFILE, name, seat }); }
 
-    close() { this._closedByUs = true; this._stopPing(); this.ws?.close(); }
+    close() {
+        this._closedByUs = true;
+        this._stopPing();
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+        this.ws?.close();
+    }
 }
