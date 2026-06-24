@@ -82,6 +82,25 @@ wc-game-end .ge-inner {
     min-height: 100%;
 }
 
+/* Scrollable middle so standings + recap cards never clip the pinned
+   header/footer on short screens. */
+wc-game-end .ge-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+}
+
+wc-game-end .ge-section-label {
+    padding: 16px 16px 8px;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--ge-fg-faint);
+}
+
 /* ---------- Header (Home pill + Share icon) ---------- */
 
 wc-game-end .ge-header {
@@ -171,74 +190,209 @@ wc-game-end .ge-icon-btn.ge-busy::after {
     to { transform: rotate(360deg); }
 }
 
-/* ---------- Hero (compact pawn + eyebrow + headline) ---------- */
+/* ---------- Title ---------- */
+/* Matches the shared .display-title recipe (40px serif, -0.025em) used on
+   home / setup / settings, left-aligned under the top bar. */
 
 wc-game-end .ge-hero {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 24px 22px 6px;
-}
-
-wc-game-end .ge-hero-pawn {
-    position: relative;
-    width: 78px;
-    height: 92px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-}
-
-wc-game-end .ge-pawn-shadow {
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 56px;
-    height: 6px;
-    background: rgba(0, 0, 0, 0.55);
-    border-radius: 50%;
-    filter: blur(5px);
-    transform-origin: center;
-    animation: gePawnShadowPulse 2.6s ease-in-out infinite;
-}
-
-wc-game-end .ge-pawn-bob {
-    position: relative;
-    transform-origin: center bottom;
-    animation: gePawnBob 2.6s ease-in-out infinite;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
-}
-
-wc-game-end .ge-hero-text {
-    min-width: 0;
-}
-
-/* Extends the shared .eyebrow recipe (styles/base.css). The faint look comes
-   from --ge-fg-faint (full opacity), so reset the base opacity to 1. */
-wc-game-end .ge-eyebrow {
-    font-size: 10.5px;
-    letter-spacing: 0.2em;
-    color: var(--ge-fg-faint);
-    opacity: 1;
-    font-weight: 600;
+    padding: 18px 16px 14px;
+    /* Centered, matching the .display-title heading on home / setup / pause. */
+    text-align: center;
 }
 
 wc-game-end .ge-headline {
-    margin-top: 4px;
+    margin: 0;
     font-family: var(--font-display);
-    font-size: 36px;
+    font-size: 40px;
     line-height: 1;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.025em;
     color: var(--ge-fg);
     font-weight: 400;
+}
+
+/* ---------- Final standings — podium ---------- */
+
+wc-game-end .ge-podium {
+    padding: 14px 14px 0;
+}
+
+/* Steps sit on a shared baseline; tallest (1st) in the middle. */
+wc-game-end .ge-podium-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+}
+
+wc-game-end .ge-pod {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+wc-game-end .ge-pod-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 6px;
+    max-width: 100%;
+}
+
+wc-game-end .ge-pod-pawn {
+    display: flex;
+    align-items: flex-end;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28));
+}
+
+/* Winner's pawn rides a touch larger + bobs for a victory beat. */
+wc-game-end .ge-pod-1 .ge-pod-pawn {
+    animation: gePawnBob 2.6s ease-in-out infinite;
+}
+
+wc-game-end .ge-pod-name {
+    max-width: 100%;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ge-fg);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+wc-game-end .ge-pod-step {
+    width: 100%;
+    background: hsl(var(--seat) / 0.16);
+    border: 1px solid var(--ge-surface-border);
+    border-top: 3px solid hsl(var(--seat));
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    /* Padding keeps the medal off the top edge; min-height (not height) sets
+       the step tier while letting the content breathe even on the short 3rd. */
+    padding: 12px 6px 10px;
+    box-sizing: border-box;
+}
+
+wc-game-end .ge-pod-1 .ge-pod-step { min-height: 104px; }
+wc-game-end .ge-pod-2 .ge-pod-step { min-height: 82px; }
+wc-game-end .ge-pod-3 .ge-pod-step { min-height: 64px; }
+
+wc-game-end .ge-pod-medal {
+    font-size: 24px;
+    line-height: 1;
+}
+
+wc-game-end .ge-pod-place {
+    font-family: var(--font-display);
+    font-size: 14px;
+    line-height: 1;
+    color: var(--ge-fg-mute);
+}
+
+wc-game-end .ge-pod-you {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ge-fg);
+    background: hsl(var(--seat) / 0.22);
+    border: 1px solid hsl(var(--seat));
+    padding: 1px 6px;
+    border-radius: 999px;
+}
+
+/* This client's own step (online) — no outline ring; just a bolder, thicker
+   top accent in the player's full (vivid) colour. */
+wc-game-end .ge-pod-self .ge-pod-step {
+    border-top-width: 6px;
+    border-top-color: hsl(var(--seat));
+}
+
+wc-game-end .ge-pod-self .ge-pod-place {
+    color: var(--ge-fg);
+}
+
+/* ---------- 4th place — the wooden spoon ---------- */
+
+/* Intentionally NOT a .ge-card: transparent fill + fully dashed outline keeps
+   the wooden-spoon row reading as a light footnote, not another stat card. */
+wc-game-end .ge-loser {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px dashed var(--ge-ring);
+    border-left: 3px solid hsl(var(--seat));
+    border-radius: var(--card-radius);
+}
+
+/* Self 4th row — no outline ring; just a bolder, thicker left accent. */
+wc-game-end .ge-loser.ge-loser-self {
+    border-left-width: 6px;
+    border-left-color: hsl(var(--seat));
+}
+
+wc-game-end .ge-loser-pawn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    transform: rotate(8deg);
+    opacity: 0.85;
+}
+
+wc-game-end .ge-loser-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+wc-game-end .ge-loser-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ge-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+wc-game-end .ge-loser-tag {
+    font-size: 11px;
+    color: var(--ge-fg-mute);
+}
+
+wc-game-end .ge-loser-you {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ge-fg);
+    background: hsl(var(--seat) / 0.22);
+    border: 1px solid hsl(var(--seat));
+    padding: 1px 5px;
+    border-radius: 999px;
+}
+
+wc-game-end .ge-loser-place {
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-size: 18px;
+    color: var(--ge-fg-mute);
 }
 
 /* ---------- Highlight cards ---------- */
 
 wc-game-end .ge-cards {
-    padding: 14px 14px 0;
+    padding: 0 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -373,10 +527,6 @@ wc-game-end .ge-store-action {
 
 /* ---------- Footer + CTA ---------- */
 
-wc-game-end .ge-spacer {
-    flex: 1;
-}
-
 wc-game-end .ge-footer {
     padding: 14px 14px 18px;
 }
@@ -417,11 +567,6 @@ wc-game-end .ge-cta:active {
     50%      { transform: translateY(-8px); }
 }
 
-@keyframes gePawnShadowPulse {
-    0%, 100% { transform: translateX(-50%) scaleX(1);   opacity: 0.5; }
-    50%      { transform: translateX(-50%) scaleX(0.78); opacity: 0.32; }
-}
-
 @keyframes geGlowPulse {
     0%, 100% { opacity: 0.5; }
     50%      { opacity: 0.9; }
@@ -429,8 +574,7 @@ wc-game-end .ge-cta:active {
 
 @media (prefers-reduced-motion: reduce) {
     wc-game-end .ge-confetti-piece,
-    wc-game-end .ge-pawn-bob,
-    wc-game-end .ge-pawn-shadow,
+    wc-game-end .ge-pod-1 .ge-pod-pawn,
     wc-game-end .ge-glow {
         animation: none !important;
     }

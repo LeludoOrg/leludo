@@ -79,10 +79,8 @@ const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>`;
 const CARD_ICONS = {
     ko:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><circle cx="12" cy="12" r="7"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>`,
-    dice: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="15" cy="15" r="1.3" fill="currentColor"/><circle cx="15" cy="9" r="1.3" fill="currentColor"/><circle cx="9" cy="15" r="1.3" fill="currentColor"/></svg>`,
     bolt: `<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg>`,
     send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>`,
-    home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`,
     crown:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 7l4 5 5-7 5 7 4-5v11H3z"/></svg>`,
 };
 
@@ -116,6 +114,85 @@ function nameFor(pi) {
     const raw = playerNames[pi] && String(playerNames[pi]).trim();
     if (raw) return raw;
     return playerTypes[pi] === 'PLAYER' ? 'You' : 'Bot';
+}
+
+const ORDINALS = ['', '1st', '2nd', '3rd', '4th'];
+function ordinal(rank) {
+    return ORDINALS[rank] || `${rank}th`;
+}
+
+// Final standings: every seated player ordered by finishing rank (1 = winner).
+// `highlightIndex` is the local board index of the player to flag as "You" —
+// online's local self, so each client sees its own row highlighted. Unranked
+// seats (rank 0 — shouldn't happen at game end) sort last.
+function buildStandings(highlightIndex) {
+    const rows = [];
+    for (let i = 0; i < 4; i++) {
+        if (!playerTypes[i]) continue;
+        rows.push({
+            playerIndex: i,
+            rank: playerRanks[i] || 99,
+            name: nameFor(i),
+            isSelf: i === highlightIndex,
+        });
+    }
+    rows.sort((a, b) => a.rank - b.rank);
+    return rows;
+}
+
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+function youPill(cls) {
+    return `<span class="${cls}">You</span>`;
+}
+
+// One podium column. Step height is set by the .ge-pod-{rank} class; --seat
+// carries the player's colour so the step tint, accent and self-highlight all
+// derive from one value (no per-index CSS rules).
+function podiumColumnHtml(s) {
+    return `
+        <div class="ge-pod ge-pod-${s.rank}${s.isSelf ? ' ge-pod-self' : ''}"
+             style="--seat: var(--player-${s.playerIndex});">
+            <div class="ge-pod-head">
+                ${s.isSelf ? youPill('ge-pod-you') : ''}
+                <span class="ge-pod-pawn">${pawnSvg(s.playerIndex, 34)}</span>
+                <span class="ge-pod-name">${escapeHtml(s.name)}</span>
+            </div>
+            <div class="ge-pod-step">
+                <span class="ge-pod-medal">${MEDALS[s.rank] || ''}</span>
+                <span class="ge-pod-place">${ordinal(s.rank)}</span>
+            </div>
+        </div>`;
+}
+
+// The 4th-place row — last place, played for laughs. Deliberately styled
+// lighter than a highlight card (transparent, dashed) so it never reads as
+// another stat card. --seat carries the player's colour for the accent.
+function loserRowHtml(s) {
+    return `
+        <div class="ge-loser${s.isSelf ? ' ge-loser-self' : ''}"
+             style="--seat: var(--player-${s.playerIndex});">
+            <span class="ge-loser-pawn">${pawnSvg(s.playerIndex, 26)}</span>
+            <span class="ge-loser-text">
+                <span class="ge-loser-name">${escapeHtml(s.name)}${s.isSelf ? ' ' + youPill('ge-loser-you') : ''}</span>
+                <span class="ge-loser-tag">Better luck next time</span>
+            </span>
+            <span class="ge-loser-place">${ordinal(s.rank)}</span>
+        </div>`;
+}
+
+// Standings as a podium: top 3 on stepped blocks (2nd | 1st | 3rd, tallest in
+// the middle), and 4th — if present — as the wooden-spoon row beneath. Adapts
+// to 2- and 3-player games (fewer steps, no spoon).
+function podiumHtml(standings) {
+    const top = standings.slice(0, 3);
+    const loser = standings[3];
+    // Visual order puts the winner centre-stage: [2nd, 1st, 3rd], skipping
+    // slots that don't exist in a 2-player game.
+    const cols = [1, 0, 2].filter((i) => i < top.length).map((i) => podiumColumnHtml(top[i]));
+    return `
+        <div class="ge-podium-row">${cols.join('')}</div>
+        ${loser ? loserRowHtml(loser) : ''}`;
 }
 
 function buildSeats() {
@@ -192,9 +269,7 @@ class GameEnd extends HTMLElement {
             ? winnerIndex === onlineLocalSelf()
             : playerTypes[winnerIndex] === 'PLAYER';
         const winnerName = nameFor(winnerIndex);
-        const eyebrow = isSelfWinner
-            ? 'Game over · You won'
-            : `Game over · ${winnerName} won`;
+        // Used by the shareable recap PNG, not shown on the screen itself.
         const winText = isSelfWinner ? 'You won.' : `${winnerName} won.`;
 
         const highlights = buildHighlights(winnerIndex);
@@ -202,6 +277,11 @@ class GameEnd extends HTMLElement {
         // Start rendering the shareable recap PNG now, while the user reads the
         // screen, so tapping Share opens the OS sheet without a render stall.
         primeShareImage(winnerIndex, winText, highlights);
+
+        // Online: flag this client's own row ("You"). Offline the human is
+        // already obvious, so leave every row unflagged.
+        const highlightIndex = online ? onlineLocalSelf() : -1;
+        const standingsHTML = podiumHtml(buildStandings(highlightIndex));
 
         const cardsHTML = highlights.map(h => `
             <div class="ge-card player-border-${h.playerIndex}">
@@ -215,6 +295,13 @@ class GameEnd extends HTMLElement {
                 </div>
                 <div class="ge-card-stat">${escapeHtml(h.stat)}</div>
             </div>`).join('');
+
+        // No achievement fired (e.g. a short, uneventful game) — the podium
+        // already tells the story, so drop the empty Highlights section.
+        const highlightsBlock = highlights.length
+            ? `<div class="ge-section-label">Highlights</div>
+               <div class="ge-cards">${cardsHTML}</div>`
+            : '';
 
         const html = `
             <div class="ge-screen">
@@ -232,21 +319,16 @@ class GameEnd extends HTMLElement {
                     </div>
 
                     <div class="ge-hero">
-                        <div class="ge-hero-pawn">
-                            <div class="ge-pawn-shadow"></div>
-                            <div class="ge-pawn-bob">${pawnSvg(winnerIndex, 78)}</div>
-                        </div>
-                        <div class="ge-hero-text">
-                            <div class="ge-eyebrow">${escapeHtml(eyebrow)}</div>
-                            <div class="ge-headline">The recap</div>
-                        </div>
+                        <h2 class="ge-headline">Game over</h2>
                     </div>
 
-                    <div class="ge-cards">${cardsHTML}</div>
+                    <div class="ge-scroll">
+                        <div class="ge-podium">${standingsHTML}</div>
 
-                    ${storeNudgeHtml()}
+                        ${highlightsBlock}
 
-                    <div class="ge-spacer"></div>
+                        ${storeNudgeHtml()}
+                    </div>
 
                     <div class="ge-footer">
                         <button id="ge-play-again" class="ge-cta">${online ? 'New game' : 'Play again'}</button>
