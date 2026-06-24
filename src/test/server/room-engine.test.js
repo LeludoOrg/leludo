@@ -481,18 +481,25 @@ describe('RoomEngine — rules fidelity', () => {
         expect(engine.turnCount).toBe(0);
     });
 
-    it('loses the turn after three consecutive sixes', () => {
-        const { engine } = started2();
-        engine.rng = () => 0.85; // every roll is a 6
+    // The three-sixes forfeit confused players, so the third six is never dealt:
+    // after two sixes a would-be third six is downgraded to a normal 1..5 roll,
+    // so the bust never fires and the turn is played out instead of lost.
+    it('never deals a third six — downgrades it, no forfeit bust', () => {
+        const { fake, engine } = started2();
+        engine.rng = () => 0.85; // a six normally; the third is downgraded to 1..5
         engine.handleRoll('h');
         engine.handleMove('h', 0);
-        expect(engine.currentPlayerIndex).toBe(0);
+        expect(engine.currentPlayerIndex).toBe(0); // first six keeps the turn
         engine.handleRoll('h');
         engine.handleMove('h', 0);
-        expect(engine.currentPlayerIndex).toBe(0);
-        engine.handleRoll('h'); // third six -> forfeit
-        expect(engine.currentPlayerIndex).toBe(1);
-        expect(engine.consecutiveSixes).toBe(0);
+        expect(engine.currentPlayerIndex).toBe(0); // second six keeps the turn
+        fake.broadcasts.length = 0;                // focus on the third roll
+        engine.handleRoll('h');                    // would-be third six -> 1..5
+        const rolled = fake.broadcasts.find(b => b.reason === 'rolled');
+        expect(rolled.state.dice).not.toBe(6);     // downgraded, not a six
+        expect(rolled.state.dice).toBeLessThanOrEqual(5);
+        // the three-sixes bust never fires
+        expect(fake.broadcasts.some(b => b.reason === 'three-sixes')).toBe(false);
     });
 
     it('ranks players and ends when the leader finishes', () => {

@@ -48,28 +48,44 @@ export function isSafePosition(tokenPosition) {
 }
 
 /**
- * Per-face roll weights (faces 1..6), total 12:
- *   1 -> 1/12 (~8%)   2..5 -> 2/12 (~17% each)   6 -> 3/12 (25%)
- * Rationale: 6 stays the most likely face (it launches a pawn and grants another
- * turn, keeping the game lively), one is mildly suppressed so games aren't
- * dragged out by single-square crawls, and the middle faces are left even/fair.
- * The old extra penalty on 4 was arbitrary and is gone; the pity-six rule
- * (shouldGrantPitySix) now backstops the "never roll a six" tail, so 6 doesn't
- * need an outsized weight. Keep 6 strictly above the rest and 1 strictly below.
+ * Per-face roll weights (faces 1..6). A fair die: every face is equally likely.
+ * The pity-six rule (shouldGrantPitySix) backstops the "never roll a six" tail,
+ * so no face needs an outsized weight. Kept as an array (rather than hard-coding
+ * uniform odds) so bot-ai can derive its dice model from this single source.
  * @type {number[]}
  */
-export const DICE_WEIGHTS = [1, 2, 2, 2, 2, 3];
+export const DICE_WEIGHTS = [1, 1, 1, 1, 1, 1];
+
+/**
+ * Pick a face (1-based) from a weight array via cumulative-weight sampling.
+ * @param {number[]} weights  weight per face, index 0 = face 1
+ * @param {() => number} randomFn  returns 0..1
+ * @returns {number}
+ */
+function rollFromWeights(weights, randomFn) {
+    const cumulativeWeights = weights.map((sum => value => sum += value)(0));
+    const maxWeight = cumulativeWeights[cumulativeWeights.length - 1];
+    const randomValue = randomFn() * maxWeight;
+    return cumulativeWeights.findIndex(cw => randomValue < cw) + 1;
+}
 
 /**
  * @param {() => number} [randomFn]  defaults to Math.random; pass a seeded PRNG to make rolls reproducible (e.g. in tests).
  * @returns {number}
  */
 export function generateDiceRoll(randomFn = Math.random) {
-    const weights = DICE_WEIGHTS;
-    const cumulativeWeights = weights.map((sum => value => sum += value)(0));
-    const maxWeight = cumulativeWeights[cumulativeWeights.length - 1];
-    const randomValue = randomFn() * maxWeight;
-    return cumulativeWeights.findIndex(cw => randomValue < cw) + 1
+    return rollFromWeights(DICE_WEIGHTS, randomFn);
+}
+
+/**
+ * Roll a face in 1..5 — never a six. Used to suppress what would be a third
+ * consecutive six (see rollDiceWithPity): three sixes forfeit the turn, which
+ * players find confusing, so the third six is never dealt.
+ * @param {() => number} [randomFn]
+ * @returns {number}
+ */
+export function generateNonSixRoll(randomFn = Math.random) {
+    return rollFromWeights(DICE_WEIGHTS.slice(0, 5), randomFn);
 }
 
 // Pity-six window. A player who can't move any pawn for many turns (the classic
@@ -101,13 +117,22 @@ export function shouldGrantPitySix(noMoveStreak, hasTokenAtHome, randomFn = Math
  * Roll the die, granting a pity six when the player has been stuck too long.
  * Shared by the live game (command-handler) and the headless driver so both
  * obey the same anti-frustration rule.
+ *
+ * Never deals a third consecutive six: three sixes forfeit the turn, which
+ * players find confusing, so when the player already has two sixes this turn a
+ * would-be six is downgraded to a normal 1..5 roll. Callers that don't track
+ * the streak (e.g. the authoritative multiplayer server) pass 0 and keep the
+ * classic three-sixes rule.
  * @param {number} noMoveStreak
  * @param {boolean} hasTokenAtHome
  * @param {() => number} [randomFn]
+ * @param {number} [consecutiveSixes]  sixes already rolled this turn (default 0)
  * @returns {number}
  */
-export function rollDiceWithPity(noMoveStreak, hasTokenAtHome, randomFn = Math.random) {
-    return shouldGrantPitySix(noMoveStreak, hasTokenAtHome, randomFn) ? 6 : generateDiceRoll(randomFn);
+export function rollDiceWithPity(noMoveStreak, hasTokenAtHome, randomFn = Math.random, consecutiveSixes = 0) {
+    const roll = shouldGrantPitySix(noMoveStreak, hasTokenAtHome, randomFn) ? 6 : generateDiceRoll(randomFn);
+    if (roll === 6 && consecutiveSixes >= 2) return generateNonSixRoll(randomFn);
+    return roll;
 }
 
 /**

@@ -877,10 +877,14 @@ export class RoomEngine {
     _rollAndResolve() {
         const pi = this.currentPlayerIndex;
         const hasTokenAtHome = !!this.positions[pi] && this.positions[pi].includes(-1);
-        const dice = rollDiceWithPity(this.noMoveStreak[pi], hasTokenAtHome, this.rng);
+        const dice = rollDiceWithPity(this.noMoveStreak[pi], hasTokenAtHome, this.rng, this.consecutiveSixes);
         this.currentDiceRoll = dice;
         this.consecutiveSixes = dice === 6 ? this.consecutiveSixes + 1 : 0;
 
+        // rollDiceWithPity caps the streak at two — a would-be third six is
+        // downgraded to 1..5 — so this bust is now an unreachable backstop. Kept
+        // for protocol compatibility and as a guard if a future non-capped roll
+        // path is added.
         if (this.consecutiveSixes === 3) {
             this.consecutiveSixes = 0;
             this._broadcastState(REASON.THREE_SIXES);
