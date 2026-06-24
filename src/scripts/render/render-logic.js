@@ -241,13 +241,61 @@ function applyFinishStacking(cell, tokens) {
     place(tokens[3], (100 - s) / 2, edge + s + g, s);
 }
 
-export function updateCellStacking(cell) {
+// Play a FLIP transition (First-Last-Invert-Play) on each token from its
+// snapshot box (`first`) to the slot it now occupies. It rides wc-token's own
+// 150ms transform transition and only ever sets transform/transform-origin, so
+// it animates position AND size (translate + scale) without touching layout —
+// that's how stackmates smoothly resize+reposition when one of them leaves.
+function flipTokens(tokens, first) {
+    const moved = [];
+    for (const t of tokens) {
+        const f = first.get(t);
+        if (!f) continue;
+        const last = t.getBoundingClientRect();
+        if (!last.width || !last.height) continue; // hidden (display:none) — nothing to play
+        const dx = f.left - last.left;
+        const dy = f.top - last.top;
+        const sx = f.width / last.width;
+        const sy = f.height / last.height;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
+        t.style.transformOrigin = 'top left';
+        t.style.transition = 'none';
+        t.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+        moved.push(t);
+    }
+    if (!moved.length) return;
+    void moved[0].offsetWidth; // commit the inverted (old-slot) state in one reflow
+    for (const t of moved) {
+        t.style.transition = '';  // restore the CSS transform transition
+        t.style.transform = '';   // play back to the real slot
+        waitForTransitionEnd(t, () => {
+            t.style.removeProperty('transition');
+            t.style.removeProperty('transform');
+            t.style.removeProperty('transform-origin');
+        }, 250);
+    }
+}
+
+export function updateCellStacking(cell, opts = {}) {
     if (!cell) return;
+    const { animate = false, firstRects = null } = opts;
     const allTokens = Array.from(cell.querySelectorAll(':scope > wc-token'));
     // Only relayout settled tokens. A token mid-animation (moving='true') is
     // pinned position:absolute and out of flow — clearing its styles here would
     // drop it back into flow and shove/hide the settled tokens. Leave it alone.
     const tokens = allTokens.filter(t => t.dataset.moving !== 'true');
+
+    // FLIP step 1 (First): snapshot each token's on-screen box BEFORE we touch
+    // styles. An explicit firstRects entry wins — used for the just-arrived
+    // mover, whose pre-relayout box is its travel box, not the flow box this
+    // would otherwise measure after it was reparented into the cell.
+    const first = animate ? new Map() : null;
+    if (animate) {
+        for (const t of tokens) {
+            first.set(t, (firstRects && firstRects.get(t)) || t.getBoundingClientRect());
+        }
+    }
+
     tokens.forEach(clearStackStyles);
     const n = tokens.length;
 
@@ -256,36 +304,38 @@ export function updateCellStacking(cell) {
 
     if (FINISH_CELL_ID_RE.test(cell.id)) {
         applyFinishStacking(cell, tokens);
-        return;
+    } else if (n >= 2) {
+        cell.style.position = 'relative';
+
+        if (n === 2) {
+            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:64%;height:64%;z-index:1;';
+            tokens[1].style.cssText += ';position:absolute;bottom:4%;right:4%;width:64%;height:64%;z-index:2;';
+        } else if (n === 3) {
+            tokens[0].style.cssText += ';position:absolute;top:2%;left:50%;width:52%;height:52%;z-index:3;margin-left:-26%;';
+            tokens[1].style.cssText += ';position:absolute;bottom:4%;left:0%;width:52%;height:52%;z-index:2;';
+            tokens[2].style.cssText += ';position:absolute;bottom:4%;right:0%;width:52%;height:52%;z-index:2;';
+        } else if (n === 4) {
+            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:46%;height:46%;z-index:1;';
+            tokens[1].style.cssText += ';position:absolute;top:4%;right:4%;width:46%;height:46%;z-index:1;';
+            tokens[2].style.cssText += ';position:absolute;bottom:4%;left:4%;width:46%;height:46%;z-index:1;';
+            tokens[3].style.cssText += ';position:absolute;bottom:4%;right:4%;width:46%;height:46%;z-index:1;';
+        } else {
+            tokens.forEach((t, i) => {
+                if (i > 0) t.style.display = 'none';
+            });
+            tokens[0].style.cssText += ';position:absolute;inset:8%;width:84%;height:84%;z-index:1;';
+            const badgeEl = document.createElement('div');
+            badgeEl.className = 'stack-badge';
+            badgeEl.textContent = `×${n}`;
+            // All visuals (position, colors, sizing) live in wc-board.css .stack-badge.
+            cell.appendChild(badgeEl);
+        }
     }
+    // n <= 1 (non-finish): the sole token stays in normal flow at full cell size.
 
-    if (n <= 1) return;
-
-    cell.style.position = 'relative';
-
-    if (n === 2) {
-        tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:64%;height:64%;z-index:1;';
-        tokens[1].style.cssText += ';position:absolute;bottom:4%;right:4%;width:64%;height:64%;z-index:2;';
-    } else if (n === 3) {
-        tokens[0].style.cssText += ';position:absolute;top:2%;left:50%;width:52%;height:52%;z-index:3;margin-left:-26%;';
-        tokens[1].style.cssText += ';position:absolute;bottom:4%;left:0%;width:52%;height:52%;z-index:2;';
-        tokens[2].style.cssText += ';position:absolute;bottom:4%;right:0%;width:52%;height:52%;z-index:2;';
-    } else if (n === 4) {
-        tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:46%;height:46%;z-index:1;';
-        tokens[1].style.cssText += ';position:absolute;top:4%;right:4%;width:46%;height:46%;z-index:1;';
-        tokens[2].style.cssText += ';position:absolute;bottom:4%;left:4%;width:46%;height:46%;z-index:1;';
-        tokens[3].style.cssText += ';position:absolute;bottom:4%;right:4%;width:46%;height:46%;z-index:1;';
-    } else {
-        tokens.forEach((t, i) => {
-            if (i > 0) t.style.display = 'none';
-        });
-        tokens[0].style.cssText += ';position:absolute;inset:8%;width:84%;height:84%;z-index:1;';
-        const badgeEl = document.createElement('div');
-        badgeEl.className = 'stack-badge';
-        badgeEl.textContent = `×${n}`;
-        // All visuals (position, colors, sizing) live in wc-board.css .stack-badge.
-        cell.appendChild(badgeEl);
-    }
+    // FLIP steps 2-4 (Last/Invert/Play): animate every token from its snapshot
+    // box into the slot it now holds.
+    if (animate) flipTokens(tokens, first);
 }
 
 /**
@@ -568,24 +618,37 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         }
 
         element.dataset.moving = 'true';
-        // Snapshot visual position before clearStackStyles snaps the element
-        // back to its flow position. Stacked tokens (n>=2) sit at absolute
-        // offsets; without this the element teleports to (0,0) of its cell
-        // before the first translate fires — the "disappear then reappear
-        // offset" symptom on captures.
+        // Snapshot the mover's on-screen box (its stacked slot, if it shared the
+        // cell) before we re-pin it. We then lift it OUT of flow: pinned
+        // position:absolute filling the source cell, so the cell reflows around
+        // the survivors ALONE — fixing the "lone survivor shoved a cell down"
+        // bug — and the mover travels at full cell size like any sole pawn.
         const visualRect = element.getBoundingClientRect();
         clearStackStyles(element);
-        updateCellStacking(sourceCell);
-        element.style.willChange = 'transform';
-        element.style.position = 'relative';
+        element.style.position = 'absolute';
+        element.style.left = '0';
+        element.style.top = '0';
+        element.style.width = '100%';
+        element.style.height = '100%';
         element.style.zIndex = '50';
+        element.style.willChange = 'transform';
+        element.style.transformOrigin = 'top left';
+
+        // Survivors smoothly resize+reposition into their new (n-1) layout.
+        updateCellStacking(sourceCell, { animate: true });
 
         const originRect = element.getBoundingClientRect();
+        // Invert: render the mover at its old (possibly smaller, offset) slot so
+        // the first glide step animates it growing to full size AND sliding to
+        // the next cell in one motion — no instant size pop. For a sole pawn
+        // visualRect === originRect, so this is a no-op (unchanged behaviour).
+        const sx = originRect.width ? visualRect.width / originRect.width : 1;
+        const sy = originRect.height ? visualRect.height / originRect.height : 1;
         const compDx = visualRect.left - originRect.left;
         const compDy = visualRect.top - originRect.top;
-        if (Math.abs(compDx) > 0.5 || Math.abs(compDy) > 0.5) {
+        if (Math.abs(compDx) > 0.5 || Math.abs(compDy) > 0.5 || Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
             element.style.transition = 'none';
-            element.style.transform = `translate(${compDx}px, ${compDy}px)`;
+            element.style.transform = `translate(${compDx}px, ${compDy}px) scale(${sx}, ${sy})`;
             void element.offsetWidth;
             element.style.transition = '';
         }
@@ -601,14 +664,22 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
                 stepIndex = path.length;
             }
             if (stepIndex >= path.length) {
-                element.style.willChange = '';
-                element.style.position = '';
-                element.style.zIndex = '';
-                element.style.transition = '';
+                // Capture the mover's on-screen box at journey's end, then reparent
+                // it into the destination cell and FLIP it — along with any tokens
+                // already there — into the final stacked layout, so a pawn joining
+                // a stack eases into its slot instead of snapping. Clearing
+                // transform under transition:none avoids a double-offset flash once
+                // it's a child of the (already-positioned) destination cell.
+                const moverFirst = element.getBoundingClientRect();
+                element.style.transition = 'none';
                 element.style.removeProperty('transform');
-                finalContainer.appendChild(element);
+                element.style.removeProperty('transform-origin');
+                element.style.willChange = '';
+                clearStackStyles(element);
                 delete element.dataset.moving;
-                updateCellStacking(finalContainer);
+                finalContainer.appendChild(element);
+                updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, moverFirst]]) });
+                element.style.removeProperty('transition'); // restore CSS transition if FLIP skipped it (empty dest)
                 resolve();
                 return;
             }
