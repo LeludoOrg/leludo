@@ -13,8 +13,8 @@ android {
         applicationId "com.leludo.ludo"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2604
-        versionName "0.26.4"
+        versionCode 2802
+        versionName "0.28.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -34,8 +34,15 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 code shrink + resource shrink. Without this the OkHttp 4.x
+            // native-socket dep (okhttp + okio + kotlin-stdlib, all Kotlin)
+            // shipped unshrunk and roughly tripled the Play Store download
+            // size. OkHttp/Okio bundle their own consumer ProGuard rules in
+            // their AARs, so R8 picks those up automatically; the only manual
+            // keeps we need are for our Capacitor plugin (proguard-rules.pro).
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
             }

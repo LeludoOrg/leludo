@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# --- Capacitor plugins (R8) ---
+# JS calls plugin methods by name over the bridge via reflection, so R8 must
+# not rename or strip @CapacitorPlugin classes or their @PluginMethod methods.
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.PluginMethod public *;
+}
+-keep class com.leludo.ludo.LeludoSocketPlugin { *; }
