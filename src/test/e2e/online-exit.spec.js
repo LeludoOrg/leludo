@@ -9,13 +9,15 @@ import { openOnline } from './helpers.js';
  *
  *   - Tapping exit dims the leaver on the opponent's board (a real disconnect).
  *   - "Stay in game" reels them back in — the dim clears (a reconnect).
- *   - "Leave game" exits home with the socket down, so the seat forfeits through
- *     the same grace window a drop uses; with one human left the game ends.
+ *   - "Leave game" forfeits the seat IMMEDIATELY (an explicit LEAVE), not after
+ *     the reconnect grace; with one human left the game ends right away.
  *
- * `?grace=6000` shortens the server forfeit window; `?exitCountdown=60` makes the
- * confirmation's auto-leave timer long enough that it never races our clicks.
+ * `?grace=60000` makes the server's reconnect window LONG on purpose: if "Leave"
+ * regressed to forfeiting via grace, the final game-end assertion would time out
+ * waiting a full minute. The immediate-forfeit path ends it in a beat instead.
+ * `?exitCountdown=60` keeps the dialog's auto-leave timer from racing our clicks.
  */
-const OPTS = '?grace=6000&exitCountdown=60';
+const OPTS = '?grace=60000&exitCountdown=60';
 
 test('exit replaces pause online: confirm dims the leaver, Stay reconnects, Leave forfeits', async ({ browser }) => {
     test.setTimeout(60_000);
@@ -59,15 +61,17 @@ test('exit replaces pause online: confirm dims the leaver, Stay reconnects, Leav
     await expect(pageA.locator('wc-board .board-grid')).toBeVisible();
 
     // --- Exit again, then Leave for good: Alice lands back on home, and Bob's
-    // game ends once the grace window forfeits the abandoned seat. ---
+    // game ends IMMEDIATELY — the explicit leave forfeits the seat at once. ---
     await menuBtn.click();
     await expect(pageA.getByTestId('online-exit-menu')).toBeVisible();
     await pageA.getByTestId('online-exit-leave').click();
     await expect(pageA.getByTestId('online-exit-menu')).toBeHidden();
     await expect(pageA.getByTestId('home-new-game')).toBeVisible(); // back on the home screen
 
-    // Alice's socket stays down → her seat forfeits → one human left → game ends.
-    await expect(pageB.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 15_000 });
+    // Alice's seat forfeits on the spot → one human left → game ends. The short
+    // timeout (vs the 60s grace set above) is the regression guard: a grace-only
+    // forfeit could not make this assertion in time.
+    await expect(pageB.locator('wc-game-end .ge-screen')).toBeVisible({ timeout: 10_000 });
 
     await ctxA.close();
     await ctxB.close();

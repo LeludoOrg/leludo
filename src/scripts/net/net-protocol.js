@@ -25,6 +25,10 @@ export const MSG = Object.freeze({
     JOIN: 'join',
     ROLL: 'roll',
     MOVE: 'move',
+    // explicit forfeit: the player confirmed "Leave game" in the exit dialog.
+    // Unlike a plain socket drop (which starts the reconnect grace), this tells
+    // the server to free the seat NOW instead of waiting out the grace window.
+    LEAVE: 'leave',
     // keepalive: an idle WebSocket (a player waiting through others' turns) has
     // no traffic, so Cloudflare's edge / NATs / proxies reap it after ~60-100s —
     // a silent drop with no real network fault. The client sends this on an

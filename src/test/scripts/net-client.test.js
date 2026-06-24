@@ -267,6 +267,63 @@ describe('NetClient reconnectNow (foreground resume)', () => {
 });
 
 /**
+ * leaveNow() — the exit dialog's "Leave game" confirm. The dialog suspended the
+ * socket, so an explicit forfeit can't go over it; net-client fires a throwaway
+ * connection that delivers a single LEAVE and closes. The seat is freed at once
+ * server-side instead of waiting out the reconnect grace.
+ */
+describe('NetClient leaveNow (explicit forfeit)', () => {
+    beforeEach(() => {
+        FakeWS.instances = [];
+        vi.stubGlobal('WebSocket', FakeWS);
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    it('after suspend, opens a throwaway socket that sends one LEAVE then closes', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();
+        net.suspend();                 // exit dialog drops the live socket
+        const before = FakeWS.instances.length;
+
+        net.leaveNow();                // player confirms "Leave game"
+        expect(FakeWS.instances.length).toBe(before + 1); // a throwaway opened
+        const throwaway = last();
+        expect(throwaway.url).toContain('session=s-1');   // same session…
+        expect(throwaway.url).toContain('room=ABCD');     // …same room
+
+        throwaway.open();              // connects → fires LEAVE + self-closes
+        expect(throwaway.sent).toEqual([{ t: 'leave' }]);
+        expect(throwaway.readyState).toBe(FakeWS.CLOSED);
+    });
+
+    it('the throwaway never auto-reconnects after it closes', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();
+        net.suspend();
+        net.leaveNow();
+        last().open();                 // delivers LEAVE + closes
+        const count = FakeWS.instances.length;
+        vi.advanceTimersByTime(10_000);
+        expect(FakeWS.instances.length).toBe(count); // no redial off the throwaway's close
+    });
+
+    it('sends LEAVE over the live socket when it was never suspended', () => {
+        const net = new NetClient({ room: 'ABCD', session: 's-1', onMessage: () => {} });
+        net.connect();
+        last().open();
+        net.leaveNow();                // headless exit path: socket still up
+        expect(last().sent).toContainEqual({ t: 'leave' });
+        expect(FakeWS.instances.length).toBe(1); // no throwaway needed
+    });
+});
+
+/**
  * Transport selection. On a Capacitor Android build with the native socket
  * plugin present, net-client must dial through the NATIVE socket (kept warm off
  * the WebView's throttle-prone JS thread) instead of the WebView's WebSocket —

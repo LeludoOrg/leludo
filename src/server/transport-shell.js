@@ -78,6 +78,8 @@ export function dispatchIntent(engine, sessionId, msg) {
         case MSG.ROLL: engine.handleRoll(sessionId); break;
         case MSG.MOVE: engine.handleMove(sessionId, msg.token); break;
         case MSG.JOIN: engine.handleJoin(sessionId, msg.name, msg.color); break;
+        // explicit "Leave game" — forfeit the seat now, skipping the reconnect grace.
+        case MSG.LEAVE: engine.handleLeave(sessionId); break;
         // host-only lobby controls (the engine enforces NOT_HOST / NOT_IN_LOBBY)
         case MSG.LOBBY_SIZE: engine.handleSetSize(sessionId, msg.n); break;
         case MSG.LOBBY_SEAT: engine.handleSetSeat(sessionId, msg.seat, msg.seatType); break;
