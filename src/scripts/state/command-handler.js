@@ -537,7 +537,7 @@ function rollDice(emit) {
             const lastDiceRoll = state.currentDiceRoll;
             const pi = state.currentPlayerIndex;
             const hasTokenAtHome = state.playerTokenPositions[pi].includes(-1);
-            const newRoll = rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome);
+            const newRoll = rollDiceWithPity(state.noMoveStreak[pi], hasTokenAtHome, Math.random, state.consecutiveSixesCount);
             emit({ type: EVENTS.DICE_ROLLED, value: newRoll });
             updateDiceFace(lastDiceRoll, state.currentDiceRoll);
             setLastRoll(state.currentPlayerIndex, state.currentDiceRoll);
@@ -546,6 +546,8 @@ function rollDice(emit) {
 }
 
 function handleAfterDiceRoll(emit) {
+    // rollDiceWithPity caps the streak at two (the would-be third six becomes a
+    // 1..5 roll), so this bust is an unreachable backstop kept as a guard.
     if (state.consecutiveSixesCount === 3) {
         emit({ type: EVENTS.THREE_SIXES_LOST });
         advanceToNextPlayer(emit);

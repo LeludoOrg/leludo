@@ -156,11 +156,13 @@ export function runGame(opts) {
         }
 
         const hasTokenAtHome = positions[currentPlayerIndex].includes(-1);
-        const dice = rollDiceWithPity(noMoveStreak[currentPlayerIndex], hasTokenAtHome, rng);
+        const dice = rollDiceWithPity(noMoveStreak[currentPlayerIndex], hasTokenAtHome, rng, consecutiveSixes);
         events.push({ type: EVENTS.DICE_ROLLED, value: dice });
         if (dice === 6) consecutiveSixes++;
         else consecutiveSixes = 0;
 
+        // rollDiceWithPity caps the streak at two (the would-be third six becomes
+        // a 1..5 roll), so this bust is an unreachable backstop kept as a guard.
         if (consecutiveSixes === 3) {
             events.push({ type: EVENTS.THREE_SIXES_LOST });
             consecutiveSixes = 0;

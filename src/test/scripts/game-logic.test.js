@@ -4,6 +4,7 @@ import {
     getMarkIndex,
     isSafePosition,
     generateDiceRoll,
+    generateNonSixRoll,
     getTokenNewPosition,
     findCapturedOpponents,
     isTripComplete,
@@ -93,35 +94,29 @@ describe('generateDiceRoll', () => {
         }
     });
 
-    it('weighted distribution: 1 is the rarest face, 2..5 are even', () => {
+    // A fair die: every face shares the same weight, so over a large sample each
+    // face lands statistically even (within 6% of the mean — far above sampling
+    // noise at this N). Guards against a future re-introduction of biased weights.
+    it('uniform distribution: every face 1..6 is equally likely', () => {
         const counts = new Array(7).fill(0);
         const N = 120000;
         for (let i = 0; i < N; i++) {
             counts[generateDiceRoll()]++;
         }
-        // One is suppressed (weight 1) — strictly rarer than every other face.
-        for (let face = 2; face <= 6; face++) {
-            expect(counts[1]).toBeLessThan(counts[face]);
-        }
-        // The middle faces 2..5 share weight 2, so they land statistically even
-        // (each within 6% of their mean — far above sampling noise at this N).
-        const mid = [2, 3, 4, 5].map(f => counts[f]);
-        const mean = mid.reduce((a, b) => a + b, 0) / mid.length;
-        for (const c of mid) {
+        const faces = [1, 2, 3, 4, 5, 6].map(f => counts[f]);
+        const mean = faces.reduce((a, b) => a + b, 0) / faces.length;
+        for (const c of faces) {
             expect(Math.abs(c - mean) / mean).toBeLessThan(0.06);
         }
     });
+});
 
-    // Regression: players could sit in the yard for many turns waiting on a six,
-    // which drains the fun. Six carries the highest weight (3 vs 2), so it must
-    // be the single most frequent face — strictly above every other.
-    it('six is the most frequent face (highest weight)', () => {
-        const counts = new Array(7).fill(0);
-        for (let i = 0; i < 120000; i++) {
-            counts[generateDiceRoll()]++;
-        }
-        for (let face = 1; face <= 5; face++) {
-            expect(counts[6]).toBeGreaterThan(counts[face]);
+describe('generateNonSixRoll', () => {
+    it('never returns a six, always in 1..5', () => {
+        for (let i = 0; i < 5000; i++) {
+            const roll = generateNonSixRoll();
+            expect(roll).toBeGreaterThanOrEqual(1);
+            expect(roll).toBeLessThanOrEqual(5);
         }
     });
 });
@@ -355,6 +350,23 @@ describe('rollDiceWithPity', () => {
         }
         expect(rescuedAt).toBeGreaterThanOrEqual(PITY_SIX_FLOOR);
         expect(rescuedAt).toBeLessThanOrEqual(PITY_SIX_CEIL);
+    });
+
+    // Three consecutive sixes forfeit the turn, which players found confusing —
+    // so the third six is never dealt. With two sixes already this turn, a roll
+    // that would be a six (here forced via the pity rule) downgrades to 1..5.
+    it('never returns a six when two sixes already rolled this turn', () => {
+        for (let i = 0; i < 2000; i++) {
+            const roll = rollDiceWithPity(PITY_SIX_CEIL, true, Math.random, 2);
+            expect(roll).not.toBe(6);
+            expect(roll).toBeGreaterThanOrEqual(1);
+            expect(roll).toBeLessThanOrEqual(5);
+        }
+    });
+
+    it('still allows a six on the first and second roll of a turn', () => {
+        expect(rollDiceWithPity(PITY_SIX_CEIL, true, () => 0.999, 0)).toBe(6);
+        expect(rollDiceWithPity(PITY_SIX_CEIL, true, () => 0.999, 1)).toBe(6);
     });
 });
 
