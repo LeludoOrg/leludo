@@ -179,7 +179,10 @@ export class NetClient {
         return new WebSocket(url);
     }
 
-    _open() {
+    /** The ws URL for this session/room, with the current query params. Shared by
+     *  _open() and the throwaway forfeit socket in leaveNow() so the connection
+     *  string stays defined in exactly one place. */
+    _url() {
         const base = resolveServerUrl(this.opts.url);
         const q = new URLSearchParams({
             session: this.opts.session,
@@ -187,7 +190,11 @@ export class NetClient {
             ...this._params,
         });
         if (this._room) q.set('room', this._room); // omitted in public matchmaking
-        const sock = this._makeSocket(`${base}/?${q.toString()}`);
+        return `${base}/?${q.toString()}`;
+    }
+
+    _open() {
+        const sock = this._makeSocket(this._url());
         this.ws = sock;
         // A reconnectNow() (app resume) can replace this.ws while an old socket is
         // still mid-close; ignore events from any socket we've already superseded
@@ -307,6 +314,35 @@ export class NetClient {
         this._stopPing();
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         try { this.ws?.close(); } catch { /* already gone */ }
+    }
+
+    /**
+     * Player confirmed "Leave game": forfeit the seat NOW instead of waiting out
+     * the reconnect grace. The exit dialog suspended our socket, so we can't send
+     * over it — fire a throwaway connection whose only job is to deliver one LEAVE
+     * frame on open and then close. It is deliberately NOT this.ws, so the game's
+     * teardown (which closes this.ws right after) can't race or cancel it. The
+     * server sees a reconnect immediately followed by an explicit leave → it frees
+     * the seat at once. Best-effort: if the throwaway can't reach the server, the
+     * suspended socket's grace still forfeits us, just on the old timeline.
+     */
+    leaveNow() {
+        // Never suspended (e.g. headless exit path): the live socket is still up,
+        // so just tell the server and let the impending close() tear it down.
+        if (!this._suspended && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.send({ t: MSG.LEAVE });
+            return;
+        }
+        try {
+            const sock = this._makeSocket(this._url());
+            const fire = () => {
+                try { sock.send(JSON.stringify({ t: MSG.LEAVE })); } catch { /* ignore */ }
+                try { sock.close(); } catch { /* ignore */ }
+            };
+            sock.addEventListener('open', fire);
+            // A failed dial just closes; the suspended socket's grace covers us.
+            sock.addEventListener('error', () => { try { sock.close(); } catch { /* ignore */ } });
+        } catch { /* server unreachable — grace forfeits us on the old timeline */ }
     }
 
     /** Reopen after suspend() — redial the SAME session/room, which the server

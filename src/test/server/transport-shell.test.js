@@ -80,12 +80,13 @@ describe('engineTransport', () => {
 describe('dispatchIntent', () => {
     it('maps each frame type to the matching engine method', () => {
         const engine = {
-            handleRoll: vi.fn(), handleMove: vi.fn(), handleJoin: vi.fn(),
+            handleRoll: vi.fn(), handleMove: vi.fn(), handleJoin: vi.fn(), handleLeave: vi.fn(),
             handleSetSize: vi.fn(), handleSetSeat: vi.fn(), handleKick: vi.fn(), handleStart: vi.fn(),
             handleProfile: vi.fn(),
         };
         dispatchIntent(engine, 'sid', { t: MSG.ROLL });
         dispatchIntent(engine, 'sid', { t: MSG.MOVE, token: 2 });
+        dispatchIntent(engine, 'sid', { t: MSG.LEAVE });
         dispatchIntent(engine, 'sid', { t: MSG.LOBBY_KICK, seat: 1 });
         const profileMsg = { t: MSG.LOBBY_PROFILE, name: 'Zed', seat: 3 };
         dispatchIntent(engine, 'sid', profileMsg);
@@ -93,6 +94,7 @@ describe('dispatchIntent', () => {
 
         expect(engine.handleRoll).toHaveBeenCalledWith('sid');
         expect(engine.handleMove).toHaveBeenCalledWith('sid', 2);
+        expect(engine.handleLeave).toHaveBeenCalledWith('sid');
         expect(engine.handleKick).toHaveBeenCalledWith('sid', 1);
         expect(engine.handleProfile).toHaveBeenCalledWith('sid', profileMsg);
         expect(engine.handleStart).not.toHaveBeenCalled();

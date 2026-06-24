@@ -764,6 +764,59 @@ describe('RoomEngine — disconnect grace', () => {
     });
 });
 
+// Explicit "Leave game" (the exit-dialog confirm) must forfeit the seat
+// IMMEDIATELY — the old behaviour left the player in the room until the 60s
+// reconnect grace lapsed. The client delivers a LEAVE over a throwaway socket
+// that the server first sees as a reconnect (handleJoin), so these tests model
+// that join-then-leave sequence.
+describe('RoomEngine — explicit leave (immediate forfeit)', () => {
+    it('frees the seat the instant LEAVE arrives, without waiting out the grace window', () => {
+        const { fake, engine, clock } = gameWith(['h', 'g']);
+        engine.handleJoin('g', 'G'); // throwaway reconnect that carries the LEAVE
+        engine.handleLeave('g');     // player confirmed "Leave game"
+
+        // Forfeited NOW — no clock.fireAll(), and nothing left counting down.
+        expect(engine.positions[1]).toBeNull();
+        expect(engine.playerTypes[1]).toBeUndefined();
+        expect(clock.pending()).toBe(0);
+        expect(fake.broadcasts.find(b => b.t === 'dropped')?.seat).toBe(1);
+        // One human left → the game ends straight away (no grace delay).
+        expect(fake.broadcasts.find(b => b.t === 'ended')?.reason).toBe('opponent-left');
+        expect(engine.phase).toBe(PHASES.ENDED);
+    });
+
+    it('leaving on your own turn hands the turn on at once in a 3-player game', () => {
+        const { engine, clock } = gameWith(['h', 'g', 'k']);
+        expect(engine.currentPlayerIndex).toBe(0);
+
+        engine.handleLeave('h'); // host confirms leave while it is their turn
+        expect(engine.positions[0]).toBeNull();        // forfeited immediately
+        expect(engine.phase).not.toBe(PHASES.ENDED);   // two players remain
+        expect(engine.currentPlayerIndex).not.toBe(0); // turn advanced now, not in 60s
+        expect(clock.pending()).toBe(0);
+    });
+
+    it('LEAVE after a real disconnect forfeits now and leaves no orphan grace timer', () => {
+        const { engine, clock } = gameWith(['h', 'g', 'k']);
+        const gSeat = engine._seatOf('g');
+        engine.handleDisconnect('g'); // a link blip arms the 30s forfeit
+        expect(clock.pending()).toBe(1);
+        engine.handleJoin('g', 'G');  // throwaway reconnect cancels the timer
+        expect(clock.pending()).toBe(0);
+
+        engine.handleLeave('g');      // then the explicit confirm forfeits at once
+        expect(engine.playerTypes[gSeat]).toBeUndefined();
+        expect(clock.pending()).toBe(0);
+    });
+
+    it('no-ops for an unknown / already-gone session', () => {
+        const { engine } = gameWith(['h', 'g']);
+        expect(() => engine.handleLeave('nobody')).not.toThrow();
+        expect(engine.positions[0]).not.toBeNull();
+        expect(engine.positions[1]).not.toBeNull();
+    });
+});
+
 describe('RoomEngine — frame sequencing + input hardening', () => {
     it('stamps a strictly increasing seq on every broadcast frame', () => {
         // Clients use seq to drop duplicate/stale frames when a reconnect races

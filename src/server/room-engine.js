@@ -692,6 +692,31 @@ export class RoomEngine {
         this._broadcastState(REASON.DISCONNECT);
     }
 
+    /**
+     * Explicit "Leave game" — the player confirmed the exit dialog instead of
+     * letting it lapse. Forfeit the seat NOW rather than arming/awaiting the
+     * reconnect grace: this produces exactly the end state `_onGraceExpire`
+     * would, just immediately. Safe in any phase and idempotent — a seat that's
+     * already gone (sessionId not found) no-ops, and a finished/spectating seat
+     * has no pawns to strip so it falls through to a plain disconnect.
+     *
+     * NB: the exit dialog suspended the socket, so the client delivers this over
+     * a fresh throwaway connection. That connection is a reconnect server-side
+     * (handleJoin un-dims + clears grace) immediately before this fires — which
+     * is why we re-mark the seat disconnected here before forfeiting.
+     */
+    handleLeave(sessionId) {
+        const seat = this._seatOf(sessionId);
+        if (seat === -1) return;
+        this.seats[seat].connected = false;
+        if (this.phase === PHASES.LOBBY) return this._evictLobbySeat(seat);
+        if (this.phase === PHASES.ENDED) return;
+        if (this._isActiveHuman(seat)) return this._dropSeat(seat);
+        // Finished/spectating: no pawns to forfeit — mirror the disconnect path.
+        this._broadcastState(REASON.DISCONNECT);
+        if (!this.seats.some(s => s.type === 'PLAYER' && s.connected)) this._end(REASON.ABANDONED);
+    }
+
     // ---- seat predicates ----------------------------------------------------
     // The disconnect/turn logic repeatedly scans the four seats for the same few
     // shapes. `_seatsWhere` runs a predicate over every seat index; the named

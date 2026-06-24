@@ -865,9 +865,11 @@ const EXIT_COUNTDOWN_MS = (() => {
  * leave with a countdown. Opening it DROPS our socket (suspend), so to everyone
  * else we're a disconnected player: the game holds on our turn and dims our
  * pawns, exactly as a network drop would. "Stay" reopens the socket (the server
- * reconnects us, cancelling the forfeit); "Leave" — or the countdown expiring —
- * exits to home with the socket still down, so the seat forfeits through the
- * SAME reconnect-grace path, releasing the room once everyone has gone.
+ * reconnects us, cancelling the forfeit). "Leave" forfeits the seat IMMEDIATELY
+ * — it sends an explicit LEAVE (see net.leaveNow) so the room frees us at once
+ * instead of waiting out the reconnect grace. If the countdown simply expires,
+ * the socket stays down and the seat forfeits through the slower grace path —
+ * the same safety net that also catches a hard quit mid-decision.
  */
 function handleOnlineExit(emit) {
     // Safety net: never reachable offline (the board only dispatches this online),
@@ -876,8 +878,8 @@ function handleOnlineExit(emit) {
 
     const overlay = document.getElementById("online-exit-menu");
     const net = onlineNet();
-    // Headless / missing markup: nothing to confirm against, just leave.
-    if (!overlay) { try { net?.suspend(); } catch { /* ignore */ } return exitToHome(emit); }
+    // Headless / missing markup: nothing to confirm against, just leave for good.
+    if (!overlay) { try { net?.leaveNow(); } catch { /* ignore */ } return exitToHome(emit); }
 
     // Behave like a disconnection to the others for as long as we're deciding.
     try { net?.suspend(); } catch { /* ignore */ }
@@ -913,10 +915,13 @@ function handleOnlineExit(emit) {
         _pauseCloseHandler = null;
         try { net?.resume(); } catch { /* ignore */ }
     };
-    // Leave for good: socket stays down, so the seat forfeits via grace server-side.
+    // Leave for good: deliver an explicit forfeit so the seat is freed at once
+    // (leaveNow reopens briefly to send it — the socket was suspended). If that
+    // can't reach the server, the still-down socket forfeits via grace anyway.
     const leave = () => {
         cleanup();
         _pauseCloseHandler = null;
+        try { net?.leaveNow(); } catch { /* best effort — grace still forfeits us */ }
         exitToHome(emit);
     };
 
