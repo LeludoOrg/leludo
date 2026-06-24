@@ -36,6 +36,7 @@ const PRECACHE = [
   'scripts/index.js',
   'scripts/platform/analytics.js',
   'scripts/render/audio.js',
+  'scripts/platform/background-suspend.js',
   'scripts/platform/nav-history.js',
   'scripts/net/net-client.js',
   'scripts/net/native-socket.js',
