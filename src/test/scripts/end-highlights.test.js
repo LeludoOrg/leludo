@@ -23,27 +23,28 @@ function emptyStats(overrides = {}) {
 }
 
 describe('selectHighlights', () => {
-    it('always returns 3-4 cards', () => {
+    it('returns at most 3 cards when every achievement fires', () => {
+        const cards = selectHighlights({
+            stats: emptyStats({
+                playerCaptures: [4, 0, 0, 0], // Knockout king
+                sentHomeCount: [0, 0, 0, 4],  // Rough day
+                distanceTraveled: [10, 90, 30, 5], // Distance run
+            }),
+            seats: seats4(),
+            winnerIndex: 0,
+        });
+        expect(cards.length).toBe(3);
+    });
+
+    // No winner-guarantee or filler cards anymore — the podium owns placements,
+    // so an uneventful game simply yields no highlight cards.
+    it('returns no cards when nothing notable happened', () => {
         const cards = selectHighlights({
             stats: emptyStats(),
             seats: seats4(),
             winnerIndex: 0,
         });
-        expect(cards.length).toBeGreaterThanOrEqual(3);
-        expect(cards.length).toBeLessThanOrEqual(4);
-    });
-
-    it('always includes at least one card about the winner', () => {
-        const cards = selectHighlights({
-            stats: emptyStats({
-                playerCaptures: [0, 5, 0, 0],
-                sentHomeCount: [0, 0, 0, 4],
-                firstFinishTurn: [-1, 12, -1, -1],
-            }),
-            seats: seats4(),
-            winnerIndex: 0,
-        });
-        expect(cards.some(c => c.playerIndex === 0)).toBe(true);
+        expect(cards).toEqual([]);
     });
 
     it('Knockout king triggers at >=2 captures', () => {
@@ -94,7 +95,11 @@ describe('selectHighlights', () => {
         expect(cards.find(c => c.title === 'Knockout king')).toBeFalsy();
     });
 
-    it('Hot dice triggers at >=3-long streak', () => {
+    // The "Hot dice" highlight (stat rendered as repeated dice faces, e.g.
+    // "666") was removed: with the fair-die change a third six is never dealt
+    // and non-six faces never grant a re-roll, so a >=3-long same-face streak
+    // is unreachable and the card was dead. Guard that it never reappears.
+    it('never emits a Hot dice card, even with a long streak in the stats', () => {
         const cards = selectHighlights({
             stats: emptyStats({
                 bestDiceStreak: [
@@ -107,42 +112,20 @@ describe('selectHighlights', () => {
             seats: seats4(),
             winnerIndex: 0,
         });
-        const hd = cards.find(c => c.title === 'Hot dice');
-        expect(hd).toBeTruthy();
-        expect(hd.playerIndex).toBe(1);
-        expect(hd.stat).toBe('666');
-        expect(hd.body).toMatch(/three 6s/);
-        expect(hd.body).toMatch(/turn 14/);
-    });
-
-    it('Hot dice does NOT trigger at 2-long streak', () => {
-        const cards = selectHighlights({
-            stats: emptyStats({
-                bestDiceStreak: [
-                    { value: 5, length: 2, atTurn: 4 },
-                    null,
-                    null,
-                    null,
-                ],
-            }),
-            seats: seats4(),
-            winnerIndex: 0,
-        });
         expect(cards.find(c => c.title === 'Hot dice')).toBeFalsy();
+        expect(cards.every(c => c.type !== 'dice')).toBe(true);
     });
 
-    it('First home picks the earliest finish-turn', () => {
+    // "First home" was removed from the recap; finishing first is now conveyed
+    // by the podium standings, not a duplicate highlight card.
+    it('never emits a First home card', () => {
         const cards = selectHighlights({
-            stats: emptyStats({
-                firstFinishTurn: [25, 9, 14, -1],
-            }),
+            stats: emptyStats({ firstFinishTurn: [25, 9, 14, -1] }),
             seats: seats4(),
             winnerIndex: 1,
         });
-        const fh = cards.find(c => c.title === 'First home');
-        expect(fh).toBeTruthy();
-        expect(fh.playerIndex).toBe(1);
-        expect(fh.stat).toBe('T-9');
+        expect(cards.find(c => c.title === 'First home')).toBeFalsy();
+        expect(cards.every(c => c.type !== 'home')).toBe(true);
     });
 
     it('Rough day triggers at >=3 sent-home', () => {
@@ -166,42 +149,37 @@ describe('selectHighlights', () => {
         expect(cards.find(c => c.title === 'Rough day')).toBeFalsy();
     });
 
-    it('Long road triggers at late home-stretch entry (turn >= 15)', () => {
+    it('Distance run credits the player who clocked the most steps', () => {
+        const cards = selectHighlights({
+            stats: emptyStats({ distanceTraveled: [40, 120, 30, 0] }),
+            seats: seats4(),
+            winnerIndex: 0,
+        });
+        const dl = cards.find(c => c.title === 'Distance run');
+        expect(dl).toBeTruthy();
+        expect(dl.playerIndex).toBe(1);
+        expect(dl.stat).toBe('120');
+    });
+
+    // Long road, Slow start, Champion and the Match-wrap filler were all removed:
+    // the podium now conveys placement/finish, so the recap keeps only the three
+    // achievement cards (Knockout king, Rough day, Distance run).
+    it('never emits the removed highlight cards, even when their stats are present', () => {
         const cards = selectHighlights({
             stats: emptyStats({
-                firstHomeStretchTurn: [10, 11, 28, 12],
-                firstFinishTurn: [10, 11, -1, 12],
+                firstHomeStretchTurn: [10, 11, 28, 12], // would have been Long road
+                pawnsAtBaseAtTurn20: [3, 1, 0, 0],      // would have been Slow start
             }),
-            seats: seats4(),
-            winnerIndex: 0,
-        });
-        const lr = cards.find(c => c.title === 'Long road');
-        expect(lr).toBeTruthy();
-        expect(lr.playerIndex).toBe(2);
-        expect(lr.stat).toBe('T-28');
-    });
-
-    it('Slow start triggers at >=3 base pawns at turn 20', () => {
-        const cards = selectHighlights({
-            stats: emptyStats({ pawnsAtBaseAtTurn20: [3, 1, 0, 0] }),
-            seats: seats4(),
-            winnerIndex: 0,
-        });
-        const ss = cards.find(c => c.title === 'Slow start');
-        expect(ss).toBeTruthy();
-        expect(ss.playerIndex).toBe(0);
-        expect(ss.stat).toBe('T-20');
-    });
-
-    it('falls back to a Champion card when no natural triggers fire', () => {
-        const cards = selectHighlights({
-            stats: emptyStats(),
             seats: seats4(),
             winnerIndex: 2,
         });
-        const champ = cards.find(c => c.title === 'Champion');
-        expect(champ).toBeTruthy();
-        expect(champ.playerIndex).toBe(2);
+        const removed = ['Long road', 'Slow start', 'Champion', 'Match wrap'];
+        for (const title of removed) {
+            expect(cards.find(c => c.title === title)).toBeFalsy();
+        }
+        expect(cards.every(c => c.type !== 'crown')).toBe(true);
+        const allowed = new Set(['Knockout king', 'Rough day', 'Distance run']);
+        expect(cards.every(c => allowed.has(c.title))).toBe(true);
     });
 
     it('uses bot name in the eyebrow string when winner is a bot', () => {
@@ -241,20 +219,17 @@ describe('selectHighlights', () => {
 // Regression: the recap is computed locally on each client from stats keyed by
 // LOCAL board index, which is rotated per-perspective (every client sits
 // bottom-right). selectHighlights breaks ties by index, so two clients picked
-// DIFFERENT physical players for tied awards — the screenshot showed "Hot dice"
-// crediting T3 (turn 44) on one screen but T1 (turn 87) on another, for the same
+// DIFFERENT physical players for tied awards — e.g. two players sent home the
+// same number of times credited different people on each screen for the same
 // game. selectHighlightsBySeat re-keys into stable server-seat order so every
 // client selects the same physical player. Cards carry a LOCAL playerIndex for
-// colouring, but the BODY text (physical name + turn) must match across clients.
+// colouring, but the BODY text (physical name) must match across clients.
 describe('selectHighlightsBySeat — identical recap on every client', () => {
-    // Physical game, indexed by SERVER SEAT: two players tied on a three-six
-    // streak at different turns. Plain index tie-breaking is perspective-
-    // dependent; the stable wrapper must resolve it the same way everywhere.
+    // Physical game, indexed by SERVER SEAT: two players tied on sent-home
+    // count. Plain index tie-breaking is perspective-dependent; the stable
+    // wrapper must resolve it the same way everywhere (lowest server seat).
     const seatNames = ['P0', 'P1', 'P2', 'P3'];
-    const seatStreak = [null,
-        { value: 6, length: 3, atTurn: 87 },
-        null,
-        { value: 6, length: 3, atTurn: 44 }];
+    const seatSentHome = [0, 4, 0, 4]; // seats 1 & 3 tie
     const winnerSeat = 0;
 
     const invert = (localOfSeat) => {
@@ -274,7 +249,7 @@ describe('selectHighlightsBySeat — identical recap on every client', () => {
             return out;
         };
         const stats = emptyStats({
-            bestDiceStreak: place(seatStreak),
+            sentHomeCount: place(seatSentHome),
             turnCount: 90,
         });
         const seats = place(seatNames.map((name) => ({ name, type: 'PLAYER' })));
@@ -287,24 +262,23 @@ describe('selectHighlightsBySeat — identical recap on every client', () => {
         });
     };
 
-    const hotDiceBody = (cards) => cards.find((c) => c.title === 'Hot dice')?.body;
+    const roughDayBody = (cards) => cards.find((c) => c.title === 'Rough day')?.body;
 
     it('credits the same physical player on clients with different seatings', () => {
         // Two clients, two different local↔seat rotations of the same game.
         const clientA = clientRecap([0, 1, 2, 3]);       // identity
         const clientB = clientRecap([2, 3, 0, 1]);       // rotated (different self)
-        const bodyA = hotDiceBody(clientA);
-        const bodyB = hotDiceBody(clientB);
+        const bodyA = roughDayBody(clientA);
+        const bodyB = roughDayBody(clientB);
         expect(bodyA).toBeTruthy();
-        expect(bodyB).toBe(bodyA); // identical text → same physical player + turn
+        expect(bodyB).toBe(bodyA); // identical text → same physical player
         expect(bodyA).toContain('P1');     // lowest server seat wins the tie
-        expect(bodyA).toContain('turn 87');
     });
 
     it('the card colour index is mapped back to each client\'s LOCAL index', () => {
         // P1 sits at local 1 for the identity client, local 3 for the rotated one.
-        const a = clientRecap([0, 1, 2, 3]).find((c) => c.title === 'Hot dice');
-        const b = clientRecap([2, 3, 0, 1]).find((c) => c.title === 'Hot dice');
+        const a = clientRecap([0, 1, 2, 3]).find((c) => c.title === 'Rough day');
+        const b = clientRecap([2, 3, 0, 1]).find((c) => c.title === 'Rough day');
         expect(a.playerIndex).toBe(1); // localOfSeat[1] for identity
         expect(b.playerIndex).toBe(3); // localOfSeat[1] for the rotation
     });
@@ -319,13 +293,13 @@ describe('selectHighlightsBySeat — identical recap on every client', () => {
                 return out;
             };
             return {
-                stats: emptyStats({ bestDiceStreak: place(seatStreak), turnCount: 90 }),
+                stats: emptyStats({ sentHomeCount: place(seatSentHome), turnCount: 90 }),
                 seats: place(seatNames.map((name) => ({ name, type: 'PLAYER' }))),
                 winnerIndex: localOfSeat[winnerSeat],
             };
         };
-        const a = hotDiceBody(selectHighlights(localStats([0, 1, 2, 3])));
-        const b = hotDiceBody(selectHighlights(localStats([2, 3, 0, 1])));
+        const a = roughDayBody(selectHighlights(localStats([0, 1, 2, 3])));
+        const b = roughDayBody(selectHighlights(localStats([2, 3, 0, 1])));
         expect(a).not.toBe(b); // diverges without the seat-space wrapper
     });
 });
