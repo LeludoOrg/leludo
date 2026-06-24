@@ -18,6 +18,7 @@ import {
     findCapturedOpponents,
     rollDiceWithPity,
     applyColorMap, getPlayerTypes,
+    getContainerPath,
     getTokenContainerId,
     getTokenElement,
     getTokenElementId,
@@ -35,8 +36,6 @@ import {
     updateCellStacking,
     pinTokenForCapture,
     animateCaptureToHome,
-    playFinishArrival,
-    playYardLaunch,
     updateDiceFace,
     updateTokenContainer,
     updateTurnCounter,
@@ -746,20 +745,9 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
     const token = getTokenElement(playerIndex, tokenIndex);
     if (!token) return;
     const sourceCell = token.parentElement;
-    const targetCellId = getTokenContainerId(playerIndex, tokenIndex, toPosition);
-    const targetCell = document.getElementById(targetCellId);
+    const fromPosition = state.playerTokenPositions[playerIndex][tokenIndex];
+    const targetCell = document.getElementById(getTokenContainerId(playerIndex, tokenIndex, toPosition));
     if (!targetCell) return;
-
-    // Yard → entry transition fires the launch overlay, same as a normal
-    // 6-roll release. playYardLaunch handles hide/reparent/restack itself,
-    // so short-circuit before the generic teleport path runs. Entry cell is
-    // a safe square so no captures are possible here.
-    const yardCellId = getTokenContainerId(playerIndex, tokenIndex, -1);
-    if (toPosition === 0 && sourceCell && sourceCell.id === yardCellId) {
-        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
-        await playYardLaunch(playerIndex, tokenIndex, targetCellId);
-        return;
-    }
 
     // Capture detection runs BEFORE we move so findCapturedOpponents still
     // sees the doomed opponents at their pre-capture positions. Skips safe
@@ -772,25 +760,33 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
         }
     }
 
-    // Snapshot the pre-teleport rect so the home-arrival overlay can slide
-    // from where the pawn actually was, not from its new finish-slot home.
-    const preTeleportRect = toPosition === 56 ? token.getBoundingClientRect() : null;
-
-    // Drop inline stacking styles so the moved token settles cleanly into
-    // its new cell's flow before updateCellStacking re-applies them.
-    token.style.cssText = '';
-    delete token.dataset.moving;
-    targetCell.appendChild(token);
-
-    emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
-
-    if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
-    updateCellStacking(targetCell);
-
-    if (preTeleportRect) {
-        await playFinishArrival(playerIndex, tokenIndex, preTeleportRect);
+    // Forward teleports walk the player's path cell-by-cell, identical to a
+    // normal turn: updateTokenContainer plays the yard launch, the per-step
+    // glide + step sound, and the finish-cell arrival overlay for us. Backward
+    // / same-cell teleports have no normal-game analog (getContainerPath builds
+    // no reverse path, so the glide would be a no-op), so they snap in place.
+    if (getContainerPath(playerIndex, tokenIndex, fromPosition, toPosition).length > 0) {
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition);
+        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
+    } else {
+        // Drop inline stacking styles so the moved token settles cleanly into
+        // its new cell's flow before updateCellStacking re-applies them.
+        token.style.cssText = '';
+        delete token.dataset.moving;
+        targetCell.appendChild(token);
+        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
+        if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
+        updateCellStacking(targetCell);
     }
 
+    // Mirror selectToken: drive the KO arc from the attacker's penultimate
+    // cell so the punch comes from the direction it actually moved.
+    const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
+    const attack = {
+        attackerPlayerIndex: playerIndex,
+        attackerTokenIndex: tokenIndex,
+        prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
+    };
     for (const [pi, tis] of capturedByPlayer.entries()) {
         for (const ti of tis) {
             emit({
@@ -799,7 +795,7 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
                 capturedPlayerIndex: pi,
                 capturedTokenIndex: ti,
             });
-            await animateCaptureToHome(pi, ti);
+            await animateCaptureToHome(pi, ti, attack);
         }
     }
 }

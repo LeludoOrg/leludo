@@ -36,8 +36,8 @@ test.describe('Pawn launch overlay', () => {
 
         // Fire the same code path normal play uses for yard → entry. We
         // dispatch GOD_TELEPORT so the test stays deterministic (no
-        // dependency on rolling a 6). The launch branch in godTeleport
-        // routes through playYardLaunch, identical to updateTokenContainer.
+        // dependency on rolling a 6). godTeleport routes the move through
+        // updateTokenContainer, whose yard → entry branch calls playYardLaunch.
         await page.evaluate(async () => {
             const mod = await import('/scripts/index.js');
             mod.dispatch({
