@@ -17,6 +17,7 @@ import { installAudioListener } from "./listeners/audio-listener.js";
 import { installBotListener } from "./listeners/bot-listener.js";
 import { installAnalyticsListener } from "./listeners/analytics-listener.js";
 import { initNavHistory } from "./platform/nav-history.js";
+import { initBackgroundSuspend } from "./platform/background-suspend.js";
 import { initAnalytics } from "./platform/analytics.js";
 
 setCommandHandler(commandHandler);
@@ -26,3 +27,4 @@ installBotListener();
 installAnalyticsListener();
 initAnalytics();
 initNavHistory();
+initBackgroundSuspend();

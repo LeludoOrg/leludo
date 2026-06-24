@@ -23,6 +23,11 @@ export function registerScreenHandler(screen, fn) {
     _handlers.set(screen, fn);
 }
 
+/** The screen currently on top of the history stack (a SCREENS value). */
+export function currentScreen() {
+    return _currentScreen;
+}
+
 export function initNavHistory() {
     if (_initialized) return;
     _initialized = true;

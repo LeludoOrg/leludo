@@ -845,15 +845,16 @@ function handleGamePause(emit) {
 }
 
 // How long the exit confirmation stays open before it leaves on its own. Long
-// enough to reconsider, still under the server's reconnect grace so "Stay" can
-// always reel us back in. An `?exitCountdown=` query param (seconds) shortens it
+// enough to reconsider, matched to the server's reconnect grace (60s in prod —
+// see RECONNECT_GRACE_MS in server/cf/room-do.js) so "Stay" can reel us back in
+// for the whole window. An `?exitCountdown=` query param (seconds) shortens it
 // for e2e.
 const EXIT_COUNTDOWN_MS = (() => {
     try {
         const s = Number(new URLSearchParams(location.search).get('exitCountdown'));
         if (Number.isFinite(s) && s > 0) return Math.round(s * 1000);
     } catch { /* non-browser */ }
-    return 30_000;
+    return 60_000;
 })();
 
 /**
