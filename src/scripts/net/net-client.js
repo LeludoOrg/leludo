@@ -35,8 +35,9 @@ export function resolveServerUrl(explicit) {
     // a native build always dials production (there is no dev ws server on a phone).
     if (isCapacitorNative()) return PROD_SERVER_URL;
     const host = location.hostname;
-    // Local dev / e2e: `npm run dev` runs the Node ws server (local-server.mjs)
-    // on 8890 alongside the static site, so online play works out of the box.
+    // Local dev / e2e: `npm run dev` runs the multiplayer Worker under
+    // `wrangler dev` (local workerd) on 8890 alongside the static site, so online
+    // play works out of the box against the real Durable Object runtime.
     if (host === 'localhost' || host === '127.0.0.1') {
         return `ws://${host}:${DEFAULT_PORT}`;
     }

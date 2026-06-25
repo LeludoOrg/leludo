@@ -4,8 +4,8 @@ import { test, expect } from '@playwright/test';
  * Server-authoritative multiplayer — end-to-end across two browser contexts.
  *
  * Drives the dev harness (multiplayer.html) for two isolated clients joining one
- * room against the Node ws server (server/local-server.mjs, started by Playwright
- * with DEV_TEST_HOOKS). Guards three properties that define "the server is the
+ * room against the real CF Worker under `wrangler dev` (started by Playwright with
+ * --var DEV_TEST_HOOKS:1). Guards three properties that define "the server is the
  * single source of truth":
  *   1. Both clients always render the SAME server board (no client-side state).
  *   2. A roll from the player whose turn it is NOT is rejected, state unchanged.

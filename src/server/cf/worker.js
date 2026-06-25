@@ -14,7 +14,8 @@
  *   - public (matchmaking) → the MatchmakingDO singleton
  * Plain HTTP `/health` + `/stats` answer monitoring without touching a room.
  */
-import { json, ADMISSION_NAME, MATCH_NAME, requireWebsocket } from './cf-utils.js';
+import { json, ADMISSION_NAME, MATCH_NAME, requireWebsocket, wsReject } from './cf-utils.js';
+import { MSG, BUSY } from '../../scripts/net/net-protocol.js';
 
 export { LudoRoomDO } from './room-do.js';
 export { AdmissionDO } from './admission-do.js';
@@ -36,6 +37,19 @@ export default {
 
         const notWs = requireWebsocket(request);
         if (notWs) return notWs;
+
+        // Dev/e2e only (DEV_TEST_HOOKS): deterministic BUSY so the client busy
+        // overlay can be exercised without depending on the real admission
+        // counter (which stays parallel-safe in CI). Mirrors the local-server
+        // TEST_HOOKS `__busy__` / forceBusy path. DEV_TEST_HOOKS is set only by
+        // `wrangler dev --var` for dev + Playwright; deployed prod never sets it,
+        // so this is dead code in production.
+        if (env.DEV_TEST_HOOKS) {
+            const roomParam = url.searchParams.get('room') || '';
+            if (roomParam.toLowerCase() === '__busy__' || url.searchParams.get('forceBusy') === '1') {
+                return wsReject({ t: MSG.BUSY, reason: BUSY.CONCURRENT });
+            }
+        }
 
         // Public matchmaking routes to the queue singleton; everything else is a
         // private room keyed by its code (defaulting to "default" so the dev

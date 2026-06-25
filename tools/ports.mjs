@@ -2,9 +2,10 @@
 //
 // - DEV_STATIC: the five-server static site for `npm run dev`.
 // - E2E_STATIC: the headless static server Playwright boots for e2e.
-// - MP_SERVER:  the multiplayer ws backend (server/local-server.mjs). Both the
-//   dev session and the Playwright suite run it with DEV_TEST_HOOKS=1 so the
-//   deterministic seed / grace override / __busy__ room hooks are honoured.
+// - MP_SERVER:  the multiplayer backend — the real CF Worker under `wrangler dev`
+//   (local workerd). Both the dev session and the Playwright suite run it with
+//   --var DEV_TEST_HOOKS:1 so the deterministic seed / grace override / __busy__
+//   room hooks are honoured (gated off in deployed prod).
 //
 // Keeping these here means tools/dev.mjs and playwright.config.js can't drift
 // apart on which port talks to what.

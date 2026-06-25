@@ -10,9 +10,10 @@
  * These enums name every `t` value, every `reason` code, and every
  * rejection/error code that crosses the wire. They are
  * imported by the browser client (net-client, online-game, wc-quick-start), the
- * Node dev server (local-server), the runtime-agnostic engine (room-engine,
- * matchmaker, admission), and the Cloudflare Durable Objects (room-do, match-do,
- * worker). Client and server type these independently, so a bare-string typo
+ * runtime-agnostic engine (room-engine, matchmaker, admission), and the
+ * Cloudflare Durable Objects (room-do, match-do, worker) that back both prod and
+ * dev/e2e (the latter under `wrangler dev`). Client and server type these
+ * independently, so a bare-string typo
  * would silently desync them — import the constants instead of re-typing.
  *
  * Plain ESM with no dependencies, so it loads in the browser, Node and the

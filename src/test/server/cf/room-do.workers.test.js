@@ -326,6 +326,67 @@ describe('LudoRoomDO (workerd)', () => {
         hostBack.close(); guestBack.close();
     });
 
+    // The dev/e2e test hooks (?seed / ?grace / __busy__) are gated behind the
+    // DEV_TEST_HOOKS env var, which only `wrangler dev --var` sets for dev +
+    // Playwright. This suite runs against the PRODUCTION wrangler.toml bindings,
+    // where DEV_TEST_HOOKS is unset — so these assertions lock the guarantee that
+    // a deployed Worker ignores the hooks entirely (the on-path is exercised
+    // end-to-end by the grace/seed/busy e2e specs against wrangler dev). If a
+    // refactor ever made a hook fire unconditionally, prod would leak it and one
+    // of these fails loudly.
+    it('ignores __busy__ in prod bindings (DEV_TEST_HOOKS unset) — seats normally', async () => {
+        const res = await SELF.fetch(
+            'https://leludo.test/?room=__busy__&session=host&name=Host&size=2',
+            { headers: { Upgrade: 'websocket' } },
+        );
+        expect(res.status).toBe(101);
+        const ws = res.webSocket; ws.accept();
+        const msgs = collect(ws);
+        // No DEV_TEST_HOOKS → the magic room is just a normal code: the host seats
+        // instead of getting the deterministic BUSY reject.
+        const seated = await waitFor(msgs, 'seated');
+        expect(seated.isHost).toBe(true);
+        expect(msgs.find((m) => m.t === 'busy')).toBeUndefined();
+        ws.close();
+    });
+
+    it('ignores ?grace in prod bindings — keeps the env RECONNECT_GRACE_MS default', async () => {
+        const res = await SELF.fetch(
+            'https://leludo.test/?room=GRACEOFF&session=host&name=Host&size=2&grace=1234',
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const ws = res.webSocket; ws.accept();
+        await waitFor(collect(ws), 'seated');
+        // ?grace=1234 must NOT override the window without the hook flag: the engine
+        // keeps the wrangler.toml [vars] RECONNECT_GRACE_MS (60000), not 1234.
+        await runInDurableObject(env.ROOM.getByName('GRACEOFF'), async (instance) => {
+            expect(instance.engine.graceMs).toBe(60000);
+        });
+        ws.close();
+    });
+
+    it('ignores ?seed in prod bindings — each room gets its own random dice stream', async () => {
+        // Two rooms both asking for ?seed=7: with the hook OFF each falls back to a
+        // fresh randomSeed(), so their RNG states differ. (Under DEV_TEST_HOOKS they
+        // would be byte-identical — that determinism is what the e2e suite relies on.)
+        const open = async (room) => {
+            const res = await SELF.fetch(
+                `https://leludo.test/?room=${room}&session=host&name=Host&size=2&seed=7`,
+                { headers: { Upgrade: 'websocket' } },
+            );
+            const ws = res.webSocket; ws.accept();
+            await waitFor(collect(ws), 'seated');
+            let rng;
+            await runInDurableObject(env.ROOM.getByName(room), async (instance) => {
+                rng = JSON.stringify(instance.engine.serialize().rng);
+            });
+            ws.close();
+            return rng;
+        };
+        const [a, b] = [await open('SEEDOFFA'), await open('SEEDOFFB')];
+        expect(a).not.toBe(b);
+    });
+
     it('does not resurrect a released room (snapshot dropped on release)', async () => {
         // The flip side of restore: once a room is released (ended / abandoned),
         // _release deletes the snapshot, so a later cold instance must read GONE

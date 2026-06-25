@@ -2,8 +2,10 @@
 
 Status: **deploy shell implemented**. Branch: `feat/multiplayer-plan`. The
 runtime-agnostic engine (`server/room-engine.js`, `server/admission.js`,
-`server/matchmaker.js`) and the local Node `ws` runtime (`server/local-server.mjs`,
-dev + e2e) shipped first; the Cloudflare transport shell now lives in
+`server/matchmaker.js`) shipped first behind a local Node `ws` runtime; that Node
+shell has since been retired — dev + e2e now run the real Cloudflare Worker under
+`wrangler dev` (local workerd) so they match the deployed DO semantics exactly.
+The Cloudflare transport shell lives in
 [`server/cf/`](../server/cf/) (Worker + three Durable Objects) with
 [`wrangler.toml`](../wrangler.toml) and a `deploy-worker` job in
 [release-web.yml](../.github/workflows/release-web.yml). See

@@ -1,10 +1,12 @@
 /**
  * LudoRoomDO — one Durable Object instance per game, the authoritative state.
  *
- * Thin transport shell over the runtime-agnostic RoomEngine (server/room-engine.js).
- * It is the CF twin of the per-room block in server/local-server.mjs: same
- * engine, same `transport` contract ({broadcast, send, release}), same intent
- * switch. All rules live in scripts/* — this only moves bytes and owns sockets.
+ * Thin transport shell over the runtime-agnostic RoomEngine (server/room-engine.js):
+ * it wires the engine's `transport` contract ({broadcast, send, release}) to
+ * Durable Object WebSockets and routes the intent switch (shared via
+ * transport-shell.js). All rules live in scripts/* — this only moves bytes and
+ * owns sockets. It is also the dev + e2e backend (run under `wrangler dev`), so
+ * there is a single multiplayer runtime, not a Node twin that could drift.
  *
  * Memory model — RESIDENT, NOT hibernated (deliberate).
  *   The engine keeps live state (board, RNG stream, bot/grace setTimeout timers)
@@ -50,11 +52,11 @@
  * Room teardown: a released room drops its in-memory engine (see _release). The
  * resident DO is reused across games on the same code, so a lingering ended /
  * abandoned engine would make a fresh join-by-code hit "no open seat" (ROOM_FULL)
- * instead of "no such room" (ROOM_NOT_FOUND). Nulling the engine on release keeps
- * the DO in lockstep with the Node twin, which deletes the room outright.
+ * instead of "no such room" (ROOM_NOT_FOUND). Nulling the engine on release makes
+ * a released room read as GONE — the same outcome as deleting the room outright.
  */
 import { RoomEngine, PHASES } from '../room-engine.js';
-import { clampSeats, numEnv, randomSeed, safeSend, safeParse, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
+import { clampSeats, numEnv, randomSeed, safeSend, safeParse, safeClose, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
 
@@ -98,7 +100,9 @@ export class LudoRoomDO {
             // harness uses, or every game would roll an identical sequence. (On the
             // restore path _restore overwrites the whole engine state, this seed
             // included, via engine.restore — so a resumed game keeps its own stream.)
-            seed: randomSeed(),
+            // cfg.seed is set ONLY under DEV_TEST_HOOKS (?seed=) for deterministic
+            // e2e dice; prod leaves it undefined and falls back to a random seed.
+            seed: cfg.seed ?? randomSeed(),
             transport: engineTransport(this.sockets, () => this.engine, () => this._release()),
             // Survive eviction. A code deploy (or DO migration) shuts the instance
             // down and wipes in-memory state — including the engine (see header) —
@@ -150,11 +154,26 @@ export class LudoRoomDO {
         const notWs = requireWebsocket(request);
         if (notWs) return notWs;
 
-        const p = parseConnParams(new URL(request.url).searchParams);
+        const params = new URL(request.url).searchParams;
+        const p = parseConnParams(params);
         this.roomId = p.room.toUpperCase();
         const sessionId = p.session || `anon-${crypto.randomUUID()}`;
         const { name, color, pool } = p;
         const size = clampSeats(p.sizeRaw, 2);
+
+        // Dev/e2e only (DEV_TEST_HOOKS): honour ?seed (deterministic dice) and
+        // ?grace (shortened/lengthened reconnect window) so the Playwright suite
+        // is repeatable. Mirrors the local-server TEST_HOOKS gate; deployed prod
+        // never sets DEV_TEST_HOOKS, so the live game keeps its random seed +
+        // env RECONNECT_GRACE_MS. ?grace overrides this.graceMs (used by both the
+        // engine's reconnect-forfeit and the leak-guard alarm); ?seed flows into
+        // _ensureEngine. Both apply only on first create — a warm/restored engine
+        // already owns its dice stream.
+        let devSeed;
+        if (this.env.DEV_TEST_HOOKS) {
+            if (params.get('grace') != null) this.graceMs = Number(params.get('grace'));
+            if (params.get('seed') != null) devSeed = Number(params.get('seed'));
+        }
 
         // Cold instance after an eviction (a code deploy / DO migration shuts the
         // DO down — see header)? Rebuild the live game from its persisted snapshot
@@ -188,7 +207,7 @@ export class LudoRoomDO {
             this.released = false;
         }
 
-        this._ensureEngine({ size, pool });
+        this._ensureEngine({ size, pool, seed: devSeed });
 
         const pair = new WebSocketPair();
         const client = pair[0];
@@ -219,6 +238,14 @@ export class LudoRoomDO {
     }
 
     _onClose(sessionId, ws) {
+        // Complete the closing handshake. workerd does NOT auto-reply to a peer's
+        // close frame the way the Node `ws` library did, so a client that closes
+        // GRACEFULLY (e.g. the e2e drop, or a real suspend/resume) would otherwise
+        // hang in readyState CLOSING — its `close` event never fires, so the
+        // browser net-client never starts its reconnect loop. Reciprocating here
+        // lands the client in CLOSED so reconnect kicks in. Best-effort + idempotent
+        // (this fires for the error path too, where the socket may already be gone).
+        safeClose(ws);
         if (this.sockets.remove(sessionId, ws)) this.engine?.handleDisconnect(sessionId);
         // Last socket gone → arm the leak-guard alarm (see header). If a fully
         // empty room hasn't already ended+released synchronously, the alarm
