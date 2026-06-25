@@ -109,20 +109,24 @@ GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
   every push to `main`). Always: beta MP Worker (`leludo-mp-beta`) +
   Cloudflare Pages `leludo-beta` (beta.leludo.org). On a **manual
   dispatch only** it ALSO builds a beta-channel AAB (`MP_CHANNEL=beta`:
-  `versionCode = 1e9 + base`, beta backend baked in) and uploads it to
-  the Play **internal** track. A routine push keeps beta.leludo.org
-  fresh but never touches Play. Does NOT tag or cut a GH release.
+  banded `versionCode`, beta backend baked in) and uploads it to the Play
+  **internal** track. A routine push keeps beta.leludo.org fresh but
+  never touches Play. Does NOT tag or cut a GH release.
 
-**Per-track Android, no Play Console promote.** Internal (beta) and
-production are SEPARATE artifacts — different backend (beta vs prod
-Worker, baked at build time via `MP_CHANNEL`; see `BUILD_CHANNEL` in
+**Per-track Android, no Play Console promote.** Each channel is a SEPARATE
+artifact — different backend (prod vs the isolated beta Worker, baked at
+build time via `MP_CHANNEL`; see `BUILD_CHANNEL` in
 [scripts/net/net-client.js](src/scripts/net/net-client.js) +
-[tools/build-www.mjs](tools/build-www.mjs)) and different `versionCode`
-band ([tools/sync-android-version.mjs](tools/sync-android-version.mjs)).
-The 1e9 beta band keeps the internal build's code ABOVE every prod code
-(prod base maxes at 999 999, Play's ceiling is 2.1e9), so a tester is
-never auto-pulled off the beta channel by a prod release. `versionName`
-is identical across channels — players only ever see `0.X.Y`.
+[tools/build-www.mjs](tools/build-www.mjs)) and a different `versionCode`
+band. The channel registry is [tools/release-channels.mjs](tools/release-channels.mjs):
+`prod` (band 0, production track) is lowest, and test channels sit above it
+ordered by how internal they are — `open` (1), `closed` (2), `beta`/internal
+(3) — spaced `1e8` apart (room for 21 channels under Play's 2.1e9 cap). Play
+serves a multi-track user the HIGHEST code, so this keeps every test build
+above prod (a tester is never pulled onto the public build) and keeps the
+most-internal track on top. `versionName` is identical across channels —
+players only ever see `0.X.Y`. Adding a channel = a registry entry (next band
+up, ordered by internalness) + a CI job; never renumber an existing band.
 
 `release.yml` creates the tag idempotently and uses
 `softprops/action-gh-release@v2`. Typical flow: bump `VERSION` + add a
@@ -305,7 +309,7 @@ Single source of truth: `VERSION` constant in [version.js](version.js). Consumed
 
 Edit `version.js`, and keep `package.json`'s `version` in lockstep — the version-sync test enforces equality. No other steps for web. For Android, `npm run android:prepare` mirrors it into `build.gradle` via [tools/sync-android-version.mjs](tools/sync-android-version.mjs).
 
-**`versionCode` is channel-banded** (`MP_CHANNEL` env): `prod → base` (`major*10000+minor*100+patch`), `beta → 1e9 + base`. `versionName` is the VERSION verbatim and identical across channels — that is all players see. The band keeps the Play **internal** (beta) build's code permanently above the **production** code so dual-eligible testers stay on the beta channel; see CI / `computeVersionCode`. Don't widen the band past Play's 2.1e9 ceiling.
+**`versionCode` is channel-banded** (`MP_CHANNEL` env): `band * 1e8 + base` where `base = major*10000+minor*100+patch` and the band comes from the [tools/release-channels.mjs](tools/release-channels.mjs) registry (`prod` 0, `open` 1, `closed` 2, `beta`/internal 3). `versionName` is the VERSION verbatim and identical across channels — that is all players see. Production is lowest and every test channel sits above it (Play serves a multi-track user the highest code, so testers never get pulled onto prod). See CI / `computeVersionCode`. Don't renumber existing bands or exceed band 20 (Play's 2.1e9 ceiling).
 
 ## Changelog
 
@@ -341,7 +345,7 @@ Capacitor's `webDir` is `www/`, which is **built** from `src/` by `tools/build-w
 Scripts in `package.json`:
 
 - `npm run android:prepare` — version sync → build:www → `cap sync android` (prod channel: prod backend, `versionCode = base`).
-- `npm run android:prepare:beta` / `npm run android:run:beta` — same, with `MP_CHANNEL=beta` (beta backend baked in, `versionCode = 1e9 + base`). Use for an on-device internal/beta build; CI does this in `release-beta.yml`.
+- `npm run android:prepare:beta` / `npm run android:run:beta` — same, with `MP_CHANNEL=beta` (beta backend baked in, banded internal-track `versionCode`). Use for an on-device internal/beta build; CI does this in `release-beta.yml`.
 - `npm run android:open` / `npm run android:run` — prepare + open/run in Android Studio.
 
 Anything that works in the browser ships to Android as long as `npm run android:prepare` runs first.

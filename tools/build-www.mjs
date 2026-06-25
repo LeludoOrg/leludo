@@ -24,21 +24,22 @@ import { rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isValidChannel, CHANNEL_NAMES } from './release-channels.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const src = resolve(root, 'src');
 const www = resolve(root, 'www');
 
-// Release channel for this build. Stamped into the app bundle so the native
-// APK dials the matching multiplayer backend (BUILD_CHANNEL in
-// scripts/net/net-client.js): the beta-channel build (Play internal track) →
-// beta Worker, the prod build → prod Worker. 'prod' is the default; only the
-// beta CI path / `npm run build:www:beta` sets MP_CHANNEL=beta. Pairs with the
-// versionCode band in tools/sync-android-version.mjs.
+// Release channel for this build (registry: tools/release-channels.mjs).
+// Stamped into the app bundle so the native APK dials the matching multiplayer
+// backend (BUILD_CHANNEL in scripts/net/net-client.js): a test-channel build →
+// the isolated beta Worker, the prod build → the prod Worker. 'prod' is the
+// default; the test CI paths / `npm run build:www:beta` set MP_CHANNEL. Pairs
+// with the versionCode band in tools/sync-android-version.mjs.
 const MP_CHANNEL = process.env.MP_CHANNEL || 'prod';
-if (MP_CHANNEL !== 'prod' && MP_CHANNEL !== 'beta') {
-  throw new Error(`build-www: MP_CHANNEL must be 'prod' or 'beta', got '${MP_CHANNEL}'`);
+if (!isValidChannel(MP_CHANNEL)) {
+  throw new Error(`build-www: MP_CHANNEL must be one of ${CHANNEL_NAMES.join(', ')}, got '${MP_CHANNEL}'`);
 }
 
 // The ES-module entry points pulled in by index.html, in load order. Bundled

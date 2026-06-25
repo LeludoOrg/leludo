@@ -19,9 +19,10 @@ name: Release (Beta)
 # own Durable Objects + admission counters, never production's.
 #
 # Android internal track: on a MANUAL dispatch only, build-android-beta
-# builds a beta-channel AAB (MP_CHANNEL=beta → banded versionCode
-# 1e9+base + beta backend baked in) and publish-play-internal uploads it
-# to the Play INTERNAL track. So a beta cut ships web + worker + the
+# builds a beta-channel AAB (MP_CHANNEL=beta → banded versionCode +
+# beta backend baked in; see tools/release-channels.mjs) and
+# publish-play-internal uploads it to the Play INTERNAL track. So a
+# beta cut ships web + worker + the
 # internal APK together. A routine push to main NEVER touches Play —
 # Play rejects a re-uploaded versionCode, and bumping VERSION is what
 # makes a fresh internal build (do that to re-cut). The production track
@@ -232,8 +233,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # MP_CHANNEL=beta → versionCode = 1e9 + base (tools/sync-android-version.mjs)
-      # + beta backend baked into the bundle (tools/build-www.mjs → net-client.js).
+      # MP_CHANNEL=beta → banded internal-track versionCode (tools/release-channels.mjs
+      # via sync-android-version.mjs) + beta backend baked into the bundle
+      # (tools/build-www.mjs → net-client.js).
       - name: Prepare Android (beta channel)
         env:
           MP_CHANNEL: beta
