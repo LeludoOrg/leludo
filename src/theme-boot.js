@@ -4,8 +4,7 @@
  * <script> in <head> so the resolved theme class lands on <html> before first
  * paint, preventing a light-before-dark flash on reload.
  *
- * Service-worker precached (PRECACHE in sw.js) and shipped by build-www.mjs, so
- * the extra request is served from cache after the first load.
+ * Shipped to www/ by build-www.mjs and loaded by all three HTML pages.
  */
 (function () {
     var stored = localStorage.getItem('theme') || 'system';

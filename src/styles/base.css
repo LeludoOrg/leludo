@@ -2,8 +2,8 @@
    @import from fonts.googleapis.com, which forced two cross-origin
    handshakes (googleapis -> gstatic) on every cold load and was invisible
    to the HTML preload scanner. These woff2 files live under assets/fonts/,
-   are precached by the service worker, and the home-screen faces are
-   <link rel="preload">ed in index.html. DM Sans and JetBrains Mono are
+   and the home-screen faces are <link rel="preload">ed in index.html. DM
+   Sans and JetBrains Mono are
    variable fonts — one file covers the whole weight range. */
 @font-face {
     font-family: "Instrument Serif";

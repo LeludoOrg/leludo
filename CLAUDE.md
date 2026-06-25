@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Ludo
 
-Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, no Tailwind — ES modules and stylesheets load directly via `<script type="module">` / `<link rel="stylesheet">`. **All app code lives under `src/`.** `src/` is also the **web root** — the dev server serves `src/` (NOT the repo root), so the browser-loaded files (HTML, `sw.js`, `styles/`, `components/`, `scripts/`, `assets/`, …) sit directly in `src/`. The backend (`src/server/`) and tests (`src/test/`) live there too — not web-linked, but co-located so their relative imports into `src/scripts/` (e.g. `server/cf/room-do.js` → `../../scripts/net-protocol.js`) resolve. `tools/` stays at the repo root (build infra that resolves repo-root paths). Production (`leludo.org`) serves `gh-pages`, which is `src/`'s shipped files flattened into `www/` by `tools/build-www.mjs`.
+Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No Tailwind, and no bundler in dev — ES modules and stylesheets load directly via `<script type="module">` / `<link rel="stylesheet">`; the production build bundles them (see Cache Busting). **All app code lives under `src/`.** `src/` is also the **web root** — the dev server serves `src/` (NOT the repo root), so the browser-loaded files (HTML, `styles/`, `components/`, `scripts/`, `assets/`, …) sit directly in `src/`. The backend (`src/server/`) and tests (`src/test/`) live there too — not web-linked, but co-located so their relative imports into `src/scripts/` (e.g. `server/cf/room-do.js` → `../../scripts/net-protocol.js`) resolve. `tools/` stays at the repo root (build infra that resolves repo-root paths). Production (`leludo.org`) is served by Cloudflare Pages, built from `src/`'s shipped files flattened into `www/` by `tools/build-www.mjs`.
 
 ## Repo Layout
 
@@ -12,7 +12,7 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 /
 ├── src/                 ← ALL APP CODE + THE WEB ROOT (dev server serves this; shipped files flattened to www/ for prod)
 │   ├── index.html, changelog.html, privacy.html, multiplayer.html
-│   ├── manifest.json, CNAME, .nojekyll, sw.js, version.js, theme-boot.js
+│   ├── manifest.json, version.js, theme-boot.js
 │   ├── changelog.css        shared chrome for changelog.html + privacy.html
 │   ├── styles/base.css      design tokens + reset + layout primitives + player color helpers
 │   ├── components/          Web Components (wc-*.js) + per-component CSS (wc-*.css)
@@ -31,10 +31,10 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No bundler, n
 └── android/             Capacitor Android project
 ```
 
-Paths in the sections below that name `index.html`, `sw.js`, `styles/`,
+Paths in the sections below that name `index.html`, `styles/`,
 `components/`, `scripts/`, `assets/`, `server/`, `test/`, `version.js`,
 `theme-boot.js`, `manifest.json`, `changelog.css`, or the HTML pages are all
-**relative to `src/`** (e.g. `sw.js` → `src/sw.js`, `components/wc-board.js` →
+**relative to `src/`** (e.g. `components/wc-board.js` →
 `src/components/wc-board.js`, `server/cf/worker.js` → `src/server/cf/worker.js`).
 `tools/` paths stay at the repo root.
 
@@ -46,7 +46,7 @@ Paths in the sections below that name `index.html`, `sw.js`, `styles/`,
 - `npm run test:run` — single-shot vitest run (CI mode, exits when done).
 - `npm run test:coverage` — coverage report (v8 provider) into `.local/coverage/`.
 - `npm run test:e2e` — Playwright smoke tests in [test/e2e/](test/e2e/). Spawns a static server via [tools/serve-static.mjs](tools/serve-static.mjs) on port 8889. Use `npm run test:e2e:ui` for the inspector.
-- `npm run cache-bust` — see Cache Busting below.
+- `npm run build:www` — assemble the production `www/` bundle (content-hashed JS/CSS); see Cache Busting below.
 
 ## Don't repeat yourself — dedupe aggressively
 
@@ -69,7 +69,8 @@ Rules:
   copies, and don't silently collapse them either.
 - Shared pure constants/helpers go in the module they most belong to (or
   a small dedicated `*-shape.js` / `*-constants.js`); import via the
-  relative path. Add new shared files to `PRECACHE` in [sw.js](sw.js).
+  relative path. The production bundler picks them up automatically once
+  something in the module graph imports them.
 
 ## Bug-fix discipline
 
@@ -96,10 +97,10 @@ GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
 
 - `ci.yml` — runs on PRs to `main` and pushes to other branches.
   Three jobs: vitest, Playwright E2E, and a `www/` build smoke test.
-- `release-web.yml` — web release pipeline (test + build + gh-pages
-  publish + tag + GH release with web zip). Manual trigger only
-  (`workflow_dispatch`). Owns the `gh-pages` push (see Web Deployment
-  below).
+- `release-web.yml` — web release pipeline (test + build + Cloudflare
+  Pages deploy + tag + GH release with web zip). Manual trigger only
+  (`workflow_dispatch`). Owns the `leludo` Pages deploy (see Web
+  Deployment below).
 - `release-android.yml` — Android release pipeline (test + build APK
   + AAB + Play Store publish + tag + GH release with apk/aab).
   Manual trigger only (`workflow_dispatch`).
@@ -162,9 +163,8 @@ Hand-authored CSS, organized as one global stylesheet + one file per component:
 `index.html` links the global stylesheet plus every component stylesheet directly (no bundler). When adding a new component:
 
 1. Create `components/wc-foo.js` + `components/wc-foo.css`.
-2. Link the CSS from `index.html`.
-3. Add both files to the `PRECACHE` array in [sw.js](sw.js).
-4. If the component ships to the APK, add nothing extra — `tools/build-www.mjs` copies the whole `components/` tree.
+2. Export the JS from `components/index.js` and link the CSS from `index.html`.
+3. That's it — `tools/build-www.mjs` folds the JS into `app.<hash>.js` and the CSS into the inlined critical set or `game.<hash>.css`. Nothing extra for the APK; the same `www/` bundle ships there.
 
 ### Design tokens
 
@@ -233,17 +233,21 @@ listener saves to `ludo-save` just like a real move.
 
 Example: `http://localhost:8888/?positions=50,,,,,,,,,,,,,,,&player=0` puts P0's first token one step from finish and gives P0 the opening turn. Preserve this behavior when refactoring game start.
 
-## Web Deployment (GitHub Pages)
+## Web Deployment (Cloudflare Pages)
 
-`leludo.org` is served from the `gh-pages` branch, NOT from the repo
-root. The branch is rebuilt and force-pushed by the `publish-pages`
+`leludo.org` is served by the Cloudflare Pages project `leludo`, NOT
+from a git branch. It is rebuilt and deployed by the `publish-pages`
 job in [.github/workflows/release-web.yml](.github/workflows/release-web.yml),
 which runs as part of the web release pipeline (`workflow_dispatch`):
 
 1. `npm ci`
-2. `node tools/build-www.mjs` → assembles `www/` (HTML + CSS + JS +
-   service worker + assets + `CNAME` + `.nojekyll`).
-3. `peaceiris/actions-gh-pages@v4` publishes `./www` to `gh-pages`.
+2. `node tools/build-www.mjs` → assembles `www/` (the HTML pages +
+   inlined critical CSS + the content-hashed `app.<hash>.js` /
+   `analytics.<hash>.js` / `game.<hash>.css` bundles + `styles/base.css`
+   for the changelog/privacy pages + assets).
+3. `cloudflare/wrangler-action@v3` runs `wrangler pages deploy www
+   --project-name=leludo --branch=main` → a production deploy serving
+   the `leludo.org` custom domain.
 
 Web release is decoupled from Android — running `release-web.yml`
 publishes `leludo.org` and creates/updates the GH release with the
@@ -258,41 +262,28 @@ project (`android/`), the dev-only sources (`dev-assets/`), and the
 `package*.json` files stay invisible to clients of `leludo.org`. They
 remain visible on the GitHub repo page; that's intentional.
 
-**One-time repo setup**: Settings → Pages → Source = `gh-pages` branch
-(root). After the first workflow run lands, set this and the custom
-domain (`leludo.org`) will pick up the deployed branch.
-
-When adding a new shipping file (e.g. another CSS file, font, sound),
-add it to `SHIPPED` in [tools/build-www.mjs](tools/build-www.mjs) AND
-to `PRECACHE` in [sw.js](sw.js). The deploy workflow copies whatever
-`build-www.mjs` emits — nothing else.
+When adding a new shipping file (e.g. another font or sound), add it
+to `SHIPPED` in [tools/build-www.mjs](tools/build-www.mjs). The deploy
+workflow ships whatever `build-www.mjs` emits — nothing else.
 
 ## Cache Busting
 
-A module service worker at [sw.js](sw.js) owns cache invalidation. JS filenames are canonical (`name.js`) — no content hashes.
+Production assets are **content-hashed** by [tools/build-www.mjs](tools/build-www.mjs). The JS ships as `app.<hash>.js`, the changelog/privacy analytics graph as `analytics.<hash>.js`, and the non-critical CSS as `game.<hash>.css`. `index.html` (and the two aux pages) reference the hashed names, so any content change yields a new filename browsers fetch immediately — while unchanged bundles stay cached indefinitely. The HTML pages themselves aren't hashed (their names are public URLs); they ride Cloudflare's normal ETag / short-max-age revalidation, so a new deploy's fresh hashed references take effect on the next navigation. No service worker, no manual cache key.
 
-How it works:
-- SW imports `VERSION` from [version.js](version.js); cache name = `leludo-${VERSION}`.
-- On install, it precaches the shell (HTML + CSS + every `components/*.js` and `scripts/*.js` + critical assets).
-- On activate, old caches not matching the current name are deleted; `clients.claim()` takes over open tabs.
-- Fetch strategy: network-first for HTML navigations (fresh shell on release), cache-first for everything else.
-- Registered as a module SW (`type: 'module'`), so browsers diff `sw.js` AND its static imports — bumping `version.js` triggers an update.
-- Registration is gated off on `localhost` / `127.0.0.1` to keep `npm run dev` simple.
+Dev (`npm run dev`) serves raw `src/` modules with no hashing and no bundle — the optimization is production-only.
 
-**Release ritual: bump `VERSION` in [version.js](version.js). That's it.** Browsers detect the SW dependency change on next navigation, install the new SW, purge the old cache, and serve fresh assets.
-
-If you add a new top-level file that must be cached offline, also add it to the `PRECACHE` array in [sw.js](sw.js).
+> **History:** a module service worker (`sw.js`) owned cache invalidation through v0.28.3. It was removed in v0.28.4 — the prod build already emits a single hashed bundle, so the SW only duplicated what content hashing does (and added an offline shell the Android app doesn't use and the web didn't need). `index.html` carries a one-time teardown snippet that unregisters any lingering SW and drops its `leludo-*` caches on returning visitors; delete it once traffic has cycled past the SW era.
 
 ## Versioning
 
-Single source of truth: `VERSION` constant in [version.js](version.js). Consumed by `wc-quick-start` (landing footer), `wc-settings` (about dialog), and `sw.js` (cache name). The components barrel re-exports it.
+Single source of truth: `VERSION` constant in [version.js](version.js). Consumed by `wc-quick-start` (landing footer), `wc-settings` (about dialog), `scripts/platform/analytics.js` (telemetry `app_version`), and the Android version sync. The components barrel re-exports it.
 
-**Bump on every change that lands on `main`** — user-visible polish, gameplay tweaks, AND internal refactors / cleanups / dependency bumps. The service worker uses `VERSION` as its cache key, so any shipped JS/CSS/HTML diff needs a bump or returning users keep stale cached assets. Semver-ish:
+**Bump on every change that lands on `main`** — user-visible polish, gameplay tweaks, AND internal refactors / cleanups / dependency bumps. It drives the about-dialog/footer string, analytics `app_version`, the Android `versionName`/`versionCode`, and keeps the changelog honest. (Asset cache busting no longer depends on it — that rides on content-hashed filenames; see Cache Busting.) Semver-ish:
 - Patch (`0.X.Y+1`) — bug fix, polish, copy tweak, internal cleanup, refactor, dead-code removal
 - Minor (`0.X+1.0`) — new feature, AI/UX change, gameplay logic
 - Major (`X+1.0.0`) — breaking save format, full rewrite
 
-Edit `version.js`. No other steps for web. For Android, `npm run android:prepare` mirrors it into `build.gradle` via [tools/sync-android-version.mjs](tools/sync-android-version.mjs).
+Edit `version.js`, and keep `package.json`'s `version` in lockstep — the version-sync test enforces equality. No other steps for web. For Android, `npm run android:prepare` mirrors it into `build.gradle` via [tools/sync-android-version.mjs](tools/sync-android-version.mjs).
 
 ## Changelog
 
@@ -314,7 +305,7 @@ Aim for ≤450 to leave headroom; the script enforces 500.
 
 ## Android (Capacitor)
 
-Capacitor's `webDir` is `www/`, which is **built** from `src/` by `tools/build-www.mjs` (copies the three HTMLs + `changelog.css` + `manifest.json` + `sw.js` + `version.js` + `theme-boot.js` + the `styles/`, `components/`, `scripts/`, and `assets/` trees + `CNAME` + `.nojekyll`). `www/` is gitignored.
+Capacitor's `webDir` is `www/`, which is **built** from `src/` by `tools/build-www.mjs` (the three HTMLs + `changelog.css` + `manifest.json` + `version.js` + `theme-boot.js` + the content-hashed `app` / `analytics` / `game` bundles + inlined critical CSS + the `styles/` and `assets/` trees). The raw `components/` and `scripts/` source trees are **not** copied — only the bundles ship, so the APK carries no dead unminified source. `www/` is gitignored.
 
 Scripts in `package.json`:
 

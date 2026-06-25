@@ -1,21 +1,27 @@
 #!/usr/bin/env node
-// Populate www/ with files Capacitor should ship to the APK + GitHub Pages.
-// Skips tests, tools, source design assets, etc.
+// Populate www/ with the files Capacitor ships to the APK + Cloudflare Pages
+// serves at leludo.org. Skips tests, tools, source design assets, etc.
 //
-// www/ is also a PRODUCTION-ONLY optimization pass. Dev serves src/ as raw
-// ES modules + individual <link> stylesheets (localhost is fast, zero build).
-// The deployed build instead ships:
-//   - app.js   — the whole ES-module graph bundled + minified (one request)
-//   - game.css — every non-critical stylesheet concatenated, loaded
-//                non-render-blocking
-//   - inline <style> in index.html — the critical CSS the landing needs,
-//                so first paint costs zero stylesheet round trips
-// index.html and sw.js are rewritten here to point at those artifacts. The
-// per-module source files are still copied into www/ (other tooling + the CI
-// smoke test expect them) but are no longer referenced or precached.
+// www/ is a PRODUCTION-ONLY optimization pass. Dev serves src/ as raw ES
+// modules + individual <link> stylesheets (localhost is fast, zero build).
+// The deployed build instead ships content-hashed bundles:
+//   - app.<hash>.js      — the whole index.html ES-module graph, bundled +
+//                          minified (one request)
+//   - analytics.<hash>.js — the tiny analytics module graph the changelog /
+//                          privacy pages load on their own (no app bundle)
+//   - game.<hash>.css    — every non-critical stylesheet, concatenated and
+//                          loaded non-render-blocking
+//   - inline <style> in index.html — the critical CSS the landing needs, so
+//                          first paint costs zero stylesheet round trips
+// The hash in each filename IS the cache-busting mechanism: a content change
+// yields a new name, so browsers fetch it immediately while unchanged bundles
+// stay cached. index.html + the two aux pages are rewritten here to point at
+// the hashed artifacts. The per-component source trees are NOT shipped — only
+// the bundles run in prod.
 
 import { build as esbuild, transform as esbuildTransform } from 'esbuild';
 import { rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,9 +31,13 @@ const src = resolve(root, 'src');
 const www = resolve(root, 'www');
 
 // The ES-module entry points pulled in by index.html, in load order. Bundled
-// into a single app.js so the cold load is one request + one parse instead of
-// ~50 module fetches discovered level by level.
+// into a single app.<hash>.js so the cold load is one request + one parse
+// instead of ~50 module fetches discovered level by level.
 const MODULE_ENTRIES = ['components/index.js', 'scripts/index.js'];
+
+// The changelog + privacy pages don't load the app bundle — they only fire
+// analytics. Bundled standalone so those pages can drop the raw scripts/ tree.
+const ANALYTICS_ENTRY = 'scripts/platform/analytics.js';
 
 // Stylesheets inlined into <head> for instant first paint. The landing screen
 // (wc-quick-start) needs only the design tokens/layout in base.css plus its
@@ -35,35 +45,57 @@ const MODULE_ENTRIES = ['components/index.js', 'scripts/index.js'];
 // web-root-relative and must match the hrefs in index.html.
 const CRITICAL_CSS = ['styles/base.css', 'components/wc-quick-start.css'];
 
+// Files/dirs copied verbatim into www/. The source module trees (components/,
+// scripts/) are deliberately absent — everything runnable is bundled above, so
+// shipping the raw sources would only bloat the APK with dead, unminified code.
+// styles/ stays because base.css is linked directly by the changelog/privacy
+// pages (those aren't bundled).
 const SHIPPED = [
   'index.html',
   'changelog.html',
   'privacy.html',
   'changelog.css',
   'manifest.json',
-  'sw.js',
   'version.js',
   'theme-boot.js',
   'styles',
-  'components',
-  'scripts',
   'assets',
 ];
 
-// Bundle + minify the whole static-import graph into www/app.js. A tiny
-// synthetic entry imports both barrels in their original load order so
-// custom-element registration and startup side effects fire as before.
-async function bundleJs() {
-  const contents = MODULE_ENTRIES.map((e) => `import './${e}';`).join('\n');
-  await esbuild({
-    stdin: { contents, resolveDir: src, loader: 'js', sourcefile: 'app-entry.js' },
+const hash8 = (data) => createHash('sha256').update(data).digest('hex').slice(0, 8);
+
+// Bundle + minify an ES-module graph into a content-hashed file in www/.
+// Returns the hashed filename so callers can rewrite the HTML references.
+async function bundleEsm({ stdin, entryPoints }, prefix) {
+  const result = await esbuild({
+    ...(stdin ? { stdin } : { entryPoints }),
     bundle: true,
     minify: true,
     format: 'esm',
     target: ['es2020'],
-    outfile: resolve(www, 'app.js'),
+    write: false,
     legalComments: 'none',
   });
+  const code = result.outputFiles[0].contents;
+  const name = `${prefix}.${hash8(code)}.js`;
+  await writeFile(resolve(www, name), code);
+  return name;
+}
+
+// app.<hash>.js — the whole index.html graph. A tiny synthetic entry imports
+// both barrels in their original load order so custom-element registration and
+// startup side effects fire as before.
+function bundleApp() {
+  const contents = MODULE_ENTRIES.map((e) => `import './${e}';`).join('\n');
+  return bundleEsm(
+    { stdin: { contents, resolveDir: src, loader: 'js', sourcefile: 'app-entry.js' } },
+    'app',
+  );
+}
+
+// analytics.<hash>.js — the standalone bundle the changelog/privacy pages load.
+function bundleAnalytics() {
+  return bundleEsm({ entryPoints: [resolve(src, ANALYTICS_ENTRY)] }, 'analytics');
 }
 
 // Inlined/concatenated CSS lives at the document root (/), so the font
@@ -83,9 +115,10 @@ async function minifyCss(css) {
   return out.code.trim();
 }
 
-// Rewrite www/index.html: inline critical CSS, fold the rest into a
-// non-blocking game.css, and collapse the two module scripts into app.js.
-async function transformIndexHtml() {
+// Rewrite www/index.html: inline critical CSS, fold the rest into a hashed
+// non-blocking game.<hash>.css, and collapse the two module scripts into the
+// hashed app bundle.
+async function transformIndexHtml(appFile) {
   const indexPath = resolve(www, 'index.html');
   let html = await readFile(indexPath, 'utf8');
 
@@ -98,15 +131,16 @@ async function transformIndexHtml() {
 
   const criticalCss = await minifyCss(await readCssJoined(critical));
   const gameCss = await minifyCss(await readCssJoined(game));
-  await writeFile(resolve(www, 'game.css'), gameCss);
+  const gameFile = `game.${hash8(gameCss)}.css`;
+  await writeFile(resolve(www, gameFile), gameCss);
 
-  // 1) Collapse the two module entry scripts into the single bundle.
+  // 1) Collapse the two module entry scripts into the single hashed bundle.
   const scriptRe =
     /[ \t]*<script type="module" src="components\/index\.js"><\/script>\n[ \t]*<script type="module" src="scripts\/index\.js"><\/script>\n/;
   if (!scriptRe.test(html)) {
     throw new Error('build-www: module entry <script> tags not found in index.html');
   }
-  html = html.replace(scriptRe, '    <script type="module" src="app.js"></script>\n');
+  html = html.replace(scriptRe, `    <script type="module" src="${appFile}"></script>\n`);
 
   // 2) Drop every app-shell stylesheet <link> — now inlined or in game.css.
   html = html.replace(
@@ -120,8 +154,8 @@ async function transformIndexHtml() {
   const headBlock =
     `    <!-- critical CSS inlined + game.css split by tools/build-www.mjs -->\n` +
     `    <style>${criticalCss}</style>\n` +
-    `    <link rel="stylesheet" href="game.css" media="print" onload="this.media='all'"/>\n` +
-    `    <noscript><link rel="stylesheet" href="game.css"/></noscript>`;
+    `    <link rel="stylesheet" href="${gameFile}" media="print" onload="this.media='all'"/>\n` +
+    `    <noscript><link rel="stylesheet" href="${gameFile}"/></noscript>`;
   const marker = /[ \t]*<!-- BUILD:HEAD[\s\S]*?-->/;
   if (!marker.test(html)) {
     throw new Error('build-www: BUILD:HEAD marker not found in index.html');
@@ -129,30 +163,22 @@ async function transformIndexHtml() {
   html = html.replace(marker, headBlock);
 
   await writeFile(indexPath, html);
-  return { critical, game };
+  return { game };
 }
 
-// Rewrite the shipped sw.js PRECACHE: drop the per-module JS/CSS entries (now
-// bundled) and precache app.js + game.css instead. Everything else (HTML,
-// base.css for the changelog/privacy pages, version.js, fonts, sounds) stays.
-async function transformSw() {
-  const swPath = resolve(www, 'sw.js');
-  let sw = await readFile(swPath, 'utf8');
-  const block = sw.match(/const PRECACHE = \[([\s\S]*?)\];/);
-  if (!block) throw new Error('build-www: PRECACHE array not found in sw.js');
-
-  const entries = [...block[1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
-  const kept = entries.filter(
-    (e) => !/^components\/.+\.(js|css)$/.test(e) && !/^scripts\/.+\.js$/.test(e),
-  );
-  // Insert the bundles right after the './' navigation root.
-  const at = kept[0] === './' ? 1 : 0;
-  kept.splice(at, 0, 'app.js', 'game.css');
-
-  const arr = `const PRECACHE = [\n${kept.map((e) => `  '${e}',`).join('\n')}\n];`;
-  sw = sw.replace(/const PRECACHE = \[[\s\S]*?\];/, arr);
-  await writeFile(swPath, sw);
-  return kept.length;
+// Point the changelog + privacy inline module imports at the hashed analytics
+// bundle so those pages run without the raw scripts/ tree.
+async function transformAuxHtml(analyticsFile) {
+  const importRe = /from '\.\/scripts\/platform\/analytics\.js'/;
+  for (const page of ['changelog.html', 'privacy.html']) {
+    const p = resolve(www, page);
+    let html = await readFile(p, 'utf8');
+    if (!importRe.test(html)) {
+      throw new Error(`build-www: analytics import not found in ${page}`);
+    }
+    html = html.replace(importRe, `from './${analyticsFile}'`);
+    await writeFile(p, html);
+  }
 }
 
 await rm(www, { recursive: true, force: true });
@@ -162,12 +188,12 @@ for (const item of SHIPPED) {
   await cp(resolve(src, item), resolve(www, item), { recursive: true });
 }
 
-await bundleJs();
-const { game } = await transformIndexHtml();
-const precacheCount = await transformSw();
+const appFile = await bundleApp();
+const analyticsFile = await bundleAnalytics();
+const { game } = await transformIndexHtml(appFile);
+await transformAuxHtml(analyticsFile);
 
 console.log(
-  `Built www/ (${SHIPPED.length} entries) → app.js bundle, ` +
-    `critical CSS inlined + game.css (${game.length} sheets), ` +
-    `${precacheCount} precache entries`,
+  `Built www/ (${SHIPPED.length} entries) → ${appFile} + ${analyticsFile}, ` +
+    `critical CSS inlined + game bundle (${game.length} sheets)`,
 );
