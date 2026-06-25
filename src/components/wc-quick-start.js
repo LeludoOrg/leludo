@@ -654,20 +654,37 @@ class QuickStart extends HTMLElement {
         return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
     }
 
+    // Leave a game we can no longer be in — drop back to the online screen with a
+    // reason instead of sitting frozen on a stale board. Shared by the forfeit
+    // (ERROR/KICKED) and the game-gone (reconnect into a fresh lobby) paths.
+    _exitDeadGame(message) {
+        this._inGame = false
+        dispatch({ type: COMMANDS.EXIT_TO_HOME })
+        this.showOnlineScreen()
+        replaceTo(SCREENS.ONLINE)
+        this._setOnlineStatus(message)
+    }
+
     // Single net-message handler shared by private rooms and public matchmaking.
     _onNetMessage(msg, client) {
         if (this._net !== client) return
         // Once the game has started, every message drives the board — except a
-        // join rejection (the reconnect found our seat forfeited: the room is
-        // full or gone). Without this the client sat frozen on a dead board.
+        // reconnect that lands us OUT of the game. Two shapes of that, both of
+        // which would otherwise freeze the client on a dead board:
+        //   1. ERROR/KICKED — our seat was forfeited while we were gone (the room
+        //      is full or no longer exists).
+        //   2. a STATE with started:false — we redialled into a FRESH lobby, i.e.
+        //      the server lost the game and couldn't rebuild it (an un-restorable
+        //      eviction: e.g. a deploy that changed the snapshot schema). An
+        //      in-game room never reverts to started:false, so this only ever means
+        //      "the game is gone". Without this the HOST in particular sat frozen,
+        //      since handleOnlineMessage drops un-started snapshots.
         if (this._inGame) {
             if (msg.t === MSG.ERROR || msg.t === MSG.KICKED) {
-                this._inGame = false
-                dispatch({ type: COMMANDS.EXIT_TO_HOME })
-                this.showOnlineScreen()
-                replaceTo(SCREENS.ONLINE)
-                this._setOnlineStatus('Your seat was forfeited while you were disconnected.')
-                return
+                return this._exitDeadGame('Your seat was forfeited while you were disconnected.')
+            }
+            if (msg.t === MSG.STATE && msg.state && !msg.state.started) {
+                return this._exitDeadGame('The game ended while you were disconnected.')
             }
             handleOnlineMessage(msg)
             return

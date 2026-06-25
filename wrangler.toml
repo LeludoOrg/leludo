@@ -5,9 +5,11 @@ compatibility_date = "2025-06-01"
 # Operator-tunable capacity caps (see docs/multiplayer-plan.md → Budget). The
 # free-tier BINDING limit is SQL rows written: 100,000/day, shared ACCOUNT-WIDE
 # across prod + beta (one free bucket, NOT per-Worker). Real-play cost (live prod
-# data) runs ~570 rows per 2-player game, ~1,668 per 4-player game — higher than
-# the clean-room estimate once reconnects + grace alarms are counted. Caps sized
-# so a worst-case all-4p day across prod + beta stays under 100k:
+# data) runs ~570 rows per 2-player game, ~1,668 per 4-player game — dominated by
+# the per-broadcast resume snapshot the room DO writes so a game survives a code
+# deploy (v0.28.5; see server/cf/room-do.js "Deploy survival"), plus reconnects +
+# grace alarms. Caps sized so a worst-case all-4p day across prod + beta stays
+# under 100k:
 #   prod 45/day + beta 5/day = 50 × ~1,668 ≈ 83k rows < 100k.
 # NOTE: bot / 4-player games do NOT hibernate (the DO is pinned by setTimeout
 # bot-pacing + grace) and burn ~13+ GB-s each vs ~0.4 for an idle 2p game.
