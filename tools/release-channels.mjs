@@ -5,7 +5,7 @@
 // the isolated beta Worker) lives in scripts/net/net-client.js because that is
 // browser code; keep the two in sync conceptually.
 //
-//   versionCode = band * BAND_WIDTH + base,  base = major*10000 + minor*100 + patch
+//   versionCode = band * BAND_WIDTH + base,  base = major*1e6 + minor*1e3 + patch
 //
 // Why these band numbers (the rule that must never be broken):
 // Play serves a user who qualifies for MULTIPLE tracks the build with the
@@ -17,14 +17,20 @@
 //     then stays on the most internal build they qualify for, and once a prod
 //     release ships it never out-numbers (and so never hides) a test build.
 //
-// versionCode = band * BAND_WIDTH (1e7) + base. base is < 1e6 for any major <
-// 100, so a build's base never bleeds into the next band (9e6 of slack). Band
+// versionCode = band * BAND_WIDTH (1e7) + base. base packs the semver into the
+// 7 digits below BAND_WIDTH as base = major*1e6 + minor*1e3 + patch, so the
+// field caps are major 0..9, minor 0..999, patch 0..999. Max base (9.999.999)
+// is 9_999_999 < 1e7 — a build's base never bleeds into the next band. Band
 // numbers are deliberately spaced 10 APART, not packed 0,1,2,3 — that leaves 9
 // free integer slots between any two channels so a new track can be inserted at
 // its correct ordering position later WITHOUT renumbering (and re-numbering is
 // forbidden: a lower versionCode can't be re-uploaded to Play). 1e7 spacing
 // gives band indices 0..209 under Play's 2_100_000_000 ceiling — far more than
 // any plausible channel count.
+//
+// Field caps are HARD: minor/patch ≥ 1000 or major ≥ 10 would carry into the
+// next field (breaking version ordering) or bleed past BAND_WIDTH into the next
+// band — computeVersionCode throws rather than emit a colliding code.
 //
 // Adding a channel: pick a free band ABOVE production, ordered by how internal
 // it is (more internal = higher band — slot it between the neighbours it belongs
@@ -58,6 +64,11 @@ export function computeVersionCode(version, channel = 'prod') {
     throw new Error(`unknown release channel: '${channel}' (expected one of ${CHANNEL_NAMES.join(', ')})`);
   }
   const [, maj, min, pat] = semver.map(Number);
-  const base = maj * 10000 + min * 100 + pat;
+  if (maj > 9 || min > 999 || pat > 999) {
+    throw new Error(
+      `VERSION ${version} overflows the versionCode field caps (major 0..9, minor 0..999, patch 0..999)`
+    );
+  }
+  const base = maj * 1_000_000 + min * 1_000 + pat;
   return entry.band * BAND_WIDTH + base;
 }
