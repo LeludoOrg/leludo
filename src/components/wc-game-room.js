@@ -1,4 +1,4 @@
-import { htmlToElement } from "./index.js";
+import { htmlToElement, onClickSound, emitIntent } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
 import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE, ICON_USER, ICON_BOT, ICON_CLOSE, ICON_PENCIL } from "./wc-icons.js";
 
@@ -52,10 +52,10 @@ class GameRoom extends HTMLElement {
 
         const el = htmlToElement(html)
 
-        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); this._emit('back') })
-        el.querySelector('[data-testid="online-start"]').addEventListener("click", () => { playClickSound(); this._emit('start') })
-        el.querySelector('[data-testid="online-share"]').addEventListener("click", () => { playClickSound(); this._emit('share') })
-        el.querySelector('[data-testid="online-leave"]').addEventListener("click", () => { playClickSound(); this._emit('leave') })
+        onClickSound(el.querySelector(".back-btn"), () => this._emit('back'))
+        onClickSound(el.querySelector('[data-testid="online-start"]'), () => this._emit('start'))
+        onClickSound(el.querySelector('[data-testid="online-share"]'), () => this._emit('share'))
+        onClickSound(el.querySelector('[data-testid="online-leave"]'), () => this._emit('leave'))
 
         // Your name lives on your own seat row (like the offline setup). Commit on
         // blur / Enter — not per keystroke — so it's one message per edit; the
@@ -142,7 +142,7 @@ class GameRoom extends HTMLElement {
     }
 
     _emit(kind, detail = {}) {
-        this.dispatchEvent(new CustomEvent('room-intent', { detail: { kind, ...detail }, bubbles: true }))
+        emitIntent(this, 'room-intent', kind, detail)
     }
 
     setCode(code) {

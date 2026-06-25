@@ -47,6 +47,7 @@ import {
     resetLastRolls,
 } from "../index.js";
 import { randomPersonality } from "../core/bot-ai.js";
+import { clonePositions } from "../core/board-util.js";
 import {
     isPlayerFinished as isPlayerFinishedPure,
     getFinishedCount as getFinishedCountPure,
@@ -277,7 +278,7 @@ function netStartGame(payload, emit) {
         : playerTypes.map(t => (t === 'BOT' ? 'balanced' : null));
     const playerNames = new Array(4).fill('');
     for (let i = 0; i < 4; i++) playerNames[i] = (payload.playerNames && payload.playerNames[i]) || '';
-    const playerTokenPositions = payload.positions.map(p => (p ? p.slice() : undefined));
+    const playerTokenPositions = clonePositions(payload.positions, undefined);
 
     emit({
         type: EVENTS.GAME_STARTED,

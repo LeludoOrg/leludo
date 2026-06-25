@@ -18,6 +18,7 @@
 import { pawnSVG } from "./pawn-shape.js";
 import {
     el,
+    boxAt,
     injectOnce,
     createOverlayRoot,
     scheduleCleanup,
@@ -151,11 +152,7 @@ export function playKOCapture(opts) {
     const root = createOverlayRoot(container, 'kocap-root');
 
     const powSize = pawnSize * 2.2;
-    const pow = el('kocap-pow',
-        'left:' + (cap.x - powSize / 2) + 'px;' +
-        'top:'  + (cap.y - powSize / 2) + 'px;' +
-        'width:'  + powSize + 'px;' +
-        'height:' + powSize + 'px;');
+    const pow = el('kocap-pow', boxAt(cap.x, cap.y, powSize));
     pow.innerHTML = powSVG(attackerColor);
     root.appendChild(pow);
 
@@ -191,11 +188,7 @@ export function playKOCapture(opts) {
         );
     }
 
-    const traj = el('kocap-pawn-wrap',
-        'left:' + (cap.x - pawnSize / 2) + 'px;' +
-        'top:'  + (cap.y - pawnSize / 2) + 'px;' +
-        'width:' + pawnSize + 'px;' +
-        'height:' + pawnSize + 'px;');
+    const traj = el('kocap-pawn-wrap', boxAt(cap.x, cap.y, pawnSize));
 
     const squash = el('kocap-pawn-squash');
     squash.innerHTML = pawnSVG(defenderColor, pawnSize, 'kocap-pawn-svg', 'kocap-grad-');

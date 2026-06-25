@@ -29,6 +29,7 @@ import { COMMANDS } from '../state/command-handler.js';
 import { setOnline, clearOnline, onlineNet, toLocal, onlineSeat } from './online-state.js';
 import { setDimmedPlayers, clearPresence, showWaitingFor, hideWaitingBanner } from './net-overlay.js';
 import { MSG, REASON } from './net-protocol.js';
+import { safeClose } from './ws-safe.js';
 
 // How many newer animatable deltas (dice spins + pawn glides) may already be
 // queued and STILL let an older delta play its animation. The serial queue plays
@@ -327,7 +328,7 @@ function stopOnlineGame() {
     _started = false;
     _lastState = null;
     clearPresence();
-    try { onlineNet()?.close(); } catch { /* ignore */ }
+    safeClose(onlineNet());
     clearOnline();
 }
 

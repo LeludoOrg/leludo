@@ -1,7 +1,8 @@
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
+import { readBool, writeBool } from "../platform/storage-util.js";
 
 const SOUND_MUTED_KEY = STORAGE_KEYS.SOUND_MUTED;
-let _soundMuted = localStorage.getItem(SOUND_MUTED_KEY) === "true";
+let _soundMuted = readBool(SOUND_MUTED_KEY);
 
 export function isSoundMuted() {
     return _soundMuted;
@@ -9,7 +10,7 @@ export function isSoundMuted() {
 
 export function setSoundMuted(muted) {
     _soundMuted = !!muted;
-    localStorage.setItem(SOUND_MUTED_KEY, _soundMuted);
+    writeBool(SOUND_MUTED_KEY, _soundMuted);
 }
 
 let audioCtx = null;

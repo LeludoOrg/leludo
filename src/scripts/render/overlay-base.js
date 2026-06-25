@@ -61,6 +61,15 @@ export function scheduleCleanup(root, ms, onComplete) {
     });
 }
 
+/** Inline CSS for a `w`×`h` box centred on (x, y), with optional vertical
+ *  offset `dy` added to the top (e.g. to drop FX to a pawn's feet). Collapses
+ *  the left/top/width/height string every overlay hand-built per sprite. `h`
+ *  defaults to `w` for square sprites. Callers append any extra rules (color,
+ *  background) after it. */
+export function boxAt(x, y, w, h = w, dy = 0) {
+    return `left:${x - w / 2}px;top:${y - h / 2 + dy}px;width:${w}px;height:${h}px;`;
+}
+
 /** Point on a parabolic arc from→to at t∈[0,1], rising `apex` px above the
  *  straight line at the midpoint. Shared by every overlay's leap / throw / hop. */
 export function arcPoint(from, to, t, apex) {

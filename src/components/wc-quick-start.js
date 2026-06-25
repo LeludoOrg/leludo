@@ -1,4 +1,4 @@
-import {htmlToElement} from "./index.js";
+import {htmlToElement, onClickSound} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/core/bot-names.js";
 import {HUMAN_PREFERRED_POSITIONS} from "../scripts/core/game-logic.js";
@@ -856,8 +856,8 @@ class QuickStart extends HTMLElement {
             </div>
         `
         const el = htmlToElement(html)
-        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); navBack() })
-        el.querySelector('[data-testid="online-search-cancel"]').addEventListener("click", () => { playClickSound(); navBack() })
+        onClickSound(el.querySelector(".back-btn"), () => navBack())
+        onClickSound(el.querySelector('[data-testid="online-search-cancel"]'), () => navBack())
         this.appendChild(el)
     }
 

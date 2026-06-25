@@ -22,9 +22,7 @@ const ASSIST_TOGGLES = [
 ];
 
 function readAssistPref(t) {
-    const v = localStorage.getItem(t.storageKey);
-    if (v === null) return t.default;
-    return v === "true";
+    return readBool(t.storageKey, t.default);
 }
 import {
     BOT_NAME_POOLS,
@@ -37,6 +35,7 @@ import {
     VERSION,
 } from "./index.js"
 import { STORAGE_KEYS } from "../scripts/platform/storage-keys.js";
+import { readBool, writeBool } from "../scripts/platform/storage-util.js";
 import { SCREENS } from "../scripts/platform/screens.js";
 import { ICON_BACK, ICON_SETTINGS } from "./wc-icons.js";
 
@@ -234,7 +233,7 @@ function ensureOverlay() {
         setAssistFlag(t.flag, value);
         el.addEventListener("change", ($event) => {
             const next = $event.target.checked;
-            localStorage.setItem(t.storageKey, next);
+            writeBool(t.storageKey, next);
             setAssistFlag(t.flag, next);
         });
     });

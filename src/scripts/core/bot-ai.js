@@ -7,6 +7,7 @@ import {
     FINISH,
     rawMarkIndex,
 } from "./board-constants.js";
+import { clonePositions } from "./board-util.js";
 
 const SAFE_SQUARES = new Set(SAFE_SQUARES_ARR);
 
@@ -84,8 +85,7 @@ export function evalState(playerIndex, positions, w) {
  * @returns {{ next: number[][], caps: number }}
  */
 function applyMove(playerIndex, tokenIndex, dice, positions) {
-    const next = new Array(4);
-    for (let i = 0; i < 4; i++) next[i] = positions[i] ? positions[i].slice() : positions[i];
+    const next = clonePositions(positions);
     const cur = next[playerIndex][tokenIndex];
     const np = cur === YARD ? ENTRY_SQUARE : cur + dice;
     next[playerIndex][tokenIndex] = np;

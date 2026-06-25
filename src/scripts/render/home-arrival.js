@@ -18,6 +18,7 @@
 import { pawnSVG } from "./pawn-shape.js";
 import {
     el,
+    boxAt,
     injectOnce,
     createOverlayRoot,
     scheduleCleanup,
@@ -116,13 +117,7 @@ export function playHomeArrival(opts) {
     const startX = source ? source.x : home.x;
     const startY = source ? source.y : home.y;
     // Outer wrap: square, sized to the START token, centered on its center.
-    const traj = el(
-        'hmarr-pawn-wrap',
-        'left:' + (startX - pawnSize / 2) + 'px;' +
-        'top:'  + (startY - pawnSize / 2) + 'px;' +
-        'width:' + pawnSize + 'px;' +
-        'height:' + pawnSize + 'px;'
-    );
+    const traj = el('hmarr-pawn-wrap', boxAt(startX, startY, pawnSize));
     // Inner element carries the SVG + the settle squash, layered on top of
     // the outer translate/scale.
     const squash = el('hmarr-pawn-squash');
@@ -170,13 +165,7 @@ export function playHomeArrival(opts) {
 }
 
 function playBurst(root, home, color, label, ms, burstSize) {
-    const r = el(
-        'hmarr-ring',
-        'left:' + (home.x - 6) + 'px;' +
-        'top:'  + (home.y - 6) + 'px;' +
-        'width:12px;height:12px;' +
-        'color:' + color + ';'
-    );
+    const r = el('hmarr-ring', boxAt(home.x, home.y, 12) + 'color:' + color + ';');
     root.appendChild(r);
     r.animate(
         [
@@ -200,13 +189,7 @@ function playBurst(root, home, color, label, ms, burstSize) {
         const h = burstSize * 0.16 + Math.random() * burstSize * 0.14;
         const rot = (Math.random() - 0.5) * 720;
         const c = palette[i % palette.length];
-        const conf = el(
-            'hmarr-confetti',
-            'left:' + (home.x - w / 2) + 'px;' +
-            'top:'  + (home.y - h / 2) + 'px;' +
-            'width:' + w + 'px; height:' + h + 'px;' +
-            'background:' + c + ';'
-        );
+        const conf = el('hmarr-confetti', boxAt(home.x, home.y, w, h) + 'background:' + c + ';');
         root.appendChild(conf);
         conf.animate(
             [

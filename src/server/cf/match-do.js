@@ -18,7 +18,7 @@
  */
 import { Matchmaker } from '../matchmaker.js';
 import { mintRoomCode } from '../../scripts/core/room-code.js';
-import { clampSeats, numEnv, safeSend, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
+import { clampSeats, numEnv, safeSend, safeParse, safeClose, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG } from '../../scripts/net/net-protocol.js';
 
 export class MatchmakingDO {
@@ -54,8 +54,8 @@ export class MatchmakingDO {
         if (res.queued) safeSend(server, JSON.stringify({ t: MSG.QUEUED, size, waiting: res.waiting }));
 
         server.addEventListener('message', (ev) => {
-            let msg;
-            try { msg = JSON.parse(ev.data); } catch { return; }
+            const msg = safeParse(ev.data);
+            if (!msg) return;
             if (msg.t === MSG.QUEUE_CANCEL) {
                 this.matchmaker.cancel(sessionId);
                 safeSend(server, JSON.stringify({ t: MSG.QUEUE_LEFT }));
@@ -78,7 +78,7 @@ export class MatchmakingDO {
             for (const e of entries) {
                 if (!verdict.ok) { safeSend(e.ws, JSON.stringify({ t: MSG.BUSY, reason: verdict.reason })); continue; }
                 safeSend(e.ws, JSON.stringify({ t: MSG.MATCHED, room: code }));
-                try { e.ws.close(1000, 'matched'); } catch { /* already gone */ }
+                safeClose(e.ws, 1000, 'matched');
             }
         })();
     }

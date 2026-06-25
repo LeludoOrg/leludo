@@ -21,6 +21,7 @@
 import { pawnSVG } from "./pawn-shape.js";
 import {
     el,
+    boxAt,
     injectOnce,
     createOverlayRoot,
     scheduleCleanup,
@@ -168,13 +169,7 @@ export function playPawnLaunch(opts) {
     const baseY = pawnSize * 0.36;
 
     const haloSize = pawnSize * 1.8;
-    const halo = el(
-        'plnch-halo',
-        'left:' + (yard.x - haloSize / 2) + 'px;' +
-        'top:'  + (yard.y - haloSize / 2 + baseY) + 'px;' +
-        'width:' + haloSize + 'px; height:' + haloSize + 'px;' +
-        'color:' + color + ';'
-    );
+    const halo = el('plnch-halo', boxAt(yard.x, yard.y, haloSize, haloSize, baseY) + 'color:' + color + ';');
     root.appendChild(halo);
     halo.animate(
         [
@@ -220,12 +215,7 @@ export function playPawnLaunch(opts) {
         for (let i = 0; i < N_TRAIL; i++) {
             const p = (i + 1) / (N_TRAIL + 1);
             const pt = arcPoint(yard, entry, p, arcH);
-            const tw = el(
-                'plnch-trail-wrap',
-                'left:' + (pt.x - pawnSize / 2) + 'px;' +
-                'top:'  + (pt.y - pawnSize / 2) + 'px;' +
-                'width:' + pawnSize + 'px; height:' + pawnSize + 'px;'
-            );
+            const tw = el('plnch-trail-wrap', boxAt(pt.x, pt.y, pawnSize));
             tw.innerHTML = pawnSVG(color, pawnSize, 'plnch-trail-svg', 'plnch-trail-', { flat: true });
             root.appendChild(tw);
             const ang = arcAngle(yard, entry, p, arcH);
@@ -246,12 +236,7 @@ export function playPawnLaunch(opts) {
         }
     }
 
-    const pawn = el(
-        'plnch-pawn-wrap',
-        'left:' + (yard.x - pawnSize / 2) + 'px;' +
-        'top:'  + (yard.y - pawnSize / 2) + 'px;' +
-        'width:' + pawnSize + 'px; height:' + pawnSize + 'px;'
-    );
+    const pawn = el('plnch-pawn-wrap', boxAt(yard.x, yard.y, pawnSize));
     pawn.innerHTML = pawnSVG(color, pawnSize, 'plnch-pawn-svg', 'plnch-grad-');
     root.appendChild(pawn);
 
@@ -329,13 +314,7 @@ export function playPawnLaunch(opts) {
 }
 
 function playLandingFX(root, entry, color, pawnSize, label) {
-    const r = el(
-        'plnch-ring',
-        'left:' + (entry.x - 6) + 'px;' +
-        'top:'  + (entry.y - 6) + 'px;' +
-        'width:12px; height:12px;' +
-        'color:' + color + ';'
-    );
+    const r = el('plnch-ring', boxAt(entry.x, entry.y, 12) + 'color:' + color + ';');
     root.appendChild(r);
     r.animate(
         [
@@ -353,13 +332,7 @@ function playLandingFX(root, entry, color, pawnSize, label) {
         const dx = Math.cos(a) * r1;
         const dy = Math.sin(a) * r1 * 0.6;
         const sz = 6 + Math.random() * 8;
-        const d = el(
-            'plnch-dust',
-            'left:' + (entry.x - sz / 2) + 'px;' +
-            'top:'  + (entry.y - sz / 2 + pawnSize * 0.36) + 'px;' +
-            'width:' + sz + 'px; height:' + sz + 'px;' +
-            'background: rgba(235,227,214,0.55);'
-        );
+        const d = el('plnch-dust', boxAt(entry.x, entry.y, sz, sz, pawnSize * 0.36) + 'background: rgba(235,227,214,0.55);');
         root.appendChild(d);
         d.animate(
             [

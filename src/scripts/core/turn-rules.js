@@ -4,6 +4,7 @@
  */
 
 import { YARD, FINISH } from "./board-constants.js";
+import { clonePositions } from "./board-util.js";
 
 /**
  * @param {number[]} tokenPositions  4 positions for one player
@@ -148,7 +149,7 @@ export function serializeGameState({
         playerNamesArr: playerNames.slice(),
         playerTypesArr: playerTypes.slice(),
         botPersonalitiesArr: botPersonalities.slice(),
-        positions: playerTokenPositions.map(p => (p ? p.slice() : null)),
+        positions: clonePositions(playerTokenPositions, null),
         currentPlayerIndex,
         currentDiceRoll,
         consecutiveSixesCount,
