@@ -15,11 +15,12 @@
     <link rel="preload" href="assets/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin/>
     <link rel="preload" href="assets/fonts/dm-sans-latin-variable.woff2" as="font" type="font/woff2" crossorigin/>
 
-    <!-- BUILD:HEAD — in the deployed (gh-pages) build, tools/build-www.mjs replaces
-         this marker with the inlined critical CSS + a non-blocking game.css link, and
-         collapses the two module scripts below into a single bundled app.js. Left as a
-         bare marker in dev: localhost serves the raw ES modules + individual <link>s
-         directly (no build step, and the bundle would drift). -->
+    <!-- BUILD:HEAD — in the deployed (Cloudflare Pages) build, tools/build-www.mjs
+         replaces this marker with the inlined critical CSS + a non-blocking
+         game.<hash>.css link, and collapses the two module scripts below into a single
+         content-hashed app.<hash>.js bundle. Left as a bare marker in dev: localhost
+         serves the raw ES modules + individual <link>s directly (no build step, and
+         the bundle would drift). -->
 
     <script type="module" src="components/index.js"></script>
     <script type="module" src="scripts/index.js"></script>
@@ -38,13 +39,17 @@
 
     <link rel="manifest" href="manifest.json"/>
 
+    <!-- One-time teardown: a service worker shipped through v0.28.3. Unregister
+         any lingering instance and drop its caches so returning visitors stop
+         being served stale precached assets. Cache busting now rides on the
+         content-hashed bundle filenames (tools/build-www.mjs). Safe to delete
+         once traffic has cycled past the SW era. -->
     <script>
-        if ('serviceWorker' in navigator
-            && location.hostname !== 'localhost'
-            && location.hostname !== '127.0.0.1') {
-            window.addEventListener('load', () =>
-                navigator.serviceWorker.register('./sw.js', { type: 'module' })
-            );
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations?.()
+                .then((regs) => regs.forEach((r) => r.unregister()));
+            window.caches?.keys?.()
+                .then((keys) => keys.forEach((k) => k.startsWith('leludo-') && caches.delete(k)));
         }
     </script>
 

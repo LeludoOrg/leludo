@@ -1,6 +1,6 @@
-// Shared parse of the VERSION constant in version.js. The web service worker,
-// the Android version sync, and the Play Store "what's new" extractor all need
-// the same single source of truth — keep this the one place that reads it.
+// Shared parse of the VERSION constant in version.js. The Android version sync
+// and the Play Store "what's new" extractor both need the same single source of
+// truth — keep this the one place that reads it.
 
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';

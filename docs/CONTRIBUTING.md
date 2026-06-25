@@ -22,7 +22,7 @@ See [README.md](README.md) for the short version, [CLAUDE.md](CLAUDE.md) for the
 
 ## House rules
 
-- **Vanilla JS + Web Components + hand-written CSS, no bundler.** Don't introduce a build step or framework. New components ship as `components/wc-foo.js` + `components/wc-foo.css`; link the CSS from `index.html` and add both to the `PRECACHE` array in [sw.js](sw.js).
+- **Vanilla JS + Web Components + hand-written CSS; no bundler in dev.** Don't introduce a framework. Dev serves raw ES modules + individual stylesheets; the production bundle is assembled by [tools/build-www.mjs](../tools/build-www.mjs). New components ship as `components/wc-foo.js` + `components/wc-foo.css`; export the JS from `components/index.js` and link the CSS from `index.html` — build-www folds both into the hashed bundles automatically.
 - **User-visible change?** Bump `VERSION` in [version.js](version.js) and add an entry to [changelog.html](changelog.html) (semver: patch = fix/polish, minor = feature, major = breaking).
 - **Pure logic stays pure.** `scripts/game-logic.*.js` must remain side-effect-free so the test suite can import it directly.
 - **Pause respect.** Any bot or autoplay `setTimeout` in the turn flow must go through `scheduleTurn` — see the Pause Model section of CLAUDE.md.

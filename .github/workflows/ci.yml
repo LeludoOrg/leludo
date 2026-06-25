@@ -96,26 +96,27 @@ jobs:
           test -f www/index.html
           test -f www/changelog.html
           test -f www/privacy.html
-          test -f www/sw.js
           test -f www/version.js
           test -f www/manifest.json
           test -f www/styles/base.css
-          test -f www/components/wc-board.css
-          test -f www/components/wc-board.js
-          test -d www/scripts
           test -d www/assets
-          # Production bundle artifacts (build-www.mjs): single JS bundle +
-          # split CSS. Guards the first-load optimization from silent regress.
-          test -f www/app.js
-          test -f www/game.css
-          # index.html must reference the bundle, inline critical CSS, and
+          # Service worker removed (v0.28.4): no sw.js, and the raw source
+          # module trees are no longer shipped — prod runs only the bundles.
+          ! test -e www/sw.js
+          ! test -d www/components
+          ! test -d www/scripts
+          # Content-hashed production bundles (build-www.mjs): app + analytics
+          # JS, split game CSS. Guards the first-load optimization + the hashing.
+          ls www/app.*.js >/dev/null
+          ls www/analytics.*.js >/dev/null
+          ls www/game.*.css >/dev/null
+          # index.html must reference the hashed bundle, inline critical CSS, and
           # load game.css non-blocking — not the raw per-module shell.
-          grep -q '<script type="module" src="app.js">' www/index.html
-          grep -q "game.css\" media=\"print\"" www/index.html
+          grep -qE '<script type="module" src="app\.[0-9a-f]+\.js">' www/index.html
+          grep -qE 'href="game\.[0-9a-f]+\.css" media="print"' www/index.html
           grep -q '<style>' www/index.html
           ! grep -q 'src="components/index.js"' www/index.html
           ! grep -q 'href="components/wc-board.css"' www/index.html
-          # sw.js precaches the bundles, not the per-module files.
-          grep -q "'app.js'" www/sw.js
-          grep -q "'game.css'" www/sw.js
-          ! grep -q "'components/wc-board.js'" www/sw.js
+          # changelog/privacy load the hashed analytics bundle, not raw source.
+          grep -qE "from '\./analytics\.[0-9a-f]+\.js'" www/changelog.html
+          ! grep -q "scripts/platform/analytics.js" www/privacy.html
