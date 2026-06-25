@@ -254,4 +254,105 @@ describe('LudoRoomDO (workerd)', () => {
         host.close();
         again.close();
     });
+
+    it('restores an evicted mid-game room from storage so a reconnect resumes it', async () => {
+        // Regression: a code deploy (or DO migration) SHUTS DOWN the running DO —
+        // wiping the in-memory engine and terminating every socket — then clients
+        // reconnect into a COLD instance. Before persist/restore that cold instance
+        // had no engine, so the joiner's `join=1` reconnect hit ROOM_NOT_FOUND (the
+        // game "abruptly ended") and the host's `create=1` reconnect minted a FRESH
+        // lobby (started:false → the client froze on a dead board). The persist hook
+        // now snapshots every broadcast and _restore rebuilds the live game, so both
+        // reconnects resume the SAME match. This guards the exact incident a beta
+        // Worker deploy caused mid-game.
+        const room = 'RESUME';
+        const hostRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=host&name=Host&size=2&create=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const host = hostRes.webSocket; host.accept();
+        const hostMsgs = collect(host);
+        await waitFor(hostMsgs, 'seated');
+
+        const guestRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=guest&name=Guest&join=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const guest = guestRes.webSocket; guest.accept();
+        await waitFor(collect(guest), 'seated');
+
+        host.send(JSON.stringify({ t: 'lobby_start' }));
+        const started = await waitFor(hostMsgs, (m) => m.t === 'state' && m.state.started);
+        const turnBefore = started.state.turn;
+
+        // Simulate the deploy: drop the sockets, then wipe the in-memory instance
+        // state the runtime would lose on eviction (engine + admission flags) while
+        // Durable Object STORAGE survives — exactly what a code update does.
+        host.close(); guest.close();
+        await runInDurableObject(env.ROOM.getByName(room), async (instance) => {
+            expect(await instance.state.storage.get('game')).toBeTruthy(); // snapshot persisted
+            instance.engine = null;
+            instance.admitted = false;
+            instance.released = false;
+            instance.roomId = null;
+        });
+
+        // Host reconnects FIRST with create=1: the cold instance must REBUILD the
+        // started game from storage, not mint a fresh started:false lobby.
+        const hostBackRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=host&name=Host&size=2&create=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const hostBack = hostBackRes.webSocket; hostBack.accept();
+        const hostBackMsgs = collect(hostBack);
+        await waitFor(hostBackMsgs, 'seated');
+        const hostResumed = await waitFor(hostBackMsgs, (m) => m.t === 'state' && m.state.started);
+        expect(hostResumed.state.started).toBe(true);       // resumed, not a ghost lobby
+        expect(hostResumed.state.turn).toBe(turnBefore);
+        expect(hostBackMsgs.find((m) => m.t === 'error')).toBeUndefined();
+
+        // Guest reconnects with join=1 — the path that returned ROOM_NOT_FOUND
+        // before. It must seat back into its OWN seat on the resumed game.
+        const guestBackRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=guest&name=Guest&join=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const guestBack = guestBackRes.webSocket; guestBack.accept();
+        const guestBackMsgs = collect(guestBack);
+        const reseated = await waitFor(guestBackMsgs, 'seated');
+        expect(reseated.playerIndex).toBeGreaterThan(0);     // same guest seat, not host
+        expect(guestBackMsgs.find((m) => m.t === 'error')).toBeUndefined(); // never ROOM_NOT_FOUND
+
+        hostBack.close(); guestBack.close();
+    });
+
+    it('does not resurrect a released room (snapshot dropped on release)', async () => {
+        // The flip side of restore: once a room is released (ended / abandoned),
+        // _release deletes the snapshot, so a later cold instance must read GONE
+        // (ROOM_NOT_FOUND) rather than rebuild the dead game from a stale snapshot.
+        const room = 'RELEASED';
+        const hostRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=host&name=Host&size=2&create=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const host = hostRes.webSocket; host.accept();
+        await waitFor(collect(host), 'seated');
+
+        await runInDurableObject(env.ROOM.getByName(room), async (instance, state) => {
+            await instance._release();
+            expect(await state.storage.get('game')).toBeFalsy(); // snapshot dropped
+            instance.engine = null; // cold instance for the next dial
+        });
+
+        const backRes = await SELF.fetch(
+            `https://leludo.test/?room=${room}&session=host&name=Host&join=1`,
+            { headers: { Upgrade: 'websocket' } },
+        );
+        const back = backRes.webSocket; back.accept();
+        const backMsgs = collect(back);
+        const err = await waitFor(backMsgs, 'error');
+        expect(err.error).toBe('ROOM_NOT_FOUND');
+
+        host.close(); back.close();
+    });
 });

@@ -33,6 +33,34 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect server changes
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Did this push touch code the Worker actually runs? A deploy SHUTS DOWN
+      # every running room (see server/cf/room-do.js header — code updates evict
+      # the Durable Object and terminate its WebSockets), so a client-only push
+      # (components / styles / HTML / assets) must NOT redeploy it and end live
+      # games. The Worker bundles server/** plus the pure scripts/** modules it
+      # runs, and reads wrangler.toml; a change to any of those is a real server
+      # change. (Persist/restore makes a genuine server deploy survivable — this
+      # keeps the gratuitous ones from firing in the first place.)
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            server:
+              - 'src/server/**'
+              - 'src/scripts/**'
+              - 'wrangler.toml'
+              - 'package-lock.json'
+
   test:
     name: Unit + integration tests
     runs-on: ubuntu-latest
@@ -54,7 +82,12 @@ jobs:
 
   deploy-worker-beta:
     name: Deploy multiplayer Worker (beta)
-    needs: test
+    needs: [test, changes]
+    # Only redeploy when server code changed — or on a manual dispatch (an
+    # intentional, explicit release). A routine client-only push skips this job
+    # entirely, so live beta games aren't evicted for a change the Worker never
+    # runs. See the `changes` job for why.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     # Deploys server/cf/* under wrangler.toml's [env.beta] → the separate
     # `leludo-mp-beta` Worker with its own Durable Objects. Mirrors the

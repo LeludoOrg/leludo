@@ -21,10 +21,22 @@
  *   after a player's think-time added more. On the FREE plan the binding limit is
  *   SQL rows-written, NOT duration (idle 2p ≈ 0.4 GB-s; duration never binds), so
  *   the snapshot writes were inflating the cost dimension that actually binds AND
- *   hurting latency. Resident sockets respond instantly and write no per-move
- *   rows. The duration cost of staying resident through human think-time is real
- *   but unbilled on free; revisit hibernation (with non-gating async persist
- *   and/or alarm-based bot/grace timers) only on a paid plan where GB-s bills.
+ *   hurting latency. Reverting to resident sockets removed the latency. The
+ *   duration cost of staying resident through human think-time is real but
+ *   unbilled on free.
+ *
+ * Deploy survival — RESIDENT but PERSISTED (v0.28.5).
+ *   A code deploy (or DO migration) shuts the instance down regardless of how it
+ *   holds sockets — in-memory state is wiped and every WebSocket terminated (true
+ *   even for hibernated sockets), so a continuous-deployment cadence would
+ *   otherwise end every live game. We now write a resume snapshot on every
+ *   state-changing broadcast (the engine's `persist` hook → GAME_KEY) and rebuild
+ *   from it on a cold reconnect (_restore). The latency that sank hibernation is
+ *   avoided by writing with `{ allowUnconfirmed: true }` — the write stays OFF the
+ *   output gate, so frames go out instantly; a snapshot lost to a crash just means
+ *   the next reconnect re-syncs from the prior frame. The cost is the snapshot
+ *   rows reappearing (~570 rows/2p, ~1668/4p — see wrangler.toml), which the
+ *   per-day game caps were already sized to keep under the free-tier 100k/day.
  *
  * Leak guard: when the last socket closes mid-game (every client dropped at
  * once), the DO can be evicted and its in-memory grace timers lost — which would
@@ -41,7 +53,7 @@
  * instead of "no such room" (ROOM_NOT_FOUND). Nulling the engine on release keeps
  * the DO in lockstep with the Node twin, which deletes the room outright.
  */
-import { RoomEngine } from '../room-engine.js';
+import { RoomEngine, PHASES } from '../room-engine.js';
 import { clampSeats, numEnv, randomSeed, safeSend, safeParse, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
@@ -50,6 +62,12 @@ import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from
 // _onClose). A cold instance woken by alarm() after eviction has no in-memory
 // this.roomId, so it reads this to release the right admission slot.
 const ROOM_KEY = 'roomId';
+
+// Storage key for the full engine snapshot. Written on every state-changing
+// broadcast (see the persist hook in _ensureEngine) so a cold instance — one the
+// runtime evicted on a code deploy or DO migration — can rebuild the live game
+// on reconnect instead of forcing ROOM_NOT_FOUND / a ghost lobby (see _restore).
+const GAME_KEY = 'game';
 
 export class LudoRoomDO {
     constructor(state, env) {
@@ -77,10 +95,55 @@ export class LudoRoomDO {
             botNamePool: cfg.pool,
             graceMs: this.graceMs,
             // Fresh per-room dice stream — prod must NOT be the fixed seed the dev
-            // harness uses, or every game would roll an identical sequence.
+            // harness uses, or every game would roll an identical sequence. (On the
+            // restore path _restore overwrites the whole engine state, this seed
+            // included, via engine.restore — so a resumed game keeps its own stream.)
             seed: randomSeed(),
             transport: engineTransport(this.sockets, () => this.engine, () => this._release()),
+            // Survive eviction. A code deploy (or DO migration) shuts the instance
+            // down and wipes in-memory state — including the engine (see header) —
+            // and terminates every WebSocket; clients then reconnect into a COLD
+            // instance. Persist the full authoritative snapshot on every
+            // state-changing broadcast so that cold instance can rebuild the live
+            // game in _restore. `allowUnconfirmed` keeps the write OFF Cloudflare's
+            // output gate, so broadcast frames go out instantly (no per-action lag):
+            // a snapshot lost to a crash just means the next reconnect re-syncs from
+            // the prior frame, which is acceptable — this is the non-gating async
+            // persist the header flagged as the safe way to bring persistence back.
+            persist: (engine) => {
+                this.state.storage
+                    .put(GAME_KEY, engine.serialize(), { allowUnconfirmed: true })
+                    .catch(() => { /* best-effort; the next broadcast rewrites it */ });
+            },
         });
+    }
+
+    /**
+     * Rebuild the engine from the last persisted snapshot after the runtime
+     * evicted this instance (a code deploy or DO migration; see header). No-op
+     * when the engine is already warm, when nothing was saved, when the snapshot
+     * is from a schema this build can't resume (`v` mismatch), or when the game
+     * already ended — a finished room must read GONE, never resurrect.
+     *
+     * A restored room was admitted BEFORE eviction and the AdmissionDO persists
+     * its own counters, so the slot is still counted there: adopt it WITHOUT a
+     * second admit round-trip, which would double-count the game against the cap.
+     */
+    async _restore() {
+        if (this.engine) return;
+        let snap;
+        try { snap = await this.state.storage.get(GAME_KEY); } catch { return; }
+        if (!snap || snap.v !== 1 || snap.phase === PHASES.ENDED) return;
+        this.roomId = snap.roomId || this.roomId;
+        this.admitted = true;
+        this.released = false;
+        this._ensureEngine({ size: 2, pool: snap.botNamePool });
+        this.engine.restore(snap);
+        // Re-arm the timers that lived only in the evicted instance's memory:
+        // disconnect-grace forfeits resume from their persisted deadlines (firing
+        // at once if the window lapsed while we were down), and a bot left mid-turn
+        // gets its paced step re-kicked.
+        this.engine._resumeTimers();
     }
 
     async fetch(request) {
@@ -93,14 +156,21 @@ export class LudoRoomDO {
         const { name, color, pool } = p;
         const size = clampSeats(p.sizeRaw, 2);
 
+        // Cold instance after an eviction (a code deploy / DO migration shuts the
+        // DO down — see header)? Rebuild the live game from its persisted snapshot
+        // BEFORE the join/admission checks, so a reconnect resumes the match rather
+        // than hitting ROOM_NOT_FOUND (joiner) or minting a fresh ghost lobby
+        // (host/create). No-op for a genuinely new room (nothing saved).
+        if (!this.engine) await this._restore();
+
         // Join-by-code into a room that doesn't exist: a resident DO only holds
         // `this.engine` while its host is connected (or within the eviction-free
-        // life of the room), so a missing engine on a `join=1` connect means no
-        // host ever created this code (or the room was evicted on deploy). Refuse
-        // instead of auto-creating a ghost room — and do it BEFORE the admission
-        // round-trip so a typo'd code can't burn a slot. `create=1` (and any
-        // non-join connect, e.g. a public-match redial) still falls through to
-        // _ensureEngine below.
+        // life of the room), and _restore above failed to rebuild one, so a missing
+        // engine on a `join=1` connect means no host ever created this code (or the
+        // room ended / its snapshot is gone). Refuse instead of auto-creating a
+        // ghost room — and do it BEFORE the admission round-trip so a typo'd code
+        // can't burn a slot. `create=1` (and any non-join connect, e.g. a
+        // public-match redial) still falls through to _ensureEngine below.
         if (!this.engine && p.join) {
             return wsReject({ t: MSG.ERROR, error: ERR.ROOM_NOT_FOUND });
         }
@@ -187,5 +257,8 @@ export class LudoRoomDO {
         } catch { /* best-effort; the slot is small and admit re-checks liveness */ }
         this.state.storage.deleteAlarm().catch(() => {});
         this.state.storage.delete(ROOM_KEY).catch(() => {});
+        // Drop the resume snapshot too: a released room is GONE, so a later cold
+        // instance must not rebuild it from a stale snapshot in _restore.
+        this.state.storage.delete(GAME_KEY).catch(() => {});
     }
 }
