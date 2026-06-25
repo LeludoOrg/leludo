@@ -17,25 +17,29 @@
 //     then stays on the most internal build they qualify for, and once a prod
 //     release ships it never out-numbers (and so never hides) a test build.
 //
-// Bands are spaced BAND_WIDTH (1e8) apart. base is < 1e6 for any major < 100, so
-// a build's base never bleeds into the next band, and 1e8 spacing fits 21 bands
-// (0..20) under Play's 2_100_000_000 versionCode ceiling — every Play track plus
-// plenty of room for future channels.
+// versionCode = band * BAND_WIDTH (1e7) + base. base is < 1e6 for any major <
+// 100, so a build's base never bleeds into the next band (9e6 of slack). Band
+// numbers are deliberately spaced 10 APART, not packed 0,1,2,3 — that leaves 9
+// free integer slots between any two channels so a new track can be inserted at
+// its correct ordering position later WITHOUT renumbering (and re-numbering is
+// forbidden: a lower versionCode can't be re-uploaded to Play). 1e7 spacing
+// gives band indices 0..209 under Play's 2_100_000_000 ceiling — far more than
+// any plausible channel count.
 //
-// Adding a channel: give it the next free band ABOVE production but ordered by
-// how internal it is (more internal = higher band), pick its Play `track`, add
-// a CI job, and (if it needs its own backend) extend net-client.js. NEVER renumber
-// an existing band — a lower versionCode can't be re-uploaded to Play — and never
-// exceed band 20.
+// Adding a channel: pick a free band ABOVE production, ordered by how internal
+// it is (more internal = higher band — slot it between the neighbours it belongs
+// between), set its Play `track`, add a CI job, and (if it needs its own backend)
+// extend net-client.js. NEVER renumber an existing band; never exceed band 209.
 
-export const BAND_WIDTH = 100_000_000;
+export const BAND_WIDTH = 10_000_000;
 
 // Ordered low band → high band = production → most-internal test track.
+// Bands jump by 10 to leave insertion room between channels (see above).
 export const CHANNELS = {
-  prod:   { band: 0, track: 'production' }, // public production
-  open:   { band: 1, track: 'open' },       // open testing — reserved for future use
-  closed: { band: 2, track: 'closed' },     // closed testing / alpha — reserved
-  beta:   { band: 3, track: 'internal' },   // internal testing — the current "beta" channel
+  prod:   { band: 0,  track: 'production' }, // public production
+  open:   { band: 10, track: 'open' },       // open testing — reserved for future use
+  closed: { band: 20, track: 'closed' },     // closed testing / alpha — reserved
+  beta:   { band: 30, track: 'internal' },   // internal testing — the current "beta" channel
 };
 
 export const CHANNEL_NAMES = Object.keys(CHANNELS);

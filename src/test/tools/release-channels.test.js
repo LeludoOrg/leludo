@@ -27,10 +27,10 @@ describe('computeVersionCode', () => {
         expect(computeVersionCode('0.28.7')).toBe(2807);
     });
 
-    it('each channel adds its band * 1e8 on top of the base', () => {
-        expect(computeVersionCode('0.28.7', 'open')).toBe(100_002_807);
-        expect(computeVersionCode('0.28.7', 'closed')).toBe(200_002_807);
-        expect(computeVersionCode('0.28.7', 'beta')).toBe(300_002_807); // internal track
+    it('each channel adds its band * BAND_WIDTH on top of the base', () => {
+        expect(computeVersionCode('0.28.7', 'open')).toBe(100_002_807);   // band 10
+        expect(computeVersionCode('0.28.7', 'closed')).toBe(200_002_807); // band 20
+        expect(computeVersionCode('0.28.7', 'beta')).toBe(300_002_807);   // band 30, internal track
     });
 
     it('orders production < open < closed < internal at the same version', () => {
@@ -55,12 +55,13 @@ describe('computeVersionCode', () => {
         expect(MAX_BASE).toBeLessThan(BAND_WIDTH);
     });
 
-    it('stays under Play\'s 2.1e9 ceiling for every defined channel — and band 20', () => {
+    it('stays under Play\'s 2.1e9 ceiling for every defined channel — and band 209', () => {
         for (const c of CHANNEL_NAMES) {
             expect(computeVersionCode('99.99.99', c)).toBeLessThan(PLAY_CEILING);
         }
-        // The 1e8 spacing leaves room up to band 20 (the documented max).
-        expect(20 * BAND_WIDTH + MAX_BASE).toBeLessThan(PLAY_CEILING);
+        // 1e7 spacing leaves room up to band 209 (the documented max).
+        expect(209 * BAND_WIDTH + MAX_BASE).toBeLessThan(PLAY_CEILING);
+        expect(210 * BAND_WIDTH).not.toBeLessThan(PLAY_CEILING); // band 210 hits the ceiling
     });
 
     it('throws on an unknown channel', () => {
@@ -83,6 +84,14 @@ describe('CHANNELS registry', () => {
         const bands = CHANNEL_NAMES.map((c) => CHANNELS[c].band);
         expect(new Set(bands).size).toBe(bands.length);
         expect(Math.min(...bands)).toBe(0);
+    });
+
+    it('leaves gaps between channel bands so a track can be inserted later', () => {
+        const sorted = CHANNEL_NAMES.map((c) => CHANNELS[c].band).sort((a, b) => a - b);
+        for (let i = 1; i < sorted.length; i++) {
+            // > 1 means at least one free integer slot between neighbours.
+            expect(sorted[i] - sorted[i - 1]).toBeGreaterThan(1);
+        }
     });
 
     it('isValidChannel accepts known channels and rejects others', () => {

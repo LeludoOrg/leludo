@@ -120,13 +120,16 @@ build time via `MP_CHANNEL`; see `BUILD_CHANNEL` in
 [tools/build-www.mjs](tools/build-www.mjs)) and a different `versionCode`
 band. The channel registry is [tools/release-channels.mjs](tools/release-channels.mjs):
 `prod` (band 0, production track) is lowest, and test channels sit above it
-ordered by how internal they are — `open` (1), `closed` (2), `beta`/internal
-(3) — spaced `1e8` apart (room for 21 channels under Play's 2.1e9 cap). Play
-serves a multi-track user the HIGHEST code, so this keeps every test build
-above prod (a tester is never pulled onto the public build) and keeps the
-most-internal track on top. `versionName` is identical across channels —
-players only ever see `0.X.Y`. Adding a channel = a registry entry (next band
-up, ordered by internalness) + a CI job; never renumber an existing band.
+ordered by how internal they are — `open` (10), `closed` (20), `beta`/internal
+(30). Bands jump by 10 (not 0,1,2,3) on purpose: that leaves 9 free slots
+between any two so a new track can be inserted at its correct position later
+WITHOUT renumbering. `versionCode = band * 1e7 + base`, giving indices 0..209
+under Play's 2.1e9 cap. Play serves a multi-track user the HIGHEST code, so this
+keeps every test build above prod (a tester is never pulled onto the public
+build) and keeps the most-internal track on top. `versionName` is identical
+across channels — players only ever see `0.X.Y`. Adding a channel = a registry
+entry (a free band slotted at its internalness-ordered position) + a CI job;
+never renumber an existing band.
 
 `release.yml` creates the tag idempotently and uses
 `softprops/action-gh-release@v2`. Typical flow: bump `VERSION` + add a
@@ -309,7 +312,7 @@ Single source of truth: `VERSION` constant in [version.js](version.js). Consumed
 
 Edit `version.js`, and keep `package.json`'s `version` in lockstep — the version-sync test enforces equality. No other steps for web. For Android, `npm run android:prepare` mirrors it into `build.gradle` via [tools/sync-android-version.mjs](tools/sync-android-version.mjs).
 
-**`versionCode` is channel-banded** (`MP_CHANNEL` env): `band * 1e8 + base` where `base = major*10000+minor*100+patch` and the band comes from the [tools/release-channels.mjs](tools/release-channels.mjs) registry (`prod` 0, `open` 1, `closed` 2, `beta`/internal 3). `versionName` is the VERSION verbatim and identical across channels — that is all players see. Production is lowest and every test channel sits above it (Play serves a multi-track user the highest code, so testers never get pulled onto prod). See CI / `computeVersionCode`. Don't renumber existing bands or exceed band 20 (Play's 2.1e9 ceiling).
+**`versionCode` is channel-banded** (`MP_CHANNEL` env): `band * 1e7 + base` where `base = major*10000+minor*100+patch` and the band comes from the [tools/release-channels.mjs](tools/release-channels.mjs) registry (`prod` 0, `open` 10, `closed` 20, `beta`/internal 30 — spaced by 10 to leave insertion room). `versionName` is the VERSION verbatim and identical across channels — that is all players see. Production is lowest and every test channel sits above it (Play serves a multi-track user the highest code, so testers never get pulled onto prod). See CI / `computeVersionCode`. Don't renumber existing bands or exceed band 209 (Play's 2.1e9 ceiling).
 
 ## Changelog
 
