@@ -7,7 +7,7 @@ import { VERSION } from '../../version.js';
 /**
  * package.json "version" must stay in lockstep with VERSION in version.js.
  *
- * version.js is the single source of truth the service worker, the changelog,
+ * version.js is the single source of truth the about dialog, analytics,
  * and the Android sync all read. package.json carries its own "version" field;
  * if the two drift, the npm package version lies about what's shipping. They
  * were synced to 0.20.0 — this test fails CI the moment one is bumped without

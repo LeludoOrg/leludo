@@ -4,13 +4,12 @@ name: Release (Web Beta)
 # project `leludo-beta` (served at beta.leludo.org). Runs on push to
 # main, or manual trigger.
 #
-# Differs from release-web.yml in three ways:
-#   - Retargets www/ for the beta channel (SW cache name) before
-#     publishing, so beta runs an isolated service-worker scope and
-#     never fights the prod cache.
+# Differs from release-web.yml in two ways:
 #   - Deploys to a SEPARATE Pages project (leludo-beta), so beta and
 #     prod static bundles never collide. Same CLOUDFLARE_API_TOKEN as
 #     the Worker deploy — no separate cross-repo PAT needed anymore.
+#     (Cache isolation is automatic: separate origin = separate,
+#     origin-keyed browser cache, and bundles are content-hashed.)
 #   - Does NOT tag or create a GitHub release. Beta is a rolling
 #     channel; bumping VERSION is optional.
 #
@@ -110,27 +109,6 @@ jobs:
 
       - name: Build www/
         run: node tools/build-www.mjs
-
-      - name: Retarget www/ for beta channel
-        run: |
-          set -euo pipefail
-          # Service worker cache name must be distinct from prod, so
-          # beta clients never collide with the leludo-${VERSION}
-          # cache served from leludo.org.
-          BEFORE='`leludo-${VERSION}`'
-          AFTER='`leludo-beta-${VERSION}`'
-          if ! grep -qF "$BEFORE" www/sw.js; then
-            echo "sw.js cache-name marker missing — refusing to publish beta with prod cache name." >&2
-            exit 1
-          fi
-          # Use a sentinel to avoid sed escaping headaches with backticks.
-          node -e "
-            const fs = require('node:fs');
-            const p = 'www/sw.js';
-            const s = fs.readFileSync(p, 'utf8').replace('\`leludo-\${VERSION}\`', '\`leludo-beta-\${VERSION}\`');
-            fs.writeFileSync(p, s);
-          "
-          grep -F "$AFTER" www/sw.js >/dev/null
 
       - name: Check Cloudflare credentials
         env:
