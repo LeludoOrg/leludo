@@ -30,6 +30,17 @@ const root = resolve(here, '..');
 const src = resolve(root, 'src');
 const www = resolve(root, 'www');
 
+// Release channel for this build. Stamped into the app bundle so the native
+// APK dials the matching multiplayer backend (BUILD_CHANNEL in
+// scripts/net/net-client.js): the beta-channel build (Play internal track) →
+// beta Worker, the prod build → prod Worker. 'prod' is the default; only the
+// beta CI path / `npm run build:www:beta` sets MP_CHANNEL=beta. Pairs with the
+// versionCode band in tools/sync-android-version.mjs.
+const MP_CHANNEL = process.env.MP_CHANNEL || 'prod';
+if (MP_CHANNEL !== 'prod' && MP_CHANNEL !== 'beta') {
+  throw new Error(`build-www: MP_CHANNEL must be 'prod' or 'beta', got '${MP_CHANNEL}'`);
+}
+
 // The ES-module entry points pulled in by index.html, in load order. Bundled
 // into a single app.<hash>.js so the cold load is one request + one parse
 // instead of ~50 module fetches discovered level by level.
@@ -66,7 +77,7 @@ const hash8 = (data) => createHash('sha256').update(data).digest('hex').slice(0,
 
 // Bundle + minify an ES-module graph into a content-hashed file in www/.
 // Returns the hashed filename so callers can rewrite the HTML references.
-async function bundleEsm({ stdin, entryPoints }, prefix) {
+async function bundleEsm({ stdin, entryPoints, define }, prefix) {
   const result = await esbuild({
     ...(stdin ? { stdin } : { entryPoints }),
     bundle: true,
@@ -75,6 +86,7 @@ async function bundleEsm({ stdin, entryPoints }, prefix) {
     target: ['es2020'],
     write: false,
     legalComments: 'none',
+    ...(define ? { define } : {}),
   });
   const code = result.outputFiles[0].contents;
   const name = `${prefix}.${hash8(code)}.js`;
@@ -88,7 +100,11 @@ async function bundleEsm({ stdin, entryPoints }, prefix) {
 function bundleApp() {
   const contents = MODULE_ENTRIES.map((e) => `import './${e}';`).join('\n');
   return bundleEsm(
-    { stdin: { contents, resolveDir: src, loader: 'js', sourcefile: 'app-entry.js' } },
+    {
+      stdin: { contents, resolveDir: src, loader: 'js', sourcefile: 'app-entry.js' },
+      // Replace the __MP_CHANNEL__ token in net-client.js with the build channel.
+      define: { __MP_CHANNEL__: JSON.stringify(MP_CHANNEL) },
+    },
     'app',
   );
 }
@@ -194,6 +210,6 @@ const { game } = await transformIndexHtml(appFile);
 await transformAuxHtml(analyticsFile);
 
 console.log(
-  `Built www/ (${SHIPPED.length} entries) → ${appFile} + ${analyticsFile}, ` +
+  `Built www/ [channel=${MP_CHANNEL}] (${SHIPPED.length} entries) → ${appFile} + ${analyticsFile}, ` +
     `critical CSS inlined + game bundle (${game.length} sheets)`,
 );

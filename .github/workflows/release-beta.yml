@@ -1,0 +1,328 @@
+name: Release (Beta)
+
+# Beta channel — publishes the current ref to the Cloudflare Pages
+# project `leludo-beta` (served at beta.leludo.org). Runs on push to
+# main, or manual trigger. The prod counterpart is release.yml.
+#
+# Differs from release.yml in two ways:
+#   - Deploys to a SEPARATE Pages project (leludo-beta), so beta and
+#     prod static bundles never collide. Same CLOUDFLARE_API_TOKEN as
+#     the Worker deploy — no separate cross-repo PAT needed anymore.
+#     (Cache isolation is automatic: separate origin = separate,
+#     origin-keyed browser cache, and bundles are content-hashed.)
+#   - Does NOT tag or create a GitHub release. Beta is a rolling
+#     channel; bumping VERSION is optional for the web deploy.
+#
+# Multiplayer: deploy-worker-beta ships the ISOLATED beta Worker
+# (`leludo-mp-beta`, wrangler.toml `[env.beta]`) so beta.leludo.org's
+# client (BETA_SERVER_URL in scripts/net/net-client.js) talks to its
+# own Durable Objects + admission counters, never production's.
+#
+# Android internal track: on a MANUAL dispatch only, build-android-beta
+# builds a beta-channel AAB (MP_CHANNEL=beta → banded versionCode
+# 1e9+base + beta backend baked in) and publish-play-internal uploads it
+# to the Play INTERNAL track. So a beta cut ships web + worker + the
+# internal APK together. A routine push to main NEVER touches Play —
+# Play rejects a re-uploaded versionCode, and bumping VERSION is what
+# makes a fresh internal build (do that to re-cut). The production track
+# is a SEPARATE artifact built by release.yml (MP_CHANNEL=prod).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Play internal 'What's new' (en-US, ≤500 chars; optional — blank = generic beta note)"
+        required: false
+        type: string
+  push:
+    branches: [main]
+
+# Coalesce rapid merges — a newer push supersedes an in-flight beta
+# deploy so beta always reflects the latest main.
+concurrency:
+  group: release-beta
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect-version:
+    name: Detect version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Read VERSION from version.js
+        id: read
+        run: |
+          VERSION=$(node -e "import('./src/version.js').then(m => process.stdout.write(m.VERSION))")
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read VERSION from version.js" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected VERSION=$VERSION"
+
+  changes:
+    name: Detect server changes
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Did this push touch code the Worker actually runs? A deploy SHUTS DOWN
+      # every running room (see server/cf/room-do.js header — code updates evict
+      # the Durable Object and terminate its WebSockets), so a client-only push
+      # (components / styles / HTML / assets) must NOT redeploy it and end live
+      # games. The Worker bundles server/** plus the pure scripts/** modules it
+      # runs, and reads wrangler.toml; a change to any of those is a real server
+      # change. (Persist/restore makes a genuine server deploy survivable — this
+      # keeps the gratuitous ones from firing in the first place.)
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            server:
+              - 'src/server/**'
+              - 'src/scripts/**'
+              - 'wrangler.toml'
+              - 'package-lock.json'
+
+  test:
+    name: Unit + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:run
+
+  deploy-worker-beta:
+    name: Deploy multiplayer Worker (beta)
+    needs: [test, changes]
+    # Only redeploy when server code changed — or on a manual dispatch (an
+    # intentional, explicit release). A routine client-only push skips this job
+    # entirely, so live beta games aren't evicted for a change the Worker never
+    # runs. See the `changes` job for why.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    # Deploys server/cf/* under wrangler.toml's [env.beta] → the separate
+    # `leludo-mp-beta` Worker with its own Durable Objects. Mirrors the
+    # deploy-worker job in release.yml but with --env beta, and runs in
+    # parallel with the gh-pages publish. Requires repo secrets
+    # CLOUDFLARE_API_TOKEN (scoped: Workers Scripts + Durable Objects edit) and
+    # CLOUDFLARE_ACCOUNT_ID. If either is absent the job FAILS LOUDLY — a silent
+    # no-op once let a pre-fix beta Worker ship under a green release (the client
+    # got the fix, the Worker stayed stale, multiplayer desynced). A red job is
+    # the signal that the live Worker did NOT get this release.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot deploy the beta MP Worker (leludo-mp-beta). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Workers Scripts Edit + Account Workers Durable Objects) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with beta Worker deploy."
+
+      - name: Deploy to Cloudflare Workers (beta)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env beta
+
+  publish-beta:
+    name: Publish to leludo-beta
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy-beta
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build www/
+        run: node tools/build-www.mjs
+
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot publish the beta web bundle to Cloudflare Pages (project leludo-beta). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with beta Pages publish."
+
+      - name: Publish to Cloudflare Pages (beta.leludo.org)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Benign wrangler.toml warning here too — see release.yml; do NOT
+          # add --config, Pages rejects custom config paths. --branch=main →
+          # production deploy on leludo-beta (beta.leludo.org). www/ is gitignored
+          # → --commit-dirty.
+          command: pages deploy www --project-name=leludo-beta --branch=main --commit-dirty=true
+
+  build-android-beta:
+    name: Build Android (beta → internal)
+    needs: [detect-version, test]
+    # Manual dispatch only. A routine push to main keeps beta.leludo.org fresh
+    # (web), but must NOT build/upload an AAB: Play rejects a re-uploaded
+    # versionCode, so a fresh internal build needs a VERSION bump and an explicit
+    # cut. See the workflow header.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # MP_CHANNEL=beta → versionCode = 1e9 + base (tools/sync-android-version.mjs)
+      # + beta backend baked into the bundle (tools/build-www.mjs → net-client.js).
+      - name: Prepare Android (beta channel)
+        env:
+          MP_CHANNEL: beta
+        run: npm run android:prepare
+
+      - name: Write keystore + properties
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is missing" >&2
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/keystore.properties <<EOF
+          storeFile=app/release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          EOF
+
+      - name: Build release AAB
+        working-directory: android
+        run: ./gradlew bundleRelease --no-daemon --build-cache
+
+      - name: Rename output
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          mkdir -p android-out
+          cp android/app/build/outputs/bundle/release/app-release.aab "android-out/ludo-beta-v${VERSION}.aab"
+
+      - name: Upload Android (beta) artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: android-dist-beta
+          path: android-out/*
+          if-no-files-found: error
+
+      - name: Cleanup keystore
+        if: always()
+        run: |
+          rm -f android/app/release.keystore android/keystore.properties
+
+  publish-play-internal:
+    name: Publish to Google Play (internal)
+    needs: [detect-version, build-android-beta]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Download Android (beta) artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: android-dist-beta
+          path: android-dist
+
+      - name: Write Play release notes (internal)
+        env:
+          NOTES: ${{ inputs.release_notes }}
+          VERSION: ${{ needs.detect-version.outputs.version }}
+        run: |
+          mkdir -p dev-assets/distribution/whatsnew
+          if [ -z "$NOTES" ]; then
+            NOTES="Beta ${VERSION} — internal testing build (beta multiplayer backend)."
+          fi
+          printf '%s' "$NOTES" > dev-assets/distribution/whatsnew/whatsnew-en-US
+          LEN=$(node -e "const fs=require('fs');process.stdout.write(String(fs.readFileSync('dev-assets/distribution/whatsnew/whatsnew-en-US','utf8').length))")
+          if [ "$LEN" -gt 500 ]; then
+            echo "::error::release notes are $LEN chars — Play caps the en-US 'What's new' at 500. Shorten the release_notes input and re-run." >&2
+            exit 1
+          fi
+          echo "Release notes: $LEN chars"
+
+      - name: Upload AAB to Google Play (internal)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.leludo.ludo
+          releaseFiles: android-dist/ludo-beta-v${{ needs.detect-version.outputs.version }}.aab
+          tracks: internal
+          status: completed
+          whatsNewDirectory: dev-assets/distribution/whatsnew

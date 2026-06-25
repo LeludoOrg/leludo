@@ -35,6 +35,7 @@ import {
     VERSION,
 } from "./index.js"
 import { STORAGE_KEYS } from "../scripts/platform/storage-keys.js";
+import { getServerChannel, setServerChannel } from "../scripts/net/net-client.js";
 import { readBool, writeBool } from "../scripts/platform/storage-util.js";
 import { SCREENS } from "../scripts/platform/screens.js";
 import { ICON_BACK, ICON_SETTINGS } from "./wc-icons.js";
@@ -132,7 +133,7 @@ function buildSettingsOverlay() {
                     <div class="about-list">
                         <div class="about-row">
                             <span class="about-key">Version</span>
-                            <span class="about-value-mono">${VERSION}</span>
+                            <span id="about-version" class="about-value-mono">${VERSION}</span>
                         </div>
                         <div class="about-row about-row--separator">
                             <span class="about-key">Source</span>
@@ -144,6 +145,13 @@ function buildSettingsOverlay() {
                         </div>
                     </div>
                 `)}
+
+                <div id="dev-group" class="hidden">
+                ${settingsGroup('Developer', `
+                    ${toggleHtml('s-beta-server', 'Beta multiplayer server', getServerChannel() === 'beta', false)}
+                    <div class="god-mode-hint">Routes Online play to the isolated beta backend. Start a new online game to apply. Testers only.</div>
+                `)}
+                </div>
                 </div>
             </div>
         </div>
@@ -244,6 +252,31 @@ function ensureOverlay() {
             godEl.checked = isGodModeEnabled();
             godEl.addEventListener('change', ($event) => {
                 setGodModeEnabled($event.target.checked);
+            });
+        }
+    }
+
+    // Hidden tester control: tap the version row ×7 to reveal the backend-channel
+    // switch (Android dev-options pattern). The shipped APK is a promoted, byte-
+    // identical artifact with no signal for "which Play track installed me", so
+    // the control can't be shown by track — only buried, so ordinary players
+    // never find it while briefed internal testers can flip Online play onto the
+    // isolated beta backend. See setServerChannel() in net-client.js.
+    const devGroup = overlay.querySelector('#dev-group');
+    const versionEl = overlay.querySelector('#about-version');
+    if (devGroup && versionEl) {
+        // Already on beta (a tester flipped it earlier) → reveal without the
+        // gesture, so they can read the state and switch back.
+        if (getServerChannel() === 'beta') devGroup.classList.remove('hidden');
+        let taps = 0;
+        versionEl.addEventListener('click', () => {
+            if (!devGroup.classList.contains('hidden')) return;
+            if (++taps >= 7) devGroup.classList.remove('hidden');
+        });
+        const betaEl = overlay.querySelector('#s-beta-server');
+        if (betaEl) {
+            betaEl.addEventListener('change', ($event) => {
+                setServerChannel($event.target.checked ? 'beta' : 'prod');
             });
         }
     }

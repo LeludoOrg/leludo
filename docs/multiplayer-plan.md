@@ -8,7 +8,8 @@ shell has since been retired — dev + e2e now run the real Cloudflare Worker un
 The Cloudflare transport shell lives in
 [`server/cf/`](../server/cf/) (Worker + three Durable Objects) with
 [`wrangler.toml`](../wrangler.toml) and a `deploy-worker` job in
-[release-web.yml](../.github/workflows/release-web.yml). See
+[release.yml](../.github/workflows/release.yml) (prod) / `deploy-worker-beta`
+in [release-beta.yml](../.github/workflows/release-beta.yml). See
 [server/cf/README.md](../server/cf/README.md) for the deploy runbook.
 
 **Hibernation was reverted (it cost latency, not just GB-s).** `LudoRoomDO` is

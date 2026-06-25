@@ -27,13 +27,24 @@ const PROD_SERVER_URL = 'wss://mp.leludo.org';
 const BETA_SERVER_URL = 'wss://mp-beta.leludo.org';
 const BETA_HOST = 'beta.leludo.org';
 
+// Build-time release channel, stamped into the production bundle by
+// tools/build-www.mjs via esbuild `define` (MP_CHANNEL=beta → 'beta'). Dev
+// serves raw modules with no build step, so the token is never substituted —
+// `typeof` guards the ReferenceError and we fall back to 'prod'. This is how a
+// beta-channel APK (uploaded to the Play internal track) auto-dials the isolated
+// beta backend while the production APK dials prod, without any runtime track
+// signal (which Android does not expose). The two builds differ only by this
+// define + versionCode band (tools/sync-android-version.mjs).
+const BUILD_CHANNEL = (typeof __MP_CHANNEL__ !== 'undefined' ? __MP_CHANNEL__ : 'prod');
+
 /** Build the ws:// URL from connection options + query overrides. */
 export function resolveServerUrl(explicit) {
     if (explicit) return explicit;
     // The shipped Capacitor APK serves from https://localhost, so location.hostname
     // lies — it looks like local dev. The native runtime flag is the real signal:
-    // a native build always dials production (there is no dev ws server on a phone).
-    if (isCapacitorNative()) return PROD_SERVER_URL;
+    // a native build dials its build channel's backend (beta APK → beta Worker,
+    // prod APK → prod Worker); there is no dev ws server on a phone.
+    if (isCapacitorNative()) return BUILD_CHANNEL === 'beta' ? BETA_SERVER_URL : PROD_SERVER_URL;
     const host = location.hostname;
     // Local dev / e2e: `npm run dev` runs the multiplayer Worker under
     // `wrangler dev` (local workerd) on 8890 alongside the static site, so online
@@ -64,6 +75,34 @@ export function getConfiguredServerUrl() {
         if (stored) return stored;
     } catch { /* non-browser / blocked storage */ }
     return resolveServerUrl();
+}
+
+/**
+ * Hidden tester override for the multiplayer backend channel. The shipped APK is
+ * a promoted, byte-identical artifact with no runtime signal for "which Play
+ * track installed me", so it always dials prod via resolveServerUrl() — there is
+ * no way to auto-route internal-track installs to beta. This flips the SAME
+ * `leludo-mp-server` key getConfiguredServerUrl() honors, so a briefed internal
+ * tester can pin Online play to the isolated beta Worker from the device.
+ * Surfaced only behind the About-dialog secret gesture (tap version ×7), never
+ * to ordinary players. Takes effect on the next connect.
+ *
+ *   'beta' → pin Online play to the ISOLATED beta backend.
+ *   'prod' → clear the override (default: native/web dial production).
+ */
+export function getServerChannel() {
+    try {
+        return localStorage.getItem(STORAGE_KEYS.MP_SERVER) === BETA_SERVER_URL ? 'beta' : 'prod';
+    } catch {
+        return 'prod';
+    }
+}
+
+export function setServerChannel(channel) {
+    try {
+        if (channel === 'beta') localStorage.setItem(STORAGE_KEYS.MP_SERVER, BETA_SERVER_URL);
+        else localStorage.removeItem(STORAGE_KEYS.MP_SERVER);
+    } catch { /* storage blocked */ }
 }
 
 const USERNAME_KEY = STORAGE_KEYS.USERNAME;

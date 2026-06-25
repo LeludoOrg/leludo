@@ -1,0 +1,397 @@
+name: Release (Production)
+
+# Single production release: deploys the prod web bundle (leludo.org) + the prod
+# multiplayer Worker, builds + uploads the Android AAB to the Play PRODUCTION
+# track, pushes the HTML5 build to itch.io, and cuts the GitHub release/tag —
+# all from one manual dispatch. The Play "What's new" text comes from the
+# `release_notes` input (the public changelog.html is the canonical web log, but
+# it isn't shaped for a store listing, so prod release notes are authored here).
+#
+# Android channel: builds with MP_CHANNEL=prod (default) → versionCode = base
+# (tools/sync-android-version.mjs) and the prod multiplayer backend baked in
+# (tools/build-www.mjs → net-client.js BUILD_CHANNEL). The beta/internal track
+# is a SEPARATE artifact built by release-beta.yml (MP_CHANNEL=beta, banded
+# versionCode), so there is no Play Console promote step and no versionCode
+# collision between the two tracks.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Play Store 'What's new' (en-US, ≤500 chars)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  detect-version:
+    name: Detect version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read VERSION from version.js
+        id: read
+        run: |
+          VERSION=$(node -e "import('./src/version.js').then(m => process.stdout.write(m.VERSION))")
+          if [ -z "$VERSION" ]; then
+            echo "Failed to read VERSION from version.js" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected VERSION=$VERSION"
+
+  test:
+    name: Unit + integration tests
+    needs: detect-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test:run
+
+  deploy-worker:
+    name: Deploy multiplayer Worker
+    needs: [detect-version, test]
+    runs-on: ubuntu-latest
+    # Deploys server/cf/* (the prod Cloudflare multiplayer backend) from
+    # wrangler.toml. Decoupled from the web bundle — runs in parallel with the
+    # Pages publish. Requires repo secrets CLOUDFLARE_API_TOKEN (scoped: Workers
+    # Scripts + Durable Objects edit) and CLOUDFLARE_ACCOUNT_ID. Absent → FAILS
+    # LOUDLY: a silent no-op once let a pre-fix Worker ship under a green release
+    # (client got the fix, Worker stayed stale, multiplayer desynced). A red job
+    # is the signal that the live Worker did NOT get this release.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot deploy the MP Worker (leludo-mp). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Workers Scripts Edit + Account Workers Durable Objects) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with Worker deploy."
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+  build-web:
+    name: Build web
+    needs: [detect-version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build www/
+        run: npm run build:www
+
+      - name: Zip web bundle
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          cd www
+          zip -r "../ludo-web-v${VERSION}.zip" .
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: web-dist
+          path: ludo-web-v*.zip
+          if-no-files-found: error
+
+  publish-pages:
+    name: Publish to Cloudflare Pages
+    needs: [detect-version, build-web]
+    runs-on: ubuntu-latest
+    # Publishes the built www/ bundle to the Cloudflare Pages project `leludo`,
+    # which serves leludo.org (apex). Decoupled from the MP Worker — the client
+    # dials the mp. subdomain by hostname (scripts/net/net-client.js). Requires
+    # CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) + CLOUDFLARE_ACCOUNT_ID;
+    # absent → FAILS LOUDLY, same rationale as deploy-worker.
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build www/
+        run: node tools/build-www.mjs
+
+      - name: Check Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Cloudflare secrets missing — cannot publish the web bundle to Cloudflare Pages (project leludo). Set repo secrets CLOUDFLARE_API_TOKEN (scoped: Cloudflare Pages Edit) and CLOUDFLARE_ACCOUNT_ID under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
+          echo "Cloudflare credentials present — proceeding with Pages publish."
+
+      - name: Publish to Cloudflare Pages (leludo.org)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler warns that the repo-root wrangler.toml (the Worker config)
+          # lacks pages_build_output_dir and IGNORES it, then proceeds — expected.
+          # Do NOT silence with --config: Pages rejects custom config paths.
+          # --branch=main → a PRODUCTION deploy serving leludo.org. www/ is
+          # gitignored, hence --commit-dirty=true.
+          command: pages deploy www --project-name=leludo --branch=main --commit-dirty=true
+
+  build-android:
+    name: Build Android (prod)
+    needs: [detect-version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # MP_CHANNEL defaults to prod → versionCode = base + prod backend baked in.
+      - name: Prepare Android (version sync + build:www + cap sync)
+        run: npm run android:prepare
+
+      - name: Write keystore + properties
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is missing" >&2
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/keystore.properties <<EOF
+          storeFile=app/release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          EOF
+
+      - name: Build release APK + AAB
+        working-directory: android
+        run: ./gradlew assembleRelease bundleRelease --no-daemon --build-cache
+
+      - name: Rename outputs
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          mkdir -p android-out
+          cp android/app/build/outputs/apk/release/app-release.apk "android-out/ludo-v${VERSION}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "android-out/ludo-v${VERSION}.aab"
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: android-dist
+          path: android-out/*
+          if-no-files-found: error
+
+      - name: Cleanup keystore
+        if: always()
+        run: |
+          rm -f android/app/release.keystore android/keystore.properties
+
+  publish-play-store:
+    name: Publish to Google Play (production)
+    needs: [detect-version, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: android-dist
+          path: android-dist
+
+      - name: Write Play release notes (from workflow input)
+        env:
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          if [ -z "$NOTES" ]; then
+            echo "::error::release_notes input is empty — provide the Play Store 'What's new' text when dispatching." >&2
+            exit 1
+          fi
+          mkdir -p dev-assets/distribution/whatsnew
+          printf '%s' "$NOTES" > dev-assets/distribution/whatsnew/whatsnew-en-US
+          LEN=$(node -e "const fs=require('fs');process.stdout.write(String(fs.readFileSync('dev-assets/distribution/whatsnew/whatsnew-en-US','utf8').length))")
+          if [ "$LEN" -gt 500 ]; then
+            echo "::error::release notes are $LEN chars — Play caps the en-US 'What's new' at 500. Shorten the release_notes input and re-run." >&2
+            exit 1
+          fi
+          echo "Release notes: $LEN chars"
+
+      - name: Upload AAB to Google Play (production)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.leludo.ludo
+          releaseFiles: android-dist/ludo-v${{ needs.detect-version.outputs.version }}.aab
+          tracks: production
+          status: completed
+          whatsNewDirectory: dev-assets/distribution/whatsnew
+
+  publish-itch:
+    name: Publish HTML5 build to itch.io
+    needs: [detect-version, build-web]
+    runs-on: ubuntu-latest
+    env:
+      ITCH_USER: giddu
+      ITCH_GAME: leludo
+    steps:
+      - name: Download web artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: .
+
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -o butler.zip
+          chmod +x butler
+          ./butler -V
+
+      - name: Push HTML5 build to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          VERSION="${{ needs.detect-version.outputs.version }}"
+          # Reuses the same zip build-web produced for the GitHub release, so itch
+          # and the web release ship byte-identical bundles. butler push uses the
+          # filename as the upload's display name on itch.
+          ./butler push "ludo-web-v${VERSION}.zip" "${ITCH_USER}/${ITCH_GAME}:html" --userversion="$VERSION"
+        # butler push reports success or fails the step itself — there's no
+        # separate status check, because itch's channel-listing endpoint is
+        # eventually consistent (an earlier `butler status` ran milliseconds
+        # after the push and got "No channel html found" despite a successful
+        # upload).
+
+  release:
+    name: Publish GitHub release
+    needs: [detect-version, build-web, build-android, publish-pages, publish-play-store, publish-itch]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download web artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: web-dist
+          path: dist
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: android-dist
+          path: dist
+
+      - name: Create tag if missing
+        env:
+          TAG: ${{ needs.detect-version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping create."
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.detect-version.outputs.tag }}
+          name: ${{ needs.detect-version.outputs.tag }}
+          generate_release_notes: true
+          body: |
+            Full release notes: https://leludo.fun/changelog.html
+
+            Artifacts:
+            - `ludo-web-v${{ needs.detect-version.outputs.version }}.zip` — web bundle (Capacitor `www/` contents)
+            - `ludo-v${{ needs.detect-version.outputs.version }}.apk` — sideloadable Android APK
+            - `ludo-v${{ needs.detect-version.outputs.version }}.aab` — Play Store Android App Bundle
+          files: |
+            dist/*.zip
+            dist/*.apk
+            dist/*.aab

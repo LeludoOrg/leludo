@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NetClient, resolveServerUrl } from '../../scripts/net/net-client.js';
+import {
+    NetClient,
+    resolveServerUrl,
+    getConfiguredServerUrl,
+    getServerChannel,
+    setServerChannel,
+} from '../../scripts/net/net-client.js';
 
 /**
  * Server-URL resolution. Regression guard: production used to derive
@@ -45,6 +51,42 @@ describe('resolveServerUrl', () => {
         stubHost('localhost', 'https:');
         vi.stubGlobal('window', { Capacitor: { isNativePlatform: () => true } });
         expect(resolveServerUrl()).toBe('wss://mp.leludo.org');
+    });
+});
+
+/**
+ * Hidden tester backend-channel override. The shipped APK always dials prod via
+ * resolveServerUrl() — a promoted, byte-identical artifact has no signal for
+ * "which Play track installed me", so internal-track installs can't auto-route
+ * to beta. The About-dialog secret toggle instead writes the leludo-mp-server
+ * key getConfiguredServerUrl() honors. Guard: flipping the channel actually
+ * re-points the backend on a native build, and reverting cleanly clears it.
+ */
+describe('server channel override (hidden tester toggle)', () => {
+    beforeEach(() => { try { localStorage.clear(); } catch { /* no storage */ } });
+    afterEach(() => {
+        try { localStorage.clear(); } catch { /* no storage */ }
+        delete window.Capacitor;
+        vi.unstubAllGlobals();
+    });
+
+    it('defaults to prod with no override', () => {
+        expect(getServerChannel()).toBe('prod');
+    });
+
+    it('flips a native build onto the isolated beta backend and back', () => {
+        // Native APK: hostname is https://localhost and isCapacitorNative() true,
+        // so the default resolves to prod — the toggle must override that.
+        vi.stubGlobal('location', { hostname: 'localhost', protocol: 'https:', search: '' });
+        window.Capacitor = { isNativePlatform: () => true };
+
+        setServerChannel('beta');
+        expect(getServerChannel()).toBe('beta');
+        expect(getConfiguredServerUrl()).toBe('wss://mp-beta.leludo.org'); // not prod
+
+        setServerChannel('prod');
+        expect(getServerChannel()).toBe('prod');
+        expect(getConfiguredServerUrl()).toBe('wss://mp.leludo.org'); // override cleared
     });
 });
 
