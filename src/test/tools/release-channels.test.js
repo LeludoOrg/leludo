@@ -8,7 +8,8 @@ import {
 } from '../../../tools/release-channels.mjs';
 
 const PLAY_CEILING = 2_100_000_000; // Google Play's hard versionCode max
-const MAX_BASE = 99 * 10000 + 99 * 100 + 99; // 99.99.99 → 999_999
+// Field caps: major 0..9, minor 0..999, patch 0..999. Max version 9.999.999.
+const MAX_BASE = 9 * 1_000_000 + 999 * 1_000 + 999; // 9.999.999 → 9_999_999
 
 /**
  * Channel-banded Android versionCode. The rule everything hangs on: Play serves
@@ -19,18 +20,19 @@ const MAX_BASE = 99 * 10000 + 99 * 100 + 99; // 99.99.99 → 999_999
  */
 describe('computeVersionCode', () => {
     it('production is the plain semver base (lowest band)', () => {
-        expect(computeVersionCode('0.28.7', 'prod')).toBe(2807);
-        expect(computeVersionCode('1.2.3', 'prod')).toBe(10203);
+        // base = major*1e6 + minor*1e3 + patch
+        expect(computeVersionCode('0.28.7', 'prod')).toBe(28_007);
+        expect(computeVersionCode('1.2.3', 'prod')).toBe(1_002_003);
     });
 
     it('defaults to prod when no channel is given', () => {
-        expect(computeVersionCode('0.28.7')).toBe(2807);
+        expect(computeVersionCode('0.28.7')).toBe(28_007);
     });
 
     it('each channel adds its band * BAND_WIDTH on top of the base', () => {
-        expect(computeVersionCode('0.28.7', 'open')).toBe(100_002_807);   // band 10
-        expect(computeVersionCode('0.28.7', 'closed')).toBe(200_002_807); // band 20
-        expect(computeVersionCode('0.28.7', 'beta')).toBe(300_002_807);   // band 30, internal track
+        expect(computeVersionCode('0.28.7', 'open')).toBe(100_028_007);   // band 10
+        expect(computeVersionCode('0.28.7', 'closed')).toBe(200_028_007); // band 20
+        expect(computeVersionCode('0.28.7', 'beta')).toBe(300_028_007);   // band 30, internal track
     });
 
     it('orders production < open < closed < internal at the same version', () => {
@@ -42,7 +44,7 @@ describe('computeVersionCode', () => {
 
     it('every test channel outranks EVERY production code, forever', () => {
         // The smallest test-channel code (lowest test band at 0.0.0) must still
-        // beat the largest possible prod code (99.99.99) so a tester is never
+        // beat the largest possible prod code (9.999.999) so a tester is never
         // pulled to prod.
         const smallestTestBand = Math.min(
             ...CHANNEL_NAMES.filter((c) => c !== 'prod').map((c) => CHANNELS[c].band),
@@ -57,7 +59,7 @@ describe('computeVersionCode', () => {
 
     it('stays under Play\'s 2.1e9 ceiling for every defined channel — and band 209', () => {
         for (const c of CHANNEL_NAMES) {
-            expect(computeVersionCode('99.99.99', c)).toBeLessThan(PLAY_CEILING);
+            expect(computeVersionCode('9.999.999', c)).toBeLessThan(PLAY_CEILING);
         }
         // 1e7 spacing leaves room up to band 209 (the documented max).
         expect(209 * BAND_WIDTH + MAX_BASE).toBeLessThan(PLAY_CEILING);
@@ -70,6 +72,15 @@ describe('computeVersionCode', () => {
 
     it('throws on a non-semver version', () => {
         expect(() => computeVersionCode('beta', 'prod')).toThrow(/semver/);
+    });
+
+    it('throws when a field overflows its cap (major 0..9, minor/patch 0..999)', () => {
+        // A carry would break version ordering or bleed into the next band.
+        expect(() => computeVersionCode('10.0.0', 'prod')).toThrow(/overflows/);
+        expect(() => computeVersionCode('0.1000.0', 'prod')).toThrow(/overflows/);
+        expect(() => computeVersionCode('0.0.1000', 'prod')).toThrow(/overflows/);
+        // The boundary values are still valid.
+        expect(computeVersionCode('9.999.999', 'prod')).toBe(MAX_BASE);
     });
 });
 

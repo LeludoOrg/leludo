@@ -18,14 +18,15 @@ name: Release (Beta)
 # client (BETA_SERVER_URL in scripts/net/net-client.js) talks to its
 # own Durable Objects + admission counters, never production's.
 #
-# Android internal track: on a MANUAL dispatch only, build-android-beta
-# builds a beta-channel AAB (MP_CHANNEL=beta → banded versionCode +
-# beta backend baked in; see tools/release-channels.mjs) and
-# publish-play-internal uploads it to the Play INTERNAL track. So a
-# beta cut ships web + worker + the
-# internal APK together. A routine push to main NEVER touches Play —
-# Play rejects a re-uploaded versionCode, and bumping VERSION is what
-# makes a fresh internal build (do that to re-cut). The production track
+# Android internal track: build-android-beta builds a beta-channel AAB
+# (MP_CHANNEL=beta → banded versionCode + beta backend baked in; see
+# tools/release-channels.mjs) and publish-play-internal uploads it to the
+# Play INTERNAL track. It fires on a MANUAL dispatch, OR on any push to
+# main that bumped VERSION (src/version.js changed) — so a routine merge
+# that bumps VERSION auto-cuts a fresh internal build alongside the web +
+# worker deploy. A version-less push (e.g. a revert) skips the AAB: Play
+# rejects a re-uploaded versionCode, and versionCode is derived from
+# VERSION, so the version.js diff is the safe trigger. The production track
 # is a SEPARATE artifact built by release.yml (MP_CHANNEL=prod).
 
 on:
@@ -73,6 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       server: ${{ steps.filter.outputs.server }}
+      version: ${{ steps.filter.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -95,6 +97,8 @@ jobs:
               - 'src/scripts/**'
               - 'wrangler.toml'
               - 'package-lock.json'
+            version:
+              - 'src/version.js'
 
   test:
     name: Unit + integration tests
@@ -202,12 +206,16 @@ jobs:
 
   build-android-beta:
     name: Build Android (beta → internal)
-    needs: [detect-version, test]
-    # Manual dispatch only. A routine push to main keeps beta.leludo.org fresh
-    # (web), but must NOT build/upload an AAB: Play rejects a re-uploaded
-    # versionCode, so a fresh internal build needs a VERSION bump and an explicit
-    # cut. See the workflow header.
-    if: github.event_name == 'workflow_dispatch'
+    needs: [detect-version, test, changes]
+    # Runs on a manual dispatch, OR on any push to main that bumped VERSION
+    # (src/version.js changed). Play rejects a re-uploaded versionCode, and
+    # versionCode is derived from VERSION — so a fresh internal build needs a
+    # VERSION bump. Gating on the version.js diff means an ordinary version-less
+    # push (or a revert) skips the AAB instead of failing the upload with a
+    # duplicate-versionCode error. CLAUDE.md mandates a VERSION bump on every
+    # change that lands on main, so in practice every merge cuts a fresh
+    # internal build. See the workflow header.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.version == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -284,8 +292,10 @@ jobs:
 
   publish-play-internal:
     name: Publish to Google Play (internal)
-    needs: [detect-version, build-android-beta]
-    if: github.event_name == 'workflow_dispatch'
+    needs: [detect-version, build-android-beta, changes]
+    # Same gate as build-android-beta — a skipped build would skip this anyway,
+    # but mirror the condition so the dependency graph reads consistently.
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.version == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

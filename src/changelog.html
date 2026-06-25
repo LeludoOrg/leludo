@@ -43,6 +43,25 @@
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.28.8</div>
+                        <div class="cl-entry-date">June 25, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Internal: the beta release pipeline now auto-builds the Android internal-track AAB and uploads it to Google Play whenever a merge to main bumps the version — no manual workflow dispatch needed. A version-less push (e.g. a revert) skips the Android build to avoid a duplicate version-code upload. No gameplay or UI changes.</li>
+                                    <li>Internal: widened the Android version-code layout so a release can carry up to 999 minor and 999 patch numbers (major 0–9) before rolling over, with a build-time guard that fails fast on overflow. No gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
                         <div class="cl-entry-version">v0.28.7</div>
                         <div class="cl-entry-date">June 25, 2026</div>
                     </div>
