@@ -1,10 +1,13 @@
 /**
- * Transport-shell helpers shared by BOTH server runtimes — the Node `ws` server
- * (local-server.mjs) and the Cloudflare Durable Object (cf/room-do.js). All game
- * rules live in room-engine.js + scripts/*; this owns only the per-room socket
- * bookkeeping and intent routing the two transports used to copy-paste verbatim.
+ * Transport-shell helpers for the Cloudflare transport (cf/room-do.js +
+ * cf/cf-utils.js). All game rules live in room-engine.js + scripts/*; this owns
+ * only the per-room socket bookkeeping and intent routing a transport would
+ * otherwise hand-roll.
  *
- * Plain ESM, no Node- or Workers-specific globals, so it loads in both runtimes.
+ * Deliberately runtime-agnostic — plain ESM, no Node- or Workers-specific
+ * globals. It was split out so the now-retired Node `ws` dev server and the DO
+ * could share one copy instead of drifting; the DO is the only consumer today,
+ * but the agnostic shape costs nothing and keeps the seam clean.
  */
 import { MSG } from '../scripts/net/net-protocol.js';
 
@@ -59,7 +62,7 @@ export class SessionSockets {
 /**
  * Build the {broadcast, send, release} transport the RoomEngine expects, backed
  * by a SessionSockets registry. `getEngine` is a thunk because the engine is
- * created after the transport in local-server and lives on `this` in the DO.
+ * created after the transport and lives on `this` in the DO.
  */
 export function engineTransport(sockets, getEngine, onRelease) {
     return {

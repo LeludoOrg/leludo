@@ -7,7 +7,7 @@ server state**. Built to catch the desync class that has bitten online play
 multiplayer testing going forward.
 
 ```bash
-npm run mp:server            # start the local server (port 8890) in one shell
+npm run mp:server            # start the local backend (wrangler dev, port 8890) in one shell
 npm run soak                 # run a soak against local in another
 npm run soak -- --games=10 --runs=200 --strictness=eventual
 ```

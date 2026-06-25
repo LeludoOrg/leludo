@@ -1,6 +1,6 @@
 {
   "name": "leludo",
-  "version": "0.28.5",
+  "version": "0.28.6",
   "description": "Ludo board game — browser + Android via Capacitor",
   "license": "GPL-3.0-or-later",
   "author": "Vishal Gidwani",
@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "node tools/dev.mjs",
-    "mp:server": "node src/server/local-server.mjs 8890",
+    "mp:server": "npx --yes wrangler dev --port 8890",
     "soak": "node tools/soak/run.mjs",
     "soak:local": "node tools/soak/run.mjs --env=local",
     "soak:beta": "node tools/soak/run.mjs --env=beta",

@@ -7,8 +7,8 @@ import { RECORDINGS_DIR } from '../../../tools/clear-recordings.mjs';
  * many isolated browser CONTEXTS (one per player). A single browser process hosts
  * every context, so N players cost ~N tabs, not N browsers — the minimal-footprint
  * way to fake "different devices" (each context = its own localStorage, username,
- * session id, and socket). All players talk to the real Node ws server Playwright
- * starts (server/local-server.mjs on 8890); nothing is mocked.
+ * session id, and socket). All players talk to the real CF Worker Playwright
+ * starts under `wrangler dev` on 8890; nothing is mocked.
  *
  * Every player's screen is VIDEO-RECORDED into recordings/online/ with a
  * descriptive name, so the last run can be reviewed. Recordings are wiped at the

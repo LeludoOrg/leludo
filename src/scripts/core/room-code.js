@@ -1,7 +1,7 @@
 /**
  * Shared room-code helper — one source of truth for the private-room code
  * alphabet + minting, used by both the browser client (wc-quick-start, when a
- * host creates a room) and the server (local-server, when public matchmaking
+ * host creates a room) and the server (the matchmaker, when a public match
  * mints a room). Kept here so the two never drift apart.
  *
  * The alphabet omits visually ambiguous characters (0/O, 1/I/L) so a code is

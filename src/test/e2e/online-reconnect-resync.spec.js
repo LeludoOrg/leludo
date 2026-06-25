@@ -150,6 +150,13 @@ test('a client that missed moves while offline re-syncs its board on reconnect',
     // B comes back. The net client auto-reconnects; the server lifts the hold
     // and replies with the catch-up snapshot B must restore from — board, turn
     // count, phase and movable tokens (it may be B's own held turn).
+    //
+    // Reconnect here depends on the DO completing the WS closing handshake: when
+    // B's socket closed gracefully the server MUST reciprocate, or the browser
+    // socket hangs in CLOSING, its `close` event never fires, and net-client never
+    // starts its reconnect loop. The Node `ws` dev server auto-reciprocated and hid
+    // this; workerd does not, so room-do._onClose closes the server socket back
+    // (regression for that — this test froze on "Waiting for Drifter…" without it).
     await allowSocket(pageB);
 
     // The hold lifts on every screen.

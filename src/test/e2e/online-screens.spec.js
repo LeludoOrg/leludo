@@ -7,8 +7,8 @@ import { openOnline, goHomeOnline } from './helpers.js';
  * online lobby flow (host-managed private rooms + public matchmaking), and the
  * remembered username.
  *
- * The online lobby talks to the real Node ws server that Playwright starts
- * (server/local-server.mjs on 8890), so "both clients meet in one room" is an
+ * The online lobby talks to the real CF Worker that Playwright starts under
+ * `wrangler dev` on 8890, so "both clients meet in one room" is an
  * end-to-end check, not a mock.
  */
 

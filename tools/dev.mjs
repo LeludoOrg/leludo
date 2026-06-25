@@ -1,10 +1,25 @@
 #!/usr/bin/env node
 // Dev: serve the web root (src/) via five-server on port 8888 (no build step —
-// browsers load CSS + ES modules directly) AND run the multiplayer ws server
-// on 8890 so online play works out of the box. Without the second process,
-// "Find a public match" / private rooms have no backend and hang forever on
-// "Finding players…". In production the same online traffic hits a Cloudflare
-// Worker; locally it's src/server/local-server.mjs.
+// browsers load CSS + ES modules directly) AND run the multiplayer backend on
+// 8890 so online play works out of the box. Without the second process, "Find a
+// public match" / private rooms have no backend and hang forever on "Finding
+// players…".
+//
+// The backend is the REAL Cloudflare Worker (src/server/cf/) under `wrangler dev`
+// — local workerd/miniflare running the same Durable Objects, storage, alarms and
+// output gate as production. Dev therefore matches the deployed runtime exactly:
+// editing server code makes wrangler restart workerd, which EVICTS the DOs (an
+// in-memory wipe + socket teardown — the same thing a code deploy does), so a
+// reconnect must resume the live game via the DO's persist/restore (room-do.js,
+// v0.28.5). That dev/prod parity is the point — a Node `ws` shell (the retired
+// src/server/local-server.mjs) couldn't reproduce DO eviction, which is how the
+// "deploy kills the game" bug shipped undetected.
+//
+// DEV_TEST_HOOKS=1 (passed as a wrangler --var, never in the deployed wrangler.toml)
+// turns on the deterministic seed / grace override / __busy__ room the e2e suite
+// relies on; the caps are lifted far above any dev session so admission never
+// rejects locally. DO storage persists to the default .wrangler/state, so a game
+// survives a wrangler reload (the parity demo above).
 
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
@@ -25,14 +40,20 @@ function run(label, cmd, args, env, cwd = root) {
   return p;
 }
 
-// Static site (port 8888) + multiplayer ws server (port 8890).
-// The mp-server runs with DEV_TEST_HOOKS so the LOCAL dev backend honours the
-// same deterministic hooks (seed / grace override / __busy__ room) the Playwright
-// e2e suite relies on. Playwright reuses an already-running dev server locally
-// (reuseExistingServer), so without this the reused server silently ignores
-// ?grace=/seed=/__busy__ and those e2e specs fail only on dev machines, never CI.
+// Static site (five-server, port 8888) + multiplayer backend (wrangler dev, port
+// 8890). The static server runs with cwd=src/ (the web root); wrangler runs at the
+// repo root where wrangler.toml lives. Playwright reuses an already-running dev
+// server locally (reuseExistingServer), so the dev backend and the e2e backend
+// must honour the same hooks — both pass DEV_TEST_HOOKS / lifted caps via --var,
+// keeping them out of the deployed config.
 run('static-server', 'npx', ['five-server', `--port=${PORTS.DEV_STATIC}`, '--open=/'], undefined, resolve(root, 'src'));
-run('mp-server', 'node', [resolve(root, 'src/server/local-server.mjs'), String(PORTS.MP_SERVER)], { DEV_TEST_HOOKS: '1' });
+run('mp-server', 'npx', [
+  '--yes', 'wrangler', 'dev',
+  '--port', String(PORTS.MP_SERVER),
+  '--var', 'DEV_TEST_HOOKS:1',
+  '--var', 'MAX_GAMES_PER_DAY:1000000',
+  '--var', 'MAX_CONCURRENT_GAMES:100000',
+]);
 
 let down = false;
 const shutdown = () => {
