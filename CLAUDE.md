@@ -97,20 +97,46 @@ GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
 
 - `ci.yml` — runs on PRs to `main` and pushes to other branches.
   Three jobs: vitest, Playwright E2E, and a `www/` build smoke test.
-- `release-web.yml` — web release pipeline (test + build + Cloudflare
-  Pages deploy + tag + GH release with web zip). Manual trigger only
-  (`workflow_dispatch`). Owns the `leludo` Pages deploy (see Web
-  Deployment below).
-- `release-android.yml` — Android release pipeline (test + build APK
-  + AAB + Play Store publish + tag + GH release with apk/aab).
-  Manual trigger only (`workflow_dispatch`).
+- `release.yml` — **the production release** (manual `workflow_dispatch`,
+  one input: `release_notes`). One run ships everything for a version:
+  prod MP Worker (`leludo-mp`) + Cloudflare Pages `leludo` (leludo.org) +
+  Android AAB → Play **production** track + HTML5 build → itch.io + the
+  `vX.Y.Z` tag and GH release (web zip + apk + aab). The Android build
+  runs at `MP_CHANNEL=prod` (default): `versionCode = base`, prod backend
+  baked in. Play "What's new" comes from the `release_notes` input (not
+  the changelog — see Versioning), capped at 500 chars by a build step.
+- `release-beta.yml` — **the beta channel** (`workflow_dispatch` +
+  every push to `main`). Always: beta MP Worker (`leludo-mp-beta`) +
+  Cloudflare Pages `leludo-beta` (beta.leludo.org). On a **manual
+  dispatch only** it ALSO builds a beta-channel AAB (`MP_CHANNEL=beta`:
+  banded `versionCode`, beta backend baked in) and uploads it to the Play
+  **internal** track. A routine push keeps beta.leludo.org fresh but
+  never touches Play. Does NOT tag or cut a GH release.
 
-Both release workflows create the `vX.Y.Z` tag idempotently (skip if
-it exists) and use `softprops/action-gh-release@v2`, which creates the
-release on first run and appends artifacts on subsequent runs — so
-running web then android lands a single GH release per version with
-web zip + apk + aab attached. Typical flow: bump `VERSION`, run web,
-validate `leludo.org`, then run android.
+**Per-track Android, no Play Console promote.** Each channel is a SEPARATE
+artifact — different backend (prod vs the isolated beta Worker, baked at
+build time via `MP_CHANNEL`; see `BUILD_CHANNEL` in
+[scripts/net/net-client.js](src/scripts/net/net-client.js) +
+[tools/build-www.mjs](tools/build-www.mjs)) and a different `versionCode`
+band. The channel registry is [tools/release-channels.mjs](tools/release-channels.mjs):
+`prod` (band 0, production track) is lowest, and test channels sit above it
+ordered by how internal they are — `open` (10), `closed` (20), `beta`/internal
+(30). Bands jump by 10 (not 0,1,2,3) on purpose: that leaves 9 free slots
+between any two so a new track can be inserted at its correct position later
+WITHOUT renumbering. `versionCode = band * 1e7 + base`, giving indices 0..209
+under Play's 2.1e9 cap. Play serves a multi-track user the HIGHEST code, so this
+keeps every test build above prod (a tester is never pulled onto the public
+build) and keeps the most-internal track on top. `versionName` is identical
+across channels — players only ever see `0.X.Y`. Adding a channel = a registry
+entry (a free band slotted at its internalness-ordered position) + a CI job;
+never renumber an existing band.
+
+`release.yml` creates the tag idempotently and uses
+`softprops/action-gh-release@v2`. Typical flow: bump `VERSION` + add a
+changelog entry → push to `main` (auto-deploys beta.leludo.org) →
+dispatch `release-beta.yml` to push the internal AAB → test on the
+internal track (it dials the beta backend) → dispatch `release.yml`
+with the `release_notes` to ship production everywhere.
 
 ### Playwright runner
 
@@ -237,8 +263,8 @@ Example: `http://localhost:8888/?positions=50,,,,,,,,,,,,,,,&player=0` puts P0's
 
 `leludo.org` is served by the Cloudflare Pages project `leludo`, NOT
 from a git branch. It is rebuilt and deployed by the `publish-pages`
-job in [.github/workflows/release-web.yml](.github/workflows/release-web.yml),
-which runs as part of the web release pipeline (`workflow_dispatch`):
+job in [.github/workflows/release.yml](.github/workflows/release.yml),
+which runs as part of the production release (`workflow_dispatch`):
 
 1. `npm ci`
 2. `node tools/build-www.mjs` → assembles `www/` (the HTML pages +
@@ -249,11 +275,12 @@ which runs as part of the web release pipeline (`workflow_dispatch`):
    --project-name=leludo --branch=main` → a production deploy serving
    the `leludo.org` custom domain.
 
-Web release is decoupled from Android — running `release-web.yml`
-publishes `leludo.org` and creates/updates the GH release with the
-web zip, without touching the Play Store. Android ships separately
-via `release-android.yml`. A web-only fix still requires a version
-bump + a Release (Web) run.
+`beta.leludo.org` is the sibling Pages project `leludo-beta`, deployed
+the same way by `release-beta.yml` on every push to `main`.
+
+`release.yml` ships web + Android (Play production) + itch + the GH
+release in one dispatch; the beta web channel (and the Play internal
+build, on dispatch) ride `release-beta.yml`. See CI above.
 
 The public domain therefore only ever sees runtime artifacts —
 internal docs (`CLAUDE.md`, `docs/`), tooling (`tools/`,
@@ -285,6 +312,8 @@ Single source of truth: `VERSION` constant in [version.js](version.js). Consumed
 
 Edit `version.js`, and keep `package.json`'s `version` in lockstep — the version-sync test enforces equality. No other steps for web. For Android, `npm run android:prepare` mirrors it into `build.gradle` via [tools/sync-android-version.mjs](tools/sync-android-version.mjs).
 
+**`versionCode` is channel-banded** (`MP_CHANNEL` env): `band * 1e7 + base` where `base = major*10000+minor*100+patch` and the band comes from the [tools/release-channels.mjs](tools/release-channels.mjs) registry (`prod` 0, `open` 10, `closed` 20, `beta`/internal 30 — spaced by 10 to leave insertion room). `versionName` is the VERSION verbatim and identical across channels — that is all players see. Production is lowest and every test channel sits above it (Play serves a multi-track user the highest code, so testers never get pulled onto prod). See CI / `computeVersionCode`. Don't renumber existing bands or exceed band 209 (Play's 2.1e9 ceiling).
+
 ## Changelog
 
 Public release notes live at [changelog.html](changelog.html). Newest entry on top.
@@ -295,13 +324,22 @@ Minimum sections per entry:
 - **Highlights** — short bullet list of changes. For user-visible diffs, describe what the player will see. For pure internal work (refactors, dead-code removal, dep bumps), say so plainly — e.g. "Internal code cleanup: …. No gameplay or UI changes." Don't invent user-facing narrative.
 - For Play Store releases only (versions actually shipped to a listing): also include **Play Store description — short** (≤80 chars) and **Play Store description — full** sections so the published copy stays in sync with the app.
 
-**Hard cap: the Highlights bullets must total ≤500 characters per entry.** The Play Store rejects en-US release notes longer than 500 chars and [tools/extract-whatsnew.mjs](tools/extract-whatsnew.mjs) — which feeds release-android.yml — now fails the build (instead of silently truncating mid-sentence) when the joined bullets exceed the cap. The extractor counts each `<li>` text content prefixed with `• ` and joined with newlines, e.g. `• First bullet\n• Second bullet`. If the entry trips the cap, shorten the bullets — don't bypass the check by editing MAX_LEN. Sanity-check while drafting:
+**Play "What's new" no longer comes from the changelog.** The
+`release_notes` input on `release.yml` (production) / `release-beta.yml`
+(internal) is the store text; a workflow step writes it to
+`dev-assets/distribution/whatsnew/whatsnew-en-US` and **fails the release
+if it exceeds 500 chars** (Play's en-US cap). So author release notes
+fresh in the dispatch form — they don't have to mirror the changelog.
+
+The changelog itself isn't length-capped by the pipeline anymore, but
+keep Highlights concise. [tools/extract-whatsnew.mjs](tools/extract-whatsnew.mjs)
+still derives ≤500-char notes from the current entry (no longer auto-wired
+into a release — handy if you want to paste the changelog bullets into the
+`release_notes` field). Sanity-check the changelog length while drafting:
 
 ```bash
 node -e "const fs=require('fs');const html=fs.readFileSync('changelog.html','utf8');const a=html.match(/<article[^>]*>([\s\S]*?)<\/article>/)[1];const ul=a.match(/Highlights[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/)[1];const b=[...ul.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map(m=>m[1].replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim());console.log(b.map(x=>'• '+x).join('\n').length,'chars')"
 ```
-
-Aim for ≤450 to leave headroom; the script enforces 500.
 
 ## Android (Capacitor)
 
@@ -309,7 +347,8 @@ Capacitor's `webDir` is `www/`, which is **built** from `src/` by `tools/build-w
 
 Scripts in `package.json`:
 
-- `npm run android:prepare` — version sync → build:www → `cap sync android`.
+- `npm run android:prepare` — version sync → build:www → `cap sync android` (prod channel: prod backend, `versionCode = base`).
+- `npm run android:prepare:beta` / `npm run android:run:beta` — same, with `MP_CHANNEL=beta` (beta backend baked in, banded internal-track `versionCode`). Use for an on-device internal/beta build; CI does this in `release-beta.yml`.
 - `npm run android:open` / `npm run android:run` — prepare + open/run in Android Studio.
 
 Anything that works in the browser ships to Android as long as `npm run android:prepare` runs first.

@@ -49,7 +49,8 @@ npm run cf:tail       # live logs
 `wrangler deploy` reads `wrangler.toml` at the repo root (Worker name
 `leludo-mp`, the three DO bindings, the SQLite migration, and the capacity
 `[vars]`). CI deploys the same way — see the `deploy-worker` job in
-`.github/workflows/release-web.yml`.
+`.github/workflows/release.yml` (prod) and `deploy-worker-beta` in
+`.github/workflows/release-beta.yml` (`--env beta`).
 
 ## Point the client at it
 
