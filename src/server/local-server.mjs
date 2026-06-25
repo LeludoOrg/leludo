@@ -28,6 +28,7 @@ import { Matchmaker } from './matchmaker.js';
 import { mintRoomCode } from '../scripts/core/room-code.js';
 import { spreadSeatPlan } from '../scripts/core/seat-allocation.js';
 import { MSG, REASON, BUSY, ERR } from '../scripts/net/net-protocol.js';
+import { safeParse } from '../scripts/net/ws-safe.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams, clampSeats } from './transport-shell.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8890);
@@ -179,8 +180,8 @@ wss.on('connection', (ws, req) => {
     }
 
     ws.on('message', (raw) => {
-        let msg;
-        try { msg = JSON.parse(raw.toString()); } catch { return; }
+        const msg = safeParse(raw.toString());
+        if (!msg) return;
         if (msg.t === MSG.QUEUE_CANCEL) {
             matchmaker.cancel(sessionId);
             safeSend(ws, { t: MSG.QUEUE_LEFT });

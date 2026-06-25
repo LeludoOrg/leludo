@@ -8,6 +8,7 @@
  */
 
 import { MSG } from "./net-protocol.js";
+import { safeParse, safeClose } from "./ws-safe.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
 import { isCapacitorNative } from "../platform/platform.js";
 import { NativeWebSocket, nativeSocketAvailable } from "./native-socket.js";
@@ -206,15 +207,15 @@ export class NetClient {
             const wasReconnecting = this._reconnectAttempts > 0;
             this._reconnectAttempts = 0;
             this._everOpen = true;
-            if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+            this._clearReconnect();
             this._startPing();
             if (wasReconnecting) this.opts.onReconnected?.();
             else this.opts.onOpen?.();
         });
         sock.addEventListener('message', (ev) => {
             if (!isCurrent()) return;
-            let msg;
-            try { msg = JSON.parse(ev.data); } catch { return; }
+            const msg = safeParse(ev.data);
+            if (!msg) return;
             // Pin the reconnect target to the seated room and stop re-queueing as
             // a fresh public match on a future drop.
             if (msg && msg.t === MSG.SEATED && msg.roomId) {
@@ -253,6 +254,10 @@ export class NetClient {
         if (this._pingTimer) { clearTimeout(this._pingTimer); this._pingTimer = null; }
     }
 
+    _clearReconnect() {
+        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+    }
+
     _scheduleReconnect() {
         if (this._reconnectAttempts >= this._maxReconnect) {
             this.opts.onGiveUp?.();
@@ -284,7 +289,7 @@ export class NetClient {
         if (state === WebSocket.CONNECTING) return; // a redial is already in flight
         if (state === WebSocket.OPEN) { this.send({ t: MSG.PING }); return; } // alive — probe + re-arm
         // CLOSED / CLOSING / no socket: cancel any queued backoff and dial now.
-        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+        this._clearReconnect();
         this._reconnectAttempts = 0;
         this.opts.onReconnecting?.(0, this._maxReconnect);
         this._open();
@@ -312,8 +317,8 @@ export class NetClient {
         this._suspended = true;
         this._closedByUs = true; // suppress _scheduleReconnect on this close
         this._stopPing();
-        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
-        try { this.ws?.close(); } catch { /* already gone */ }
+        this._clearReconnect();
+        safeClose(this.ws);
     }
 
     /**
@@ -337,11 +342,11 @@ export class NetClient {
             const sock = this._makeSocket(this._url());
             const fire = () => {
                 try { sock.send(JSON.stringify({ t: MSG.LEAVE })); } catch { /* ignore */ }
-                try { sock.close(); } catch { /* ignore */ }
+                safeClose(sock);
             };
             sock.addEventListener('open', fire);
             // A failed dial just closes; the suspended socket's grace covers us.
-            sock.addEventListener('error', () => { try { sock.close(); } catch { /* ignore */ } });
+            sock.addEventListener('error', () => safeClose(sock));
         } catch { /* server unreachable — grace forfeits us on the old timeline */ }
     }
 
@@ -369,7 +374,7 @@ export class NetClient {
     close() {
         this._closedByUs = true;
         this._stopPing();
-        if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
-        this.ws?.close();
+        this._clearReconnect();
+        safeClose(this.ws);
     }
 }

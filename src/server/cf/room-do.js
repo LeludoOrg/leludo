@@ -42,7 +42,7 @@
  * the DO in lockstep with the Node twin, which deletes the room outright.
  */
 import { RoomEngine } from '../room-engine.js';
-import { clampSeats, numEnv, randomSeed, safeSend, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
+import { clampSeats, numEnv, randomSeed, safeSend, safeParse, wsReject, ADMISSION_NAME, requireWebsocket } from './cf-utils.js';
 import { MSG, ERR } from '../../scripts/net/net-protocol.js';
 import { SessionSockets, engineTransport, dispatchIntent, parseConnParams } from '../transport-shell.js';
 
@@ -133,8 +133,8 @@ export class LudoRoomDO {
         if (!joined.ok) safeSend(server, JSON.stringify({ t: MSG.ERROR, error: joined.error }));
 
         server.addEventListener('message', (ev) => {
-            let msg;
-            try { msg = JSON.parse(ev.data); } catch { return; }
+            const msg = safeParse(ev.data);
+            if (!msg) return;
             this._onMessage(sessionId, msg);
         });
         const onGone = () => this._onClose(sessionId, server);

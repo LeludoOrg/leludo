@@ -10,6 +10,7 @@ import {
     isTripComplete,
     rollDiceWithPity,
 } from './game-logic.js';
+import { clonePositions } from './board-util.js';
 import { pickBestMove, PERSONALITIES } from './bot-ai.js';
 import {
     isPlayerFinished,
@@ -44,10 +45,6 @@ export function makeRng(seed) {
     return rng;
 }
 
-function cloneBoard(positions) {
-    return positions.map(p => (p ? p.slice() : null));
-}
-
 function listMovableTokenIndexes(playerTokens, dice) {
     const out = [];
     for (let ti = 0; ti < 4; ti++) {
@@ -57,7 +54,7 @@ function listMovableTokenIndexes(playerTokens, dice) {
 }
 
 function applyMove(positions, playerIndex, tokenIndex, dice) {
-    const next = cloneBoard(positions);
+    const next = clonePositions(positions, null);
     const fromPos = next[playerIndex][tokenIndex];
     const newPos = getTokenNewPosition(fromPos, dice);
     next[playerIndex][tokenIndex] = newPos;
@@ -141,7 +138,7 @@ export function runGame(opts) {
         playerTypes: playerTypes.slice(),
         botPersonalities: personalities.slice(),
         playerNames: ['', '', '', ''],
-        playerTokenPositions: positions.map(p => p ? p.slice() : null),
+        playerTokenPositions: clonePositions(positions, null),
         currentPlayerIndex,
     });
 

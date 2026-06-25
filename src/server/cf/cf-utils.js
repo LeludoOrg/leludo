@@ -22,6 +22,10 @@ export function numEnv(value, fallback) {
 // transport shell; re-exported here so the CF modules keep importing it locally.
 export { clampSeats } from '../transport-shell.js';
 
+// Frame parse + socket close are shared with the browser client — single
+// definition lives in scripts/net; re-exported so the DOs keep importing locally.
+export { safeParse, safeClose } from '../../scripts/net/ws-safe.js';
+
 // Durable Object singleton names. The Admission gate and the public Matchmaker
 // are each one global instance, addressed by a fixed name from the Worker + DOs.
 export const ADMISSION_NAME = 'global';

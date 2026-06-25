@@ -1,4 +1,4 @@
-import { htmlToElement } from "./index.js";
+import { htmlToElement, onClickSound, emitIntent } from "./index.js";
 import { playClickSound } from "../scripts/index.js";
 import { ICON_BACK, ICON_GLOBE, ICON_CHEVRON, QUAD_CHIP_SVG } from "./wc-icons.js";
 import { ROOM_CODE_CHARS, ROOM_CODE_LENGTH } from "../scripts/core/room-code.js";
@@ -53,7 +53,7 @@ class PlayOnline extends HTMLElement {
 
         const el = htmlToElement(html)
 
-        el.querySelector(".back-btn").addEventListener("click", () => { playClickSound(); this._emit('back') })
+        onClickSound(el.querySelector(".back-btn"), () => this._emit('back'))
 
         el.querySelector('[data-testid="online-create"]').addEventListener("click", () => {
             playClickSound()
@@ -86,7 +86,7 @@ class PlayOnline extends HTMLElement {
     }
 
     _emit(kind, detail = {}) {
-        this.dispatchEvent(new CustomEvent('online-intent', { detail: { kind, ...detail }, bubbles: true }))
+        emitIntent(this, 'online-intent', kind, detail)
     }
 
     setStatus(text) {

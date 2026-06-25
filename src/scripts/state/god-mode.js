@@ -9,6 +9,7 @@ import { getTokenElement } from "../render/render-logic.js";
 import { isCapacitorNative } from "../platform/platform.js";
 import { YARD, PLAYER_OFFSET, TRACK_LEN, LAST_TRACK_SQUARE } from "../core/board-constants.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
+import { readBool, writeBool } from "../platform/storage-util.js";
 
 const STORAGE_KEY = STORAGE_KEYS.GOD_MODE;
 
@@ -26,7 +27,7 @@ export function isGodModeAvailable() {
 }
 
 if (isGodModeAvailable()) {
-    _enabled = localStorage.getItem(STORAGE_KEY) === 'true';
+    _enabled = readBool(STORAGE_KEY);
 }
 
 export function isGodModeEnabled() {
@@ -36,7 +37,7 @@ export function isGodModeEnabled() {
 export function setGodModeEnabled(value) {
     if (!isGodModeAvailable()) return;
     _enabled = !!value;
-    localStorage.setItem(STORAGE_KEY, String(_enabled));
+    writeBool(STORAGE_KEY, _enabled);
     if (!_enabled) clearGodSelection();
 }
 
