@@ -43,13 +43,13 @@ jobs:
     # ubuntu-latest needs on every run.
     #
     # Tag MUST match the @playwright/test version pinned in
-    # package-lock.json (currently 1.60.0). When you bump
+    # package-lock.json (currently 1.61.1). When you bump
     # @playwright/test in package.json, also bump this tag — the test
     # runner refuses to launch against a mismatched browser bundle.
     # The bundled image ships Node 20; we don't run actions/setup-node
     # here since e2e doesn't care about the host Node version.
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
 
     steps:
       - name: Checkout
