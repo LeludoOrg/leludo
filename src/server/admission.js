@@ -17,8 +17,8 @@
 import { BUSY } from '../scripts/net/net-protocol.js';
 
 export const ADMISSION_DEFAULTS = Object.freeze({
-    maxConcurrentGames: 300,  // simultaneous rooms (soft-realtime guard)
-    maxGamesPerDay: 900,      // new games / UTC day (this default is prod-shaped) — paid-plan-included safe: ~1,668 SQL rows/4p game (live prod data); prod 900/day ≈ 1.5M rows ≈ 45M rows-written/month, under the paid plan's INCLUDED 50M/month allowance (account-wide; beta keeps a small 25/day, 5-concurrent slice on top)
+    maxConcurrentGames: 250,  // simultaneous rooms (soft-realtime guard)
+    maxGamesPerDay: 1000,     // new games / UTC day (this default is prod-shaped) — ~1,668 SQL rows/4p game (live prod data); prod 1000/day ≈ 1.67M rows ≈ 50M rows-written/month, right at the paid plan's INCLUDED 50M/month allowance (account-wide; beta's small 25/day slice on top tips a touch over → minor metered overage, ~$1-2/mo, caught by the billing alert)
 });
 
 const MS_PER_DAY = 86_400_000;

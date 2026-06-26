@@ -11,8 +11,8 @@ compatibility_date = "2025-06-01"
 # game survives a code deploy (v0.28.5; see server/cf/room-do.js "Deploy
 # survival"), plus reconnects + grace alarms. Caps sized so a worst-case all-4p
 # day across prod + beta stays within the INCLUDED allowance (no overage):
-#   prod 900/day × ~1,668 ≈ 1.5M rows/day ≈ 45M/month (beta adds a small
-#   25/day slice on top — see below).
+#   prod 1000/day × ~1,668 ≈ 1.67M rows/day ≈ 50M/month, right at the INCLUDED
+#   ceiling (beta's small 25/day slice on top → minor metered overage, see below).
 # NOTE: bot / 4-player games do NOT hibernate (the DO is pinned by setTimeout
 # bot-pacing + grace) and burn ~13+ GB-s each vs ~0.4 for an idle 2p game →
 # ~1000 4p-games/day × 13 GB-s × 30 ≈ 390k GB-s/month, also right at the 400k
@@ -21,8 +21,8 @@ compatibility_date = "2025-06-01"
 # cap returns a friendly BUSY. Override per-env via `wrangler secret`/vars or the
 # dashboard; no code redeploy needed.
 [vars]
-MAX_CONCURRENT_GAMES = "300"
-MAX_GAMES_PER_DAY = "900"
+MAX_CONCURRENT_GAMES = "250"
+MAX_GAMES_PER_DAY = "1000"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
 
