@@ -8,15 +8,17 @@
  *   - vitest (unit tests, with `now` advanced by hand).
  *
  * See docs/multiplayer-plan.md → "AdmissionDO". Caps are sized to stay inside
- * the Cloudflare free tier; hitting one returns a friendly BUSY reason rather
- * than spending into a throttle / paid overage.
+ * the Cloudflare Workers Paid ($5/mo) plan's INCLUDED Durable-Object allowance
+ * (no overage); hitting one returns a friendly BUSY reason rather than spending
+ * into a throttle / paid overage. The caps remain the real footgun guard on the
+ * paid plan (a Cloudflare billing alert is the backstop) — see multiplayer-plan.
  */
 
 import { BUSY } from '../scripts/net/net-protocol.js';
 
 export const ADMISSION_DEFAULTS = Object.freeze({
-    maxConcurrentGames: 15,   // simultaneous rooms (soft-realtime guard)
-    maxGamesPerDay: 45,       // new games / UTC day — free-tier safe: ~1,668 SQL rows/4p game (live prod data) vs the 100k/day account-wide rows-written cap (shared with beta)
+    maxConcurrentGames: 40,   // simultaneous rooms (soft-realtime guard)
+    maxGamesPerDay: 900,      // new games / UTC day — paid-plan-included safe: ~1,668 SQL rows/4p game (live prod data); prod 900 + beta 100 = 1000/day ≈ 50M rows-written/month, right at the paid plan's INCLUDED 50M/month allowance (account-wide, shared with beta)
 });
 
 const MS_PER_DAY = 86_400_000;

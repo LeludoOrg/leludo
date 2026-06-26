@@ -2,24 +2,26 @@ name = "leludo-mp"
 main = "src/server/cf/worker.js"
 compatibility_date = "2025-06-01"
 
-# Operator-tunable capacity caps (see docs/multiplayer-plan.md → Budget). The
-# free-tier BINDING limit is SQL rows written: 100,000/day, shared ACCOUNT-WIDE
-# across prod + beta (one free bucket, NOT per-Worker). Real-play cost (live prod
-# data) runs ~570 rows per 2-player game, ~1,668 per 4-player game — dominated by
-# the per-broadcast resume snapshot the room DO writes so a game survives a code
-# deploy (v0.28.5; see server/cf/room-do.js "Deploy survival"), plus reconnects +
-# grace alarms. Caps sized so a worst-case all-4p day across prod + beta stays
-# under 100k:
-#   prod 45/day + beta 5/day = 50 × ~1,668 ≈ 83k rows < 100k.
+# Operator-tunable capacity caps (see docs/multiplayer-plan.md → Budget). Account
+# is on the Workers Paid ($5/mo) plan. The relevant Durable-Object INCLUDED
+# allowances (account-wide, shared across prod + beta, billed beyond): rows
+# written 50,000,000/month (~1.67M/day), duration 400,000 GB-s/month. Real-play
+# cost (live prod data) runs ~570 rows per 2-player game, ~1,668 per 4-player
+# game — dominated by the per-broadcast resume snapshot the room DO writes so a
+# game survives a code deploy (v0.28.5; see server/cf/room-do.js "Deploy
+# survival"), plus reconnects + grace alarms. Caps sized so a worst-case all-4p
+# day across prod + beta stays within the INCLUDED allowance (no overage):
+#   prod 900/day + beta 100/day = 1000 × ~1,668 ≈ 1.67M rows/day ≈ 50M/month.
 # NOTE: bot / 4-player games do NOT hibernate (the DO is pinned by setTimeout
-# bot-pacing + grace) and burn ~13+ GB-s each vs ~0.4 for an idle 2p game.
-# Duration still doesn't bind the free tier (rows do), but revisit on a paid plan
-# — see docs/multiplayer-plan.md → "Hibernation landed, but bot games pin the DO".
-# Hitting a cap returns a friendly BUSY (never a bill). Override per-env via
-# `wrangler secret`/vars or the dashboard; no code redeploy needed.
+# bot-pacing + grace) and burn ~13+ GB-s each vs ~0.4 for an idle 2p game →
+# ~1000 4p-games/day × 13 GB-s × 30 ≈ 390k GB-s/month, also right at the 400k
+# INCLUDED. Caps stay the real footgun guard even on paid; pair them with a
+# Cloudflare BILLING ALERT as the backstop (see multiplayer-plan.md). Hitting a
+# cap returns a friendly BUSY. Override per-env via `wrangler secret`/vars or the
+# dashboard; no code redeploy needed.
 [vars]
-MAX_CONCURRENT_GAMES = "15"
-MAX_GAMES_PER_DAY = "45"
+MAX_CONCURRENT_GAMES = "40"
+MAX_GAMES_PER_DAY = "900"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
 
@@ -40,8 +42,8 @@ class_name = "AdmissionDO"
 name = "MATCH"
 class_name = "MatchmakingDO"
 
-# Free plan → SQLite-backed Durable Objects (the only DO storage tier on the
-# free plan). `new_sqlite_classes` MUST list every DO class on first deploy.
+# SQLite-backed Durable Objects. `new_sqlite_classes` MUST list every DO class on
+# first deploy.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LudoRoomDO", "AdmissionDO", "MatchmakingDO"]
@@ -60,16 +62,16 @@ custom_domain = true
 # counters are fully isolated from production. Deploy with:
 #     npm run cf:deploy:beta      (= wrangler deploy --env beta)
 # The beta SITE (beta.leludo.org) dials this via BETA_SERVER_URL in
-# scripts/net/net-client.js. Still $0: prod + beta share ONE account-wide free
-# bucket (100k SQL rows written/day); beta takes a small fixed slice (5 games/day
-# ≈ 8k rows worst-case 4p) so it can never starve prod's share.
+# scripts/net/net-client.js. prod + beta share ONE account-wide DO allowance
+# (50M SQL rows written/month on the Workers Paid plan); beta takes a fixed slice
+# (100 games/day ≈ 167k rows worst-case 4p) so it can never starve prod's share.
 #
 # wrangler gotcha: `vars` and `durable_objects` are NON-inheritable — they must
 # be repeated here. `[[migrations]]` IS shared from the top level, so the beta
 # Worker's DOs get the same v1 SQLite classes (do NOT redeclare it).
 [env.beta.vars]
-MAX_CONCURRENT_GAMES = "15"
-MAX_GAMES_PER_DAY = "45"
+MAX_CONCURRENT_GAMES = "40"
+MAX_GAMES_PER_DAY = "100"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
 

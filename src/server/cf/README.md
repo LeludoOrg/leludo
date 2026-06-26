@@ -64,12 +64,15 @@ make that resolve:
    `localStorage.setItem('leludo-mp-server', 'wss://leludo-mp.<subdomain>.workers.dev')`,
    or append `?server=wss://…` to the URL for a one-off test.
 
-## Free-tier safety
+## Capacity safety (Workers Paid plan)
 
-Caps in `[vars]` (`MAX_GAMES_PER_DAY=45`, `MAX_CONCURRENT_GAMES=15`) keep usage
-inside the free plan; `AdmissionDO` returns a friendly `{ t:"busy" }` before any
-limit is hit. The binding free-tier limit is **SQL rows written: 100,000/day**,
-shared account-wide across prod + beta (one free bucket).
+Caps in `[vars]` (`MAX_GAMES_PER_DAY=900`, `MAX_CONCURRENT_GAMES=40`) keep usage
+inside the Workers Paid ($5/mo) plan's **INCLUDED** Durable-Object allowance (no
+overage); `AdmissionDO` returns a friendly `{ t:"busy" }` before any limit is
+hit. The dominant cost is **SQL rows written: 50,000,000/month included**
+(~1.67M/day), shared account-wide across prod + beta (one bucket). The caps stay
+the real footgun guard — pair them with a Cloudflare **billing alert** as the
+backstop.
 
 `LudoRoomDO` is **resident, not hibernated** (see `room-do.js` header) but **does
 persist** a resume snapshot on every state-changing broadcast (v0.28.5). The
@@ -81,11 +84,12 @@ output gate, so frames go out instantly and a snapshot lost to a crash just re-s
 from the prior frame on the next reconnect. So the snapshot rows are back (≈570
 rows/2p, ~1,668/4p in live data — the dominant per-game cost), but they buy
 deploy survival without the latency. The per-day game caps are sized to keep even a
-worst-case all-4p day under the 100k rows/day free-tier limit (see `wrangler.toml`).
+worst-case all-4p day within the 50M rows/month INCLUDED paid allowance (see
+`wrangler.toml`).
 
 The other trade is duration (GB-s): a resident DO stays in memory through human
-think-time. That was never the binding limit on free (13,000 GB-s/day) and isn't
-billed there, so it's safe. Revisit hibernation only on the paid plan, where
-GB-s bills — and then with **alarm-based** bot-pacing/grace timers so it doesn't
-reintroduce the lag (see `docs/multiplayer-plan.md`). Raise the caps only on the
-$5 Workers Paid plan.
+think-time. On the paid plan duration is billed beyond 400,000 GB-s/month
+INCLUDED; at ~1000 4p-games/day × ~13 GB-s × 30 ≈ 390k GB-s/month the caps keep
+it right at the included ceiling. Hibernation would cut that further — revisit it
+with **alarm-based** bot-pacing/grace timers so it doesn't reintroduce the
+per-move lag (see `docs/multiplayer-plan.md`).
