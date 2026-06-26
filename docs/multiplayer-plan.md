@@ -154,11 +154,13 @@ gamesStartedToday  // resets at UTC midnight via DO alarm
 ```
 
 Config (via Worker env vars — operator-tunable, no redeploy of logic).
-**Launch values are sized to stay inside the free tier** (see Budget):
+**Values are sized to stay inside the Workers Paid plan's INCLUDED allowance**
+(no overage; see Budget). Only prod is scaled up; beta keeps a small slice
+(25/day, 5 concurrent):
 
 ```
-MAX_CONCURRENT_GAMES = 15    // simultaneous rooms (soft-realtime guard)
-MAX_GAMES_PER_DAY    = 45    // new games / UTC day — under the SQL-rows-written ceiling
+MAX_CONCURRENT_GAMES = 250   // simultaneous rooms (soft-realtime guard)
+MAX_GAMES_PER_DAY    = 1000  // new games / UTC day — right at the 50M-rows-written/month included ceiling
 RECONNECT_GRACE_MS   = 60000 // disconnect grace before forfeit
 MATCH_FILL_MS        = 20000 // public-queue wait before bot-fill
 ```
@@ -378,7 +380,7 @@ Free-tier ceilings vs per-game cost:
 
 250 is deliberately **below** the ~330-game request ceiling so admission gating,
 matchmaking, and reconnects fit in the remaining ~25k requests without ever
-touching the throttle. `MAX_CONCURRENT_GAMES = 40` is a soft-realtime guard
+touching the throttle. `MAX_CONCURRENT_GAMES = 250` is a soft-realtime guard
 (memory/connection sanity), not the binding limit — daily total is. The moment
 a player would push past either cap, AdmissionDO returns `busy` (friendly
 overlay) rather than spending into a throttle or paid overage. **Result: the
@@ -389,9 +391,12 @@ operator cannot accidentally exceed the free plan at launch values.**
   pings would silently burn the request budget.
 - Debounce reconnect storms (one cheater reload loop must not spend the budget).
 - Keep state in memory; persist sparingly.
-- If we ever move to the **$5 paid plan** (no hard spend cap by default): keep
-  the AdmissionDO caps AND add a Cloudflare **billing alert**. The caps are the
-  real protection; the alert is the backstop.
+- **Now on the $5 Workers Paid plan** (no hard spend cap by default): the
+  AdmissionDO caps are kept (raised to the paid INCLUDED allowance — prod
+  1000/day ≈ 50M rows + ~390k GB-s per month, right at the included ceiling;
+  beta stays a small 25/day slice) AND a Cloudflare
+  **billing alert** is the backstop. The caps are the real protection; the alert
+  catches anything that slips past.
 
 ## Identity — anonymous by default, optional lightweight account
 
@@ -469,10 +474,14 @@ Follow the repo's bug-fix discipline (every behaviour gets a test):
   random matchmaking (queue). See the Matchmaking section.
 - **Disconnect: pause-and-wait, then forfeit.** Pause on drop, `RECONNECT_GRACE_MS`
   grace window, forfeit (rank-last) on expiry. See Disconnect Handling.
-- **Launch caps sized to the free tier.** `MAX_GAMES_PER_DAY = 250`,
-  `MAX_CONCURRENT_GAMES = 40`, `RECONNECT_GRACE_MS = 60s`, `MATCH_FILL_MS = 20s`
-  — proven under free limits in the Budget table. Cannot exceed the free plan at
-  these values.
+- **Caps sized to the Workers Paid plan's included allowance.**
+  `MAX_GAMES_PER_DAY = 1000` (prod) / `25` (beta),
+  `MAX_CONCURRENT_GAMES = 250` (prod) / `5` (beta),
+  `RECONNECT_GRACE_MS = 60s`, `MATCH_FILL_MS = 20s` — prod ≈ 50M rows-written
+  + ~390k GB-s per month, right at the paid INCLUDED ceiling; beta's 25/day
+  slice tips it a touch over → minor metered overage (~$1-2/mo), caught by the
+  billing alert. Live values; see `wrangler.toml`. (Earlier free-tier launch values
+  were 45/15; the Budget table above predates the measured rows-written cost.)
 - **Identity: both, layered.** Anonymous session by default (Tier 1, ships at
   launch); optional lightweight account (Tier 2, SQLite-backed) added later for
   history/leaderboards. See Identity section.
