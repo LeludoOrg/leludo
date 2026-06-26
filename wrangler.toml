@@ -20,7 +20,7 @@ compatibility_date = "2025-06-01"
 # cap returns a friendly BUSY. Override per-env via `wrangler secret`/vars or the
 # dashboard; no code redeploy needed.
 [vars]
-MAX_CONCURRENT_GAMES = "40"
+MAX_CONCURRENT_GAMES = "300"
 MAX_GAMES_PER_DAY = "900"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
@@ -70,7 +70,7 @@ custom_domain = true
 # be repeated here. `[[migrations]]` IS shared from the top level, so the beta
 # Worker's DOs get the same v1 SQLite classes (do NOT redeclare it).
 [env.beta.vars]
-MAX_CONCURRENT_GAMES = "40"
+MAX_CONCURRENT_GAMES = "300"
 MAX_GAMES_PER_DAY = "100"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"

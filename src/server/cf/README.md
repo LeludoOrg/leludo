@@ -66,7 +66,7 @@ make that resolve:
 
 ## Capacity safety (Workers Paid plan)
 
-Caps in `[vars]` (`MAX_GAMES_PER_DAY=900`, `MAX_CONCURRENT_GAMES=40`) keep usage
+Caps in `[vars]` (`MAX_GAMES_PER_DAY=900`, `MAX_CONCURRENT_GAMES=300`) keep usage
 inside the Workers Paid ($5/mo) plan's **INCLUDED** Durable-Object allowance (no
 overage); `AdmissionDO` returns a friendly `{ t:"busy" }` before any limit is
 hit. The dominant cost is **SQL rows written: 50,000,000/month included**

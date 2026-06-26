@@ -17,7 +17,7 @@
 import { BUSY } from '../scripts/net/net-protocol.js';
 
 export const ADMISSION_DEFAULTS = Object.freeze({
-    maxConcurrentGames: 40,   // simultaneous rooms (soft-realtime guard)
+    maxConcurrentGames: 300,  // simultaneous rooms (soft-realtime guard)
     maxGamesPerDay: 900,      // new games / UTC day — paid-plan-included safe: ~1,668 SQL rows/4p game (live prod data); prod 900 + beta 100 = 1000/day ≈ 50M rows-written/month, right at the paid plan's INCLUDED 50M/month allowance (account-wide, shared with beta)
 });
 
