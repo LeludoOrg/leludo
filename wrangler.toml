@@ -11,7 +11,8 @@ compatibility_date = "2025-06-01"
 # game survives a code deploy (v0.28.5; see server/cf/room-do.js "Deploy
 # survival"), plus reconnects + grace alarms. Caps sized so a worst-case all-4p
 # day across prod + beta stays within the INCLUDED allowance (no overage):
-#   prod 900/day + beta 100/day = 1000 × ~1,668 ≈ 1.67M rows/day ≈ 50M/month.
+#   prod 900/day × ~1,668 ≈ 1.5M rows/day ≈ 45M/month (beta adds a small
+#   25/day slice on top — see below).
 # NOTE: bot / 4-player games do NOT hibernate (the DO is pinned by setTimeout
 # bot-pacing + grace) and burn ~13+ GB-s each vs ~0.4 for an idle 2p game →
 # ~1000 4p-games/day × 13 GB-s × 30 ≈ 390k GB-s/month, also right at the 400k
@@ -63,15 +64,16 @@ custom_domain = true
 #     npm run cf:deploy:beta      (= wrangler deploy --env beta)
 # The beta SITE (beta.leludo.org) dials this via BETA_SERVER_URL in
 # scripts/net/net-client.js. prod + beta share ONE account-wide DO allowance
-# (50M SQL rows written/month on the Workers Paid plan); beta takes a fixed slice
-# (100 games/day ≈ 167k rows worst-case 4p) so it can never starve prod's share.
+# (50M SQL rows written/month on the Workers Paid plan); beta keeps a small fixed
+# slice (25 games/day ≈ 42k rows worst-case 4p, 5 concurrent) so it can never
+# starve prod's share — only prod is scaled up to the paid allowance.
 #
 # wrangler gotcha: `vars` and `durable_objects` are NON-inheritable — they must
 # be repeated here. `[[migrations]]` IS shared from the top level, so the beta
 # Worker's DOs get the same v1 SQLite classes (do NOT redeclare it).
 [env.beta.vars]
-MAX_CONCURRENT_GAMES = "300"
-MAX_GAMES_PER_DAY = "100"
+MAX_CONCURRENT_GAMES = "5"
+MAX_GAMES_PER_DAY = "25"
 RECONNECT_GRACE_MS = "60000"
 MATCH_FILL_MS = "20000"
 

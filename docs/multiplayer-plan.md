@@ -155,7 +155,8 @@ gamesStartedToday  // resets at UTC midnight via DO alarm
 
 Config (via Worker env vars — operator-tunable, no redeploy of logic).
 **Values are sized to stay inside the Workers Paid plan's INCLUDED allowance**
-(no overage; see Budget). prod 900/day + beta 100/day:
+(no overage; see Budget). Only prod is scaled up; beta keeps a small slice
+(25/day, 5 concurrent):
 
 ```
 MAX_CONCURRENT_GAMES = 300   // simultaneous rooms (soft-realtime guard)
@@ -392,7 +393,8 @@ operator cannot accidentally exceed the free plan at launch values.**
 - Keep state in memory; persist sparingly.
 - **Now on the $5 Workers Paid plan** (no hard spend cap by default): the
   AdmissionDO caps are kept (raised to the paid INCLUDED allowance — prod
-  900/day + beta 100/day ≈ 50M rows + 390k GB-s per month) AND a Cloudflare
+  900/day ≈ 45M rows + ~350k GB-s per month; beta stays a small 25/day slice)
+  AND a Cloudflare
   **billing alert** is the backstop. The caps are the real protection; the alert
   catches anything that slips past.
 
@@ -473,7 +475,8 @@ Follow the repo's bug-fix discipline (every behaviour gets a test):
 - **Disconnect: pause-and-wait, then forfeit.** Pause on drop, `RECONNECT_GRACE_MS`
   grace window, forfeit (rank-last) on expiry. See Disconnect Handling.
 - **Caps sized to the Workers Paid plan's included allowance.**
-  `MAX_GAMES_PER_DAY = 900` (prod) / `100` (beta), `MAX_CONCURRENT_GAMES = 300`,
+  `MAX_GAMES_PER_DAY = 900` (prod) / `25` (beta),
+  `MAX_CONCURRENT_GAMES = 300` (prod) / `5` (beta),
   `RECONNECT_GRACE_MS = 60s`, `MATCH_FILL_MS = 20s` — prod + beta ≈ 50M
   rows-written + 390k GB-s per month, right at the paid INCLUDED ceiling (no
   overage). Live values; see `wrangler.toml`. (Earlier free-tier launch values
