@@ -201,6 +201,80 @@ function clearStackStyles(t) {
     t.style.removeProperty('z-index');
     t.style.removeProperty('display');
     t.style.removeProperty('margin-left');
+    // The peek-fan tilts each pawn via --pawn-tilt on the inner svg — drop it so
+    // a pawn that leaves a stack (back to a lone, full-cell token) stands
+    // upright. (Driven via a custom prop so the rotate composes with the
+    // token-bounce keyframe instead of being clobbered by it.)
+    const svg = t.firstElementChild;
+    if (svg) svg.style.removeProperty('--pawn-tilt');
+}
+
+// Whole-arrangement contact anchor: bottom-center of the cell, raised by 16% so
+// the pawns sit just above the cell's bottom edge. Expressed in % of the
+// (square) cell so the layout is resize-safe with no pixel recompute.
+const STACK_ANCHOR_BOTTOM = 16;
+const PAWN_H = 1.16; // pawn height / width (see pawn-shape.js)
+// Cap a vertical totem's body (bottom pawn base → top pawn head) to 1.25 cells,
+// in % of cell — a 4-tall stack stays readable without eating extra rows.
+const MAX_TOTEM_HEIGHT_PCT = 125;
+
+// Position one stacked pawn. All metrics are % of the cell. `wPct` is the pawn
+// width; height follows the pawn aspect. The horizontal fan tilt rides the
+// inner svg's own transform so the wrapper transform stays free for the FLIP /
+// hop animations that translate the whole token between cells.
+function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
+    t.style.cssText += `position:absolute;left:${leftPct}%;bottom:${bottomPct}%;` +
+        `width:${wPct}%;height:${wPct * PAWN_H}%;z-index:${z};`;
+    const svg = t.firstElementChild;
+    if (!svg) return;
+    if (rotateDeg) svg.style.setProperty('--pawn-tilt', `${rotateDeg}deg`);
+    else svg.style.removeProperty('--pawn-tilt');
+}
+
+// Case A — total ≤ 4: fan every pawn individually like a hand of cards.
+function peekFan(tokens) {
+    const N = tokens.length;
+    const factor = N >= 4 ? 0.74 : N >= 3 ? 0.82 : 0.9; // N === 2 here (N === 1 stays in flow)
+    const wPct = 96 * factor;
+    const stepPct = wPct * 0.33;  // horizontal spacing — < pawn width, so pawns overlap a touch
+    tokens.forEach((t, i) => {
+        const off = i - (N - 1) / 2;
+        const leftPct = 50 + off * stepPct - wPct / 2;
+        const bottomPct = STACK_ANCHOR_BOTTOM + Math.abs(off) * wPct * 0.05;
+        placeStackPawn(t, leftPct, bottomPct, wPct, off * 7, 10 + i);
+    });
+}
+
+// Case B — total > 4: collapse each color into one vertical totem, then fan the
+// totems. At most 4 colors, so the fan never shows more than 4 leaves.
+function totemFan(tokens) {
+    const groups = new Map(); // playerIndex -> tokens[], first-encounter order
+    for (const t of tokens) {
+        const player = +t.id.split('-')[1];
+        if (!groups.has(player)) groups.set(player, []);
+        groups.get(player).push(t);
+    }
+    const leaves = [...groups.values()];
+    const K = leaves.length;
+    const wPct = K >= 3 ? 80 : 90;
+    const stepPct = wPct * 0.40;  // horizontal spacing between totems — a touch tighter (slight overlap)
+    const pawnHPct = wPct * PAWN_H;       // a single pawn is ~1 cell tall
+    leaves.forEach((stack, gi) => {
+        const off = gi - (K - 1) / 2;
+        const leftPct = 50 + off * stepPct - wPct / 2;
+        // Vertical overlap: the compact natural step (0.26), but compressed so a
+        // full 4-tall totem never rises past MAX_TOTEM_HEIGHT_PCT (1.5 cells) —
+        // pawnH + (n-1)·vStep ≤ cap. Short totems keep the looser natural step.
+        const n = stack.length;
+        const vStepPct = n > 1
+            ? Math.min(pawnHPct * 0.26, (MAX_TOTEM_HEIGHT_PCT - pawnHPct) / (n - 1))
+            : 0;
+        stack.forEach((t, j) => {
+            // Higher pawn in a totem renders in front; later totems sit above
+            // earlier ones — leave room (×8) so totems never z-interleave.
+            placeStackPawn(t, leftPct, STACK_ANCHOR_BOTTOM + j * vStepPct, wPct, off * 5, 10 + gi * 8 + j);
+        });
+    });
 }
 
 function applyFinishStacking(cell, tokens) {
@@ -299,6 +373,8 @@ export function updateCellStacking(cell, opts = {}) {
     tokens.forEach(clearStackStyles);
     const n = tokens.length;
 
+    // Legacy >4 count badge (pre peek-fan). Remove any lingering one — the
+    // totem fan now shows every pawn, so the badge is gone.
     const badge = cell.querySelector('.stack-badge');
     if (badge) badge.remove();
 
@@ -306,29 +382,10 @@ export function updateCellStacking(cell, opts = {}) {
         applyFinishStacking(cell, tokens);
     } else if (n >= 2) {
         cell.style.position = 'relative';
-
-        if (n === 2) {
-            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:64%;height:64%;z-index:1;';
-            tokens[1].style.cssText += ';position:absolute;bottom:4%;right:4%;width:64%;height:64%;z-index:2;';
-        } else if (n === 3) {
-            tokens[0].style.cssText += ';position:absolute;top:2%;left:50%;width:52%;height:52%;z-index:3;margin-left:-26%;';
-            tokens[1].style.cssText += ';position:absolute;bottom:4%;left:0%;width:52%;height:52%;z-index:2;';
-            tokens[2].style.cssText += ';position:absolute;bottom:4%;right:0%;width:52%;height:52%;z-index:2;';
-        } else if (n === 4) {
-            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:46%;height:46%;z-index:1;';
-            tokens[1].style.cssText += ';position:absolute;top:4%;right:4%;width:46%;height:46%;z-index:1;';
-            tokens[2].style.cssText += ';position:absolute;bottom:4%;left:4%;width:46%;height:46%;z-index:1;';
-            tokens[3].style.cssText += ';position:absolute;bottom:4%;right:4%;width:46%;height:46%;z-index:1;';
+        if (n <= 4) {
+            peekFan(tokens);      // fan each pawn individually
         } else {
-            tokens.forEach((t, i) => {
-                if (i > 0) t.style.display = 'none';
-            });
-            tokens[0].style.cssText += ';position:absolute;inset:8%;width:84%;height:84%;z-index:1;';
-            const badgeEl = document.createElement('div');
-            badgeEl.className = 'stack-badge';
-            badgeEl.textContent = `×${n}`;
-            // All visuals (position, colors, sizing) live in wc-board.css .stack-badge.
-            cell.appendChild(badgeEl);
+            totemFan(tokens);     // collapse same color into vertical totems, fan those
         }
     }
     // n <= 1 (non-finish): the sole token stays in normal flow at full cell size.
@@ -629,7 +686,11 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         element.style.left = '0';
         element.style.top = '0';
         element.style.width = '100%';
-        element.style.height = '100%';
+        // Height follows the pawn aspect (height = width*1.16) — same as a lone
+        // settled token (which has no explicit height, so its svg sizes from
+        // width). Pinning height:100% would square the box and letterbox the
+        // taller pawn smaller, so it visibly shrank while gliding.
+        element.style.height = 'auto';
         element.style.zIndex = '50';
         element.style.willChange = 'transform';
         element.style.transformOrigin = 'top left';

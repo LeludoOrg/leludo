@@ -179,12 +179,16 @@ test.describe('Token animation speed', () => {
 });
 
 test.describe('Token rendering inside cells', () => {
-    test('stacked tokens stay inside the cell (no inline baseline overflow)', async ({ page }) => {
-        // Regression: wc-token's inner <svg> was inline by default, so the
-        // line-box baseline strut pushed the rendered svg ~4–5px below the
-        // wc-token box. On small viewports (24px cells) the pawns visibly
-        // fell below the cell border when 2+ tokens shared a cell.
-        // Fix: wc-token svg { display: block; } — removes the strut.
+    test('peek-fan: ≤4 pawns sit at the cell floor and may rise above it', async ({ page }) => {
+        // Two guards bundled here:
+        //  1. wc-token's inner <svg> was once inline by default, so the line-box
+        //     baseline strut pushed the rendered svg ~4–5px BELOW the wc-token
+        //     box — on small (24px) cells stacked pawns fell below the border.
+        //     Fix: wc-token svg { display:block } — removes the strut. The pawn
+        //     base must never sit below the cell floor.
+        //  2. The peek-fan redesign anchors pawns at the cell's bottom-center
+        //     and lets the (taller-than-cell) pawns OVERFLOW upward — that's
+        //     intentional, so DON'T re-add a "must stay below cell top" assert.
         await bootGame(page, '?positions=39,39,39,39&player=0');
 
         const data = await page.evaluate(async () => {
@@ -198,9 +202,9 @@ test.describe('Token rendering inside cells', () => {
                 return {
                     svgBottom: sr.bottom,
                     cellBottom: cellRect.bottom,
-                    svgTop: sr.top,
-                    cellTop: cellRect.top,
                     svgDisplay: getComputedStyle(svg).display,
+                    svgTransform: getComputedStyle(svg).transform,
+                    pos: getComputedStyle(t).position,
                 };
             });
         });
@@ -208,12 +212,43 @@ test.describe('Token rendering inside cells', () => {
         expect(data.length).toBe(4);
         for (const t of data) {
             expect(t.svgDisplay).toBe('block');
-            // svg must not extend below the cell (tolerate 0.5px sub-pixel)
+            // peek-fan pins each pawn absolutely in the cell…
+            expect(t.pos).toBe('absolute');
+            // …tilted via a rotate on the inner svg (matrix, not 'none')…
+            expect(t.svgTransform).not.toBe('none');
+            // …and the pawn base must not fall below the cell floor.
             expect(t.svgBottom - t.cellBottom).toBeLessThanOrEqual(0.5);
-            // svg must not extend above the cell either
-            expect(t.cellTop - t.svgTop).toBeLessThanOrEqual(0.5);
         }
     });
+
+    test('a gliding (moving) pawn keeps full size — same width as a settled pawn', async ({ page }) => {
+        // Regression: the move-glide pins the mover position:absolute. It used
+        // width:100%;height:100%, which squared the wrapper and letterboxed the
+        // taller (1.16) pawn down to ~0.86× cell — the pawn visibly SHRANK while
+        // hopping between cells. Fix: pin width:100%;height:auto so the height
+        // follows the aspect, exactly like a lone settled token.
+        await bootGame(page, '?positions=39,7&player=0');
+
+        const r = await page.evaluate(() => {
+            const cell = document.getElementById('m39');
+            const cellW = cell.getBoundingClientRect().width;
+            const settled = document.getElementById('p-0-0').firstElementChild.getBoundingClientRect();
+            // Apply the exact styles updateTokenContainer sets on a mover.
+            const mover = document.getElementById('p-0-1');
+            mover.style.position = 'absolute';
+            mover.style.left = '0';
+            mover.style.top = '0';
+            mover.style.width = '100%';
+            mover.style.height = 'auto';
+            const pinned = mover.firstElementChild.getBoundingClientRect();
+            return { cellW, settledW: settled.width, pinnedW: pinned.width };
+        });
+
+        // Mover renders at the same width as a settled lone pawn (== one cell).
+        expect(Math.abs(r.pinnedW - r.settledW)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(r.pinnedW - r.cellW)).toBeLessThanOrEqual(0.5);
+    });
+
 });
 
 test.describe('Finish-cell token stacking', () => {

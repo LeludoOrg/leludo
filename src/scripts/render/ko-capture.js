@@ -9,7 +9,7 @@
 //   attackerColor,          any CSS color string — POW! fill + trailing stars
 //   defenderColor,          any CSS color string — flying pawn fill
 //   attackFrom,             'left' | 'right' | 'top' | 'bottom'
-//   pawnSize,               px (height of flying pawn) — ~1.4× cell size
+//   pawnSize,               px WIDTH of flying pawn (height = width*1.16)
 //   duration,               total ms (default 1100)
 //   shakeBoard,             bool — applies brief shake to container
 //   onComplete,             optional callback fired after cleanup

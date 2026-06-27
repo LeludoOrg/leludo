@@ -9,7 +9,7 @@
 //   entry: {x, y},         REQUIRED. px center of entry cell on track,
 //                          relative to container's top-left.
 //   color,                 hex — pawn fill + halo + trail + shockwave + chip
-//   pawnSize,              px height of pawn (~1.2–1.5× cell size). default 48
+//   pawnSize,              px WIDTH of pawn (height = width*1.16). default 48
 //   duration,              total ms. default 1500
 //   arcHeight,             optional — px the pawn rises above the straight
 //                          line at apex. Default: max(distance*0.32, pawnSize*1.4)

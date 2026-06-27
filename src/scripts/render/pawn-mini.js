@@ -1,7 +1,7 @@
 // Path data for the compact 32-viewBox pawn — the SMALL pawn used by the home/
 // lobby chip (wc-icons PAWN_SVG), the pause scoreboard (render-logic) and the
 // end-game recap (wc-game-end, both the DOM card and the canvas share image).
-// Distinct from the larger 0 0 100 100 overlay pawn in pawn-shape.js.
+// Distinct from the larger 0 0 100 116 board/overlay pawn in pawn-shape.js.
 //
 // Only the two path strings are shared here; each surface keeps its own <svg>
 // wrapper because they legitimately differ in fill source (CSS class vs explicit

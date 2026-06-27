@@ -109,6 +109,74 @@ describe('updateCellStacking — pinned (moving) tokens', () => {
     });
 });
 
+describe('updateCellStacking — peek-fan / totem layout', () => {
+    function mkToken(player, tok) {
+        const t = document.createElement('wc-token');
+        t.id = `p-${player}-${tok}`;
+        t.appendChild(document.createElement('svg')); // inner glyph the fan tilts
+        return t;
+    }
+    function mkCell(tokens) {
+        const cell = document.createElement('div');
+        cell.id = 'm20'; // non-finish track cell
+        tokens.forEach(t => cell.appendChild(t));
+        return cell;
+    }
+
+    it('peek-fan: ≤4 pawns each get absolute position + a rotated svg', () => {
+        // Up to 4 pawns fan out individually like a hand of cards.
+        const toks = [mkToken(0, 0), mkToken(1, 0), mkToken(2, 0)];
+        const cell = mkCell(toks);
+        updateCellStacking(cell);
+        toks.forEach((t, i) => {
+            expect(t.style.position).toBe('absolute');
+            expect(t.style.zIndex).toBe(String(10 + i));
+        });
+        // n=3 offsets are -1, 0, 1 → the outer pawns tilt (--pawn-tilt set);
+        // the centre is upright (no tilt). The tilt is a custom prop so it
+        // composes with the bounce keyframe instead of being overwritten.
+        expect(toks[0].firstElementChild.style.getPropertyValue('--pawn-tilt')).toContain('deg');
+        expect(toks[2].firstElementChild.style.getPropertyValue('--pawn-tilt')).toContain('deg');
+        expect(toks[1].firstElementChild.style.getPropertyValue('--pawn-tilt')).toBe('');
+    });
+
+    it('totem fan: >4 pawns collapse same-color into vertical stacks', () => {
+        // 4×P0 + 2×P1 = 6 on one cell → 2 color leaves, all pawns visible,
+        // no count badge, each totem stacked vertically (rising `bottom`).
+        const p0 = [mkToken(0, 0), mkToken(0, 1), mkToken(0, 2), mkToken(0, 3)];
+        const p1 = [mkToken(1, 0), mkToken(1, 1)];
+        const cell = mkCell([...p0, ...p1]);
+        updateCellStacking(cell);
+
+        const all = [...p0, ...p1];
+        expect(all.every(t => t.style.display !== 'none')).toBe(true);
+        expect(cell.querySelector('.stack-badge')).toBeNull();
+
+        // two distinct horizontal slots == two color totems
+        const slots = new Set(all.map(t => t.style.left));
+        expect(slots.size).toBe(2);
+
+        // within the P0 totem, pawns stack upward (strictly increasing bottom)
+        const bottoms = p0.map(t => parseFloat(t.style.bottom));
+        for (let i = 1; i < bottoms.length; i++) {
+            expect(bottoms[i]).toBeGreaterThan(bottoms[i - 1]);
+        }
+    });
+
+    it('lone survivor of a broken stack clears its rotate and stack styles', () => {
+        // When a stack drops back to one pawn it must stand upright at full cell.
+        const a = mkToken(0, 0), b = mkToken(1, 0);
+        const cell = mkCell([a, b]);
+        updateCellStacking(cell);
+        expect(a.style.position).toBe('absolute'); // stacked
+
+        cell.removeChild(b);
+        updateCellStacking(cell);
+        expect(a.style.position).toBe('');                                   // back in flow
+        expect(a.firstElementChild.style.getPropertyValue('--pawn-tilt')).toBe(''); // upright
+    });
+});
+
 describe('updateCornerWidgets — idle corner shows last roll', () => {
     // Regression: a forfeited turn (third six) or a roll with no movable pawn
     // advances so fast the player never sees what they rolled. Each player's

@@ -617,9 +617,13 @@ wc-token.token-arriving {
     animation: active-dice-pulse 1.6s ease-in-out infinite;
 }
 
+/* Composes with the peek-fan tilt: a stacked pawn carries its rotation in
+   --pawn-tilt (set by updateCellStacking); keep it during the bounce so a
+   movable fanned pawn pulses without snapping upright. Defaults to 0deg for
+   lone pawns / non-token users of .animate-bounce. */
 @keyframes token-bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-20%); }
+    0%, 100% { transform: rotate(var(--pawn-tilt, 0deg)) translateY(0); }
+    50% { transform: rotate(var(--pawn-tilt, 0deg)) translateY(-20%); }
 }
 
 .animate-bounce {

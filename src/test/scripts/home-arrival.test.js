@@ -75,11 +75,11 @@ describe('playHomeArrival', () => {
         expect(called).toBe(true);
     });
 
-    it('flying pawn uses the real wc-token shape, square', () => {
-        // Regression: the overlay used to draw a chess-pawn shape in a
-        // 60x80 viewBox at 0.75 aspect — a different pawn than the game
-        // token. It must reuse wc-token's body path in a square 100x100
-        // viewBox so the arriving pawn matches the on-board token.
+    it('flying pawn uses the real wc-token shape', () => {
+        // Regression: the overlay used to draw its own divergent pawn. It must
+        // reuse the shared pawn-shape glyph (0 0 100 116 viewBox, body path from
+        // pawn-shape.js) so the arriving pawn matches the on-board token.
+        // pawnSize is a height → width = height / 1.16 (taller pawn).
         const container = document.createElement('div');
         document.body.appendChild(container);
 
@@ -92,10 +92,12 @@ describe('playHomeArrival', () => {
         });
 
         const svg = container.querySelector('.hmarr-pawn-svg');
-        expect(svg.getAttribute('viewBox')).toBe('0 0 100 100');
-        expect(svg.getAttribute('width')).toBe(svg.getAttribute('height'));
+        expect(svg.getAttribute('viewBox')).toBe('0 0 100 116');
+        // pawnSize (40) is the pawn WIDTH; height = 40 * 1.16 (taller pawn).
+        expect(svg.getAttribute('width')).toBe('40');
+        expect(svg.getAttribute('height')).toBe(String(40 * 1.16));
         expect(
-            svg.querySelector('path[d="M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z"]')
+            svg.querySelector('path[d="M30 100 Q22 84 33 60 Q40 49 41 41 L59 41 Q60 49 67 60 Q78 84 70 100 Z"]')
         ).toBeTruthy();
     });
 
