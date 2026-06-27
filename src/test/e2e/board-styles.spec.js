@@ -286,40 +286,35 @@ test.describe('Finish-cell token stacking', () => {
         }
     });
 
-    test('finished pawns are bigger, width-driven and fanned (peek-fan, not letterboxed)', async ({ page }) => {
-        // Finish cells now use the same peek-fan as the board, with bigger pawns.
-        // Guards: (1) the pawn is bigger than a normal on-board pawn; (2) it is
-        // width-driven (height ≈ width*1.16, NOT squared/letterboxed); (3) the 4
-        // pawns overlap (fan), so they don't tile the old rigid grid.
+    test('finished pawns are a compact horizontal fan (width-driven, overlapping)', async ({ page }) => {
+        // Finish cells use a compact HORIZONTAL peek-fan. Guards: (1) width-driven
+        // (height ≈ width*1.16, NOT squared/letterboxed); (2) the 4 pawns fan
+        // horizontally — lefts strictly increase, tops equal; (3) tightly overlap
+        // (horizontal step well under one pawn width).
         await bootGame(page, '?positions=56,56,56,56,7,,,,&player=0');
 
         const r = await page.evaluate(() => {
-            const board = document.querySelector('wc-board .board-grid');
-            const cellW = board.getBoundingClientRect().width / 15;
             const finish = Array.from(document.getElementById('p0s6').querySelectorAll(':scope > wc-token'));
-            // p-1-0 sits on a normal track cell (lone) — the size reference.
-            const boardPawn = document.getElementById('p-1-0').firstElementChild.getBoundingClientRect();
-            const rects = finish.map(t => t.firstElementChild.getBoundingClientRect());
-            const tops = finish.map(t => parseFloat(t.style.top));
+            const rect = finish[0].firstElementChild.getBoundingClientRect();
             return {
-                cellW,
-                boardPawnW: boardPawn.width,
-                finishW: rects[0].width,
-                finishH: rects[0].height,
                 count: finish.length,
-                // vertical fan for P0: tops strictly increase and overlap (step < pawn height %)
-                tops,
+                finishW: rect.width,
+                finishH: rect.height,
+                lefts: finish.map(t => parseFloat(t.style.left)),
+                tops: finish.map(t => parseFloat(t.style.top)),
             };
         });
 
         expect(r.count).toBe(4);
-        // bigger than a normal board pawn (≈ cell); finish pawn ≈ 1.1 cell
-        expect(r.finishW).toBeGreaterThan(r.boardPawnW);
         // width-driven, not letterboxed into a square
         expect(r.finishH / r.finishW).toBeGreaterThan(1.1);
-        // fanned: P0 tops increase monotonically and overlap (step well under one pawn)
-        for (let i = 1; i < r.tops.length; i++) {
-            expect(r.tops[i]).toBeGreaterThan(r.tops[i - 1]);
+        // horizontal fan: all on the same row, lefts increasing, tightly overlapped
+        const wPct = 24, step = wPct * 0.32;
+        for (let i = 1; i < r.count; i++) {
+            expect(r.tops[i]).toBeCloseTo(r.tops[0], 1);              // same row
+            expect(r.lefts[i]).toBeGreaterThan(r.lefts[i - 1]);      // fans rightward
+            expect(r.lefts[i] - r.lefts[i - 1]).toBeLessThan(wPct);  // overlapping
+            expect(r.lefts[i] - r.lefts[i - 1]).toBeCloseTo(step, 1);
         }
     });
 });

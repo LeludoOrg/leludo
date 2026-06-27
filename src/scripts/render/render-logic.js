@@ -278,39 +278,31 @@ function totemFan(tokens) {
 }
 
 // Finish-cell stacking. A finish cell holds ≤4 of ONE player's pawns, so it's
-// always a peek-fan (no totem needed). The cell is the full ~3×3-cell center
-// zone; pawns are bigger here (≈1.1 cell) and fan along the player's outer edge,
-// tilted, like the on-board peek-fan. Width-driven (height:auto) so the taller
-// pawn isn't letterboxed. Orientation is per player: P0/P2 fan vertically along
-// the left/right edge, P1/P3 horizontally along the top/bottom edge.
-const FINISH_PAWN_W = 36;      // pawn width, % of the finish zone (was ~22)
-const FINISH_EDGE = 6;         // gap from the player's outer edge, %
+// always a peek-fan (no totem). The cell is the full ~3×3-cell center zone; the
+// pawns sit as a compact HORIZONTAL fan, tightly overlapping, centered in that
+// player's wedge. Width-driven (height:auto) so the taller pawn isn't
+// letterboxed. Per-player wedge centers (% of the zone) keep each fan on its
+// colored triangle: P0 left, P1 top, P2 right, P3 bottom.
+const FINISH_PAWN_W = 24;      // pawn width, % of the finish zone (compact)
+const FINISH_STEP = 0.32;      // horizontal step as a fraction of pawn width (tight overlap)
+const FINISH_CENTERS = { 0: [26, 50], 1: [50, 26], 2: [74, 50], 3: [50, 74] };
 function applyFinishStacking(cell, tokens) {
     const n = tokens.length;
     if (n === 0) return;
     const playerIdx = parseInt(cell.id[1], 10);
     const wPct = FINISH_PAWN_W;
     const hPct = wPct * PAWN_H;
-    const vertical = playerIdx === 0 || playerIdx === 2; // spread axis
-    const extent = vertical ? hPct : wPct;
-    // Center the fan along the edge, overlapping; never run past ~88% of the zone.
-    const step = n > 1 ? Math.min(extent * 0.5, (88 - extent) / (n - 1)) : 0;
-    const start = (100 - (extent + (n - 1) * step)) / 2;
+    const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
+    const step = wPct * FINISH_STEP;
 
     tokens.forEach((t, i) => {
-        const along = start + i * step;
         const off = i - (n - 1) / 2;
-        let top, left;
-        switch (playerIdx) {
-            case 0: left = FINISH_EDGE;             top = along; break;            // left edge
-            case 1: left = along;                   top = FINISH_EDGE; break;       // top edge
-            case 2: left = 100 - FINISH_EDGE - wPct; top = along; break;            // right edge
-            case 3: left = along;                   top = 100 - FINISH_EDGE - hPct; break; // bottom edge
-        }
+        const left = cx + off * step - wPct / 2;
+        const top = cy - hPct / 2;
         t.style.cssText += `position:absolute;top:${top}%;left:${left}%;width:${wPct}%;height:auto;z-index:${10 + i};`;
         const svg = t.firstElementChild;
         if (svg) {
-            if (off) svg.style.setProperty('--pawn-tilt', `${off * 6}deg`);
+            if (off) svg.style.setProperty('--pawn-tilt', `${off * 5}deg`);
             else svg.style.removeProperty('--pawn-tilt');
         }
     });
