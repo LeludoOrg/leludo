@@ -309,7 +309,7 @@ test.describe('Finish-cell token stacking', () => {
         // width-driven, not letterboxed into a square
         expect(r.finishH / r.finishW).toBeGreaterThan(1.1);
         // horizontal fan: all on the same row, lefts increasing, tightly overlapped
-        const wPct = 24, step = wPct * 0.32;
+        const wPct = 22, step = wPct * 0.28;
         for (let i = 1; i < r.count; i++) {
             expect(r.tops[i]).toBeCloseTo(r.tops[0], 1);              // same row
             expect(r.lefts[i]).toBeGreaterThan(r.lefts[i - 1]);      // fans rightward

@@ -283,9 +283,12 @@ function totemFan(tokens) {
 // player's wedge. Width-driven (height:auto) so the taller pawn isn't
 // letterboxed. Per-player wedge centers (% of the zone) keep each fan on its
 // colored triangle: P0 left, P1 top, P2 right, P3 bottom.
-const FINISH_PAWN_W = 24;      // pawn width, % of the finish zone (compact)
-const FINISH_STEP = 0.32;      // horizontal step as a fraction of pawn width (tight overlap)
-const FINISH_CENTERS = { 0: [26, 50], 1: [50, 26], 2: [74, 50], 3: [50, 74] };
+const FINISH_PAWN_W = 22;      // pawn width, % of the finish zone (compact)
+const FINISH_STEP = 0.28;      // horizontal step as a fraction of pawn width (tight overlap)
+// Wedge centers (% of zone), pushed toward each player's outer edge — the fat
+// part of the triangle — so the compact fan sits inside its wedge and never
+// crosses the centre into another player's home.
+const FINISH_CENTERS = { 0: [22, 50], 1: [50, 22], 2: [78, 50], 3: [50, 78] };
 function applyFinishStacking(cell, tokens) {
     const n = tokens.length;
     if (n === 0) return;
