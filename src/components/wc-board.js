@@ -124,10 +124,10 @@ const BOARD_HTML = /*html*/ `
                     </div>
 
                     <div class="finish-zone">
-                        <div id="p0s6" class="finish-tri finish-tri--tl player-bg-path-0"></div>
-                        <div id="p1s6" class="finish-tri finish-tri--tr player-bg-path-1"></div>
-                        <div id="p3s6" class="finish-tri finish-tri--br player-bg-path-3"></div>
-                        <div id="p2s6" class="finish-tri finish-tri--bl player-bg-path-2"></div>
+                        <div id="p0s6" class="finish-tri"><div class="finish-tri-fill finish-tri--tl player-bg-path-0"></div></div>
+                        <div id="p1s6" class="finish-tri"><div class="finish-tri-fill finish-tri--tr player-bg-path-1"></div></div>
+                        <div id="p3s6" class="finish-tri"><div class="finish-tri-fill finish-tri--br player-bg-path-3"></div></div>
+                        <div id="p2s6" class="finish-tri"><div class="finish-tri-fill finish-tri--bl player-bg-path-2"></div></div>
                     </div>
 
                     <div class="path-arm-h">

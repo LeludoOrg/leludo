@@ -251,16 +251,27 @@ wc-board .path-cell-safe-svg path {
 
 wc-board .finish-zone {
     position: relative;
-    overflow: clip;
+    /* Visible (not clip): finished pawns are bigger now and fan out, rising a
+       touch past the zone box like board pawns overflow their cells. */
+    overflow: visible;
     background: var(--color-board-cell);
     min-width: 0;
     min-height: 0;
 }
 
+/* finish-tri is the token CONTAINER (one per player, id p?s6). It must NOT clip
+   — a clip-path clips children too, which would crop the bigger finish pawns.
+   The colored triangle is drawn by an inner .finish-tri-fill instead. */
 wc-board .finish-tri {
     position: absolute;
-    width: 100%;
-    height: 100%;
+    inset: 0;
+}
+
+/* The colored triangle wedge (purely visual). clip-path + bg live here so the
+   sibling pawns in .finish-tri stay unclipped. */
+wc-board .finish-tri-fill {
+    position: absolute;
+    inset: 0;
     opacity: 0.9;
 }
 

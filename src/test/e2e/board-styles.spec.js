@@ -285,6 +285,43 @@ test.describe('Finish-cell token stacking', () => {
             expect(t.style).toMatch(/left:\s*\d+(\.\d+)?%/);
         }
     });
+
+    test('finished pawns are bigger, width-driven and fanned (peek-fan, not letterboxed)', async ({ page }) => {
+        // Finish cells now use the same peek-fan as the board, with bigger pawns.
+        // Guards: (1) the pawn is bigger than a normal on-board pawn; (2) it is
+        // width-driven (height ≈ width*1.16, NOT squared/letterboxed); (3) the 4
+        // pawns overlap (fan), so they don't tile the old rigid grid.
+        await bootGame(page, '?positions=56,56,56,56,7,,,,&player=0');
+
+        const r = await page.evaluate(() => {
+            const board = document.querySelector('wc-board .board-grid');
+            const cellW = board.getBoundingClientRect().width / 15;
+            const finish = Array.from(document.getElementById('p0s6').querySelectorAll(':scope > wc-token'));
+            // p-1-0 sits on a normal track cell (lone) — the size reference.
+            const boardPawn = document.getElementById('p-1-0').firstElementChild.getBoundingClientRect();
+            const rects = finish.map(t => t.firstElementChild.getBoundingClientRect());
+            const tops = finish.map(t => parseFloat(t.style.top));
+            return {
+                cellW,
+                boardPawnW: boardPawn.width,
+                finishW: rects[0].width,
+                finishH: rects[0].height,
+                count: finish.length,
+                // vertical fan for P0: tops strictly increase and overlap (step < pawn height %)
+                tops,
+            };
+        });
+
+        expect(r.count).toBe(4);
+        // bigger than a normal board pawn (≈ cell); finish pawn ≈ 1.1 cell
+        expect(r.finishW).toBeGreaterThan(r.boardPawnW);
+        // width-driven, not letterboxed into a square
+        expect(r.finishH / r.finishW).toBeGreaterThan(1.1);
+        // fanned: P0 tops increase monotonically and overlap (step well under one pawn)
+        for (let i = 1; i < r.tops.length; i++) {
+            expect(r.tops[i]).toBeGreaterThan(r.tops[i - 1]);
+        }
+    });
 });
 
 test.describe('Capture animation', () => {

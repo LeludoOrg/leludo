@@ -277,42 +277,43 @@ function totemFan(tokens) {
     });
 }
 
+// Finish-cell stacking. A finish cell holds ≤4 of ONE player's pawns, so it's
+// always a peek-fan (no totem needed). The cell is the full ~3×3-cell center
+// zone; pawns are bigger here (≈1.1 cell) and fan along the player's outer edge,
+// tilted, like the on-board peek-fan. Width-driven (height:auto) so the taller
+// pawn isn't letterboxed. Orientation is per player: P0/P2 fan vertically along
+// the left/right edge, P1/P3 horizontally along the top/bottom edge.
+const FINISH_PAWN_W = 36;      // pawn width, % of the finish zone (was ~22)
+const FINISH_EDGE = 6;         // gap from the player's outer edge, %
 function applyFinishStacking(cell, tokens) {
     const n = tokens.length;
     if (n === 0) return;
     const playerIdx = parseInt(cell.id[1], 10);
-    const edge = 4;
+    const wPct = FINISH_PAWN_W;
+    const hPct = wPct * PAWN_H;
+    const vertical = playerIdx === 0 || playerIdx === 2; // spread axis
+    const extent = vertical ? hPct : wPct;
+    // Center the fan along the edge, overlapping; never run past ~88% of the zone.
+    const step = n > 1 ? Math.min(extent * 0.5, (88 - extent) / (n - 1)) : 0;
+    const start = (100 - (extent + (n - 1) * step)) / 2;
 
-    function place(t, alongPct, depthPct, sizePct) {
+    tokens.forEach((t, i) => {
+        const along = start + i * step;
+        const off = i - (n - 1) / 2;
         let top, left;
         switch (playerIdx) {
-            case 0: left = depthPct; top = alongPct; break;
-            case 1: left = alongPct; top = depthPct; break;
-            case 2: left = 100 - depthPct - sizePct; top = alongPct; break;
-            case 3: left = alongPct; top = 100 - depthPct - sizePct; break;
+            case 0: left = FINISH_EDGE;             top = along; break;            // left edge
+            case 1: left = along;                   top = FINISH_EDGE; break;       // top edge
+            case 2: left = 100 - FINISH_EDGE - wPct; top = along; break;            // right edge
+            case 3: left = along;                   top = 100 - FINISH_EDGE - hPct; break; // bottom edge
         }
-        t.style.cssText = `position:absolute;top:${top}%;left:${left}%;width:${sizePct}%;height:${sizePct}%;`;
-    }
-
-    if (n <= 3) {
-        const sizeMap = [22, 22, 22, 17];
-        const gapMap = [0, 0, 4, 3];
-        const s = sizeMap[n];
-        const g = gapMap[n];
-        const totalLen = n * s + (n - 1) * g;
-        const startAlong = (100 - totalLen) / 2;
-        tokens.forEach((t, i) => place(t, startAlong + i * (s + g), edge, s));
-        return;
-    }
-
-    const s = 17;
-    const g = 3;
-    const lineLen = 3 * s + 2 * g;
-    const startAlong = (100 - lineLen) / 2;
-    for (let i = 0; i < 3; i++) {
-        place(tokens[i], startAlong + i * (s + g), edge, s);
-    }
-    place(tokens[3], (100 - s) / 2, edge + s + g, s);
+        t.style.cssText += `position:absolute;top:${top}%;left:${left}%;width:${wPct}%;height:auto;z-index:${10 + i};`;
+        const svg = t.firstElementChild;
+        if (svg) {
+            if (off) svg.style.setProperty('--pawn-tilt', `${off * 6}deg`);
+            else svg.style.removeProperty('--pawn-tilt');
+        }
+    });
 }
 
 // Play a FLIP transition (First-Last-Invert-Play) on each token from its
