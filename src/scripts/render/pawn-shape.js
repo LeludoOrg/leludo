@@ -1,55 +1,83 @@
-// Shared pawn geometry + SVG builder for the gameplay overlays
-// (pawn-launch, ko-capture, home-arrival). All three draw the SAME pawn
-// as the on-board wc-token — body/head path copied verbatim from
-// components/wc-token.js, square 0 0 100 100 viewBox.
+// Shared pawn geometry + SVG builder. This is the ONE source for the pawn
+// glyph: the on-board wc-token AND the gameplay overlays (pawn-launch,
+// ko-capture, home-arrival) all build their pawn from here, so the shape can
+// never drift between the board and the FX that fly across it.
 //
-// Kept in one place so the pawn shape can never drift between overlays.
-// Each overlay's drop-shadow lives in its own CSS via the `svgClass` it
-// passes here, so per-overlay visual tuning stays local.
+// A top-heavy matte chess-pawn: sphere head, slim waist, flared base, drawn in
+// a 0 0 100 116 viewBox (taller than wide — the contact point is bottom-center).
+// The body + head carry a near-black contour (the theme-tuned --pawn-outline
+// token, same hue for every player) so a resting pawn reads distinct from its
+// same-colour yard ring; the base disc the pawn stands on is its own colour with
+// a soft black overlay, the collar keeps a colour-mixed edge, and the sheen is a
+// colour-independent white gradient. Each overlay's drop-shadow lives in its own
+// CSS via the `svgClass` it passes.
 
+export const PAWN_VIEWBOX = '0 0 100 116';
+export const PAWN_ASPECT = 1.16;            // height = width * 1.16
 export const PAWN_BODY =
-    'M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z';
+    'M30 100 Q22 84 33 60 Q40 49 41 41 L59 41 Q60 49 67 60 Q78 84 70 100 Z';
+
+// Stroke / base-disc shade derived from the base fill — one matte step toward
+// black. Works with any CSS color, including `currentColor` (so wc-token can
+// stay driven by its player-fg class + runtime applyColorMap remap).
+function darkOf(color) {
+    return `color-mix(in srgb, ${color} 64%, #000)`;
+}
 
 let _gradUid = 0;
 
-// Build the layered pawn <svg>. `svgClass` selects the overlay's CSS
-// (drop-shadow); `uidPrefix` namespaces this instance's gradient ids. Pass
-// `{ flat: true }` for a gradient-free single-fill silhouette — used for the
-// launch trail ghosts (formerly a hand-copied ghostSVG that could drift).
+// Build the layered pawn <svg>.
+//   color     base fill — concrete CSS color OR 'currentColor'
+//   size      px WIDTH of the pawn (height = size * PAWN_ASPECT). Ignored when
+//             opts.fill. Width is the reference dimension so an overlay pawn
+//             matches the on-board wc-token, which is width-driven (its svg is
+//             width:100% of the cell); the overlays pass measured token WIDTHS
+//             as `size` + an endScale on widths, so both ends line up — no pop.
+//   svgClass  class(es) on the <svg> — selects drop-shadow CSS, carries the
+//             player-fg-N class for currentColor-driven tokens.
+//   uidPrefix namespaces this instance's gradient id.
+//   opts.flat single-fill silhouette (launch-trail ghosts) — no sheen/stroke.
+//   opts.fill omit width/height so CSS sizes the svg (used by wc-token).
 export function pawnSVG(color, size, svgClass, uidPrefix, opts) {
+    const fill = opts && opts.fill;
+    const dims = fill
+        ? ''
+        : ` width="${size}" height="${size * PAWN_ASPECT}"`;
+    const open =
+        '<svg class="' + svgClass + '" viewBox="' + PAWN_VIEWBOX + '"' + dims + '>';
+
     if (opts && opts.flat) {
         return (
-            '<svg class="' + svgClass + '" viewBox="0 0 100 100" ' +
-            'width="' + size + '" height="' + size + '">' +
-                '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
-                '<path d="' + PAWN_BODY + '" fill="' + color + '"/>' +
-                '<circle cx="50" cy="24" r="16" fill="' + color + '"/>' +
+            open +
+                '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:' + color + '"/>' +
+                '<path d="' + PAWN_BODY + '" style="fill:' + color + '"/>' +
+                '<circle cx="50" cy="24" r="20" style="fill:' + color + '"/>' +
             '</svg>'
         );
     }
+
     const uid = uidPrefix + (++_gradUid);
+    const dark = darkOf(color);
+    const sheen = 'url(#' + uid + 's)';
     return (
-        '<svg class="' + svgClass + '" viewBox="0 0 100 100" ' +
-        'width="' + size + '" height="' + size + '">' +
+        open +
             '<defs>' +
-                '<linearGradient id="' + uid + 'b" x1="0.2" y1="0" x2="0.8" y2="1">' +
-                    '<stop offset="0%" stop-color="white" stop-opacity="0.35"/>' +
-                    '<stop offset="100%" stop-color="black" stop-opacity="0.12"/>' +
+                '<linearGradient id="' + uid + 's" x1="0.3" y1="0" x2="0.55" y2="0.62">' +
+                    '<stop offset="0%" stop-color="#fff" stop-opacity="0.26"/>' +
+                    '<stop offset="62%" stop-color="#fff" stop-opacity="0"/>' +
                 '</linearGradient>' +
-                '<radialGradient id="' + uid + 'h" cx="0.4" cy="0.35" r="0.5">' +
-                    '<stop offset="0%" stop-color="white" stop-opacity="0.45"/>' +
-                    '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
-                '</radialGradient>' +
             '</defs>' +
-            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="' + color + '"/>' +
-            '<ellipse cx="50" cy="88" rx="30" ry="8" fill="black" opacity="0.1"/>' +
-            '<path d="' + PAWN_BODY + '" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
-            '<path d="' + PAWN_BODY + '" fill="url(#' + uid + 'b)"/>' +
-            '<ellipse cx="50" cy="38" rx="13" ry="4" fill="' + color + '"/>' +
-            '<ellipse cx="50" cy="38" rx="13" ry="4" fill="white" opacity="0.15"/>' +
-            '<circle cx="50" cy="24" r="16" fill="' + color + '" stroke="white" stroke-width="1.5" stroke-opacity="0.5"/>' +
-            '<circle cx="50" cy="24" r="16" fill="url(#' + uid + 'h)"/>' +
-            '<ellipse cx="44" cy="18" rx="5" ry="3.5" fill="white" opacity="0.4" transform="rotate(-20 44 18)"/>' +
+            // base disc the pawn stands on — own colour + soft dark overlay
+            '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:' + color + '"/>' +
+            '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:#000;opacity:0.1"/>' +
+            // body
+            '<path d="' + PAWN_BODY + '" style="fill:' + color + ';stroke:var(--pawn-outline);stroke-width:var(--pawn-outline-w)"/>' +
+            '<path d="' + PAWN_BODY + '" style="fill:' + sheen + '"/>' +
+            // collar
+            '<ellipse cx="50" cy="41" rx="15" ry="4.6" style="fill:' + color + ';stroke:' + dark + ';stroke-width:1"/>' +
+            // head
+            '<circle cx="50" cy="24" r="20" style="fill:' + color + ';stroke:var(--pawn-outline);stroke-width:var(--pawn-outline-w)"/>' +
+            '<circle cx="50" cy="24" r="20" style="fill:' + sheen + '"/>' +
         '</svg>'
     );
 }

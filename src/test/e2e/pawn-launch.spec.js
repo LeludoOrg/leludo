@@ -118,13 +118,11 @@ test.describe('Pawn launch overlay', () => {
         expect(colors.color).toBe('rgb(26, 20, 16)');
     });
 
-    test('launch pawn uses the real wc-token shape, square and at cell size', async ({ page }) => {
+    test('launch pawn uses the real wc-token shape, at cell size', async ({ page }) => {
         // Bug: the launch overlay drew a DIFFERENT pawn than the game.
-        // It used a chess-pawn path in a 60x80 viewBox at 0.75 aspect and
-        // 1.4x cell size, so the leaping pawn neither matched the on-board
-        // token's shape nor its size/position at the yard/entry endpoints.
-        // Fix: the overlay reuses wc-token's body path in a square 100x100
-        // viewBox, sized to one cell. These assertions pin both.
+        // Fix: the overlay reuses the shared pawn-shape glyph (0 0 100 116
+        // viewBox, body path from pawn-shape.js). pawnSize is a HEIGHT, so the
+        // pawn stands one cell tall with width = height / 1.16. Pins both.
         await page.goto('/');
         const pawn = await page.evaluate(async () => {
             const mod = await import('/scripts/render/pawn-launch.js');
@@ -150,7 +148,7 @@ test.describe('Pawn launch overlay', () => {
                 // The token body path lives in components/wc-token.js; the
                 // overlay must render the same outline.
                 hasTokenBody: !!svg.querySelector(
-                    'path[d="M32 85 Q30 70 36 55 Q40 45 42 38 L58 38 Q60 45 64 55 Q70 70 68 85 Z"]'
+                    'path[d="M30 100 Q22 84 33 60 Q40 49 41 41 L59 41 Q60 49 67 60 Q78 84 70 100 Z"]'
                 ),
             };
             await p;
@@ -158,11 +156,10 @@ test.describe('Pawn launch overlay', () => {
             return out;
         });
 
-        expect(pawn.viewBox).toBe('0 0 100 100');
-        // Square — matches the wc-token SVG aspect (a token fills one cell).
-        expect(pawn.width).toBe(pawn.height);
-        // Sized to the passed cell size, not scaled up.
+        expect(pawn.viewBox).toBe('0 0 100 116');
+        // pawnSize (40) is the pawn WIDTH; height = 40 * 1.16 (taller than wide).
         expect(pawn.width).toBe('40');
+        expect(pawn.height).toBe(String(40 * 1.16));
         expect(pawn.hasTokenBody).toBe(true);
     });
 });

@@ -23,8 +23,14 @@ wc-token svg {
     width: 100%;
     height: 100%;
     min-width: 100%;
+    overflow: visible;
+    /* In a stack each pawn is rotated a few degrees into a peek-fan. The angle
+       comes from --pawn-tilt (set/cleared by updateCellStacking) so it composes
+       with the token-bounce keyframe; the rotate rides this 300ms transition. */
+    transform: rotate(var(--pawn-tilt, 0deg));
+    transform-origin: bottom center;
     transition: transform 300ms ease-out;
-    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.38));
 }
 
 /* God mode (debug, localhost-only) — selected pawn awaiting a target cell */

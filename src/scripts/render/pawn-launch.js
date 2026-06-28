@@ -9,7 +9,7 @@
 //   entry: {x, y},         REQUIRED. px center of entry cell on track,
 //                          relative to container's top-left.
 //   color,                 hex — pawn fill + halo + trail + shockwave + chip
-//   pawnSize,              px height of pawn (~1.2–1.5× cell size). default 48
+//   pawnSize,              px WIDTH of pawn (height = width*1.16). default 48
 //   duration,              total ms. default 1500
 //   arcHeight,             optional — px the pawn rises above the straight
 //                          line at apex. Default: max(distance*0.32, pawnSize*1.4)
@@ -29,7 +29,6 @@ import {
     arcPoint,
     CLEANUP_MARGIN_MS,
     EASE_SETTLE,
-    EASE_BURST,
 } from "./overlay-base.js";
 
 const STYLE_ID = 'plnch-styles';
@@ -76,24 +75,9 @@ function injectCSS() {
         mix-blend-mode: screen;
       }
 
-      .plnch-ring {
-        position: absolute;
-        border-radius: 50%;
-        border: 3px solid currentColor;
-        opacity: 0;
-        pointer-events: none;
-      }
-
       .plnch-spark {
         position: absolute;
         border-radius: 999px;
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .plnch-dust {
-        position: absolute;
-        border-radius: 50%;
         opacity: 0;
         pointer-events: none;
       }
@@ -168,47 +152,7 @@ export function playPawnLaunch(opts) {
     // wrap — FX (halo/sparks/dust) anchor there so they sit at the feet.
     const baseY = pawnSize * 0.36;
 
-    const haloSize = pawnSize * 1.8;
-    const halo = el('plnch-halo', boxAt(yard.x, yard.y, haloSize, haloSize, baseY) + 'color:' + color + ';');
-    root.appendChild(halo);
-    halo.animate(
-        [
-            { opacity: 0,    transform: 'scale(0.4)' },
-            { opacity: 0.55, transform: 'scale(0.85)', offset: 0.35 },
-            { opacity: 0.85, transform: 'scale(1.0)',  offset: 0.7  },
-            { opacity: 0,    transform: 'scale(1.25)' },
-        ],
-        { duration: T_anticipation + T_crouch + 60, easing: 'cubic-bezier(.4,.0,.5,1)', fill: 'forwards' }
-    );
-
-    const N_SPARK = 8;
-    for (let i = 0; i < N_SPARK; i++) {
-        const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
-        const r0 = pawnSize * 0.45;
-        const r1 = pawnSize * (0.9 + Math.random() * 0.6);
-        const x0 = yard.x + Math.cos(angle) * r0;
-        const y0 = yard.y + Math.sin(angle) * r0 + baseY;
-        const x1 = yard.x + Math.cos(angle) * r1;
-        const y1 = yard.y + Math.sin(angle) * r1 + baseY - pawnSize * 0.3;
-        const sz = 3 + Math.random() * 3;
-        const sp = el(
-            'plnch-spark',
-            'left:' + x0 + 'px; top:' + y0 + 'px;' +
-            'width:' + sz + 'px; height:' + sz + 'px;' +
-            'background:' + color + ';' +
-            'box-shadow: 0 0 6px ' + color + ';'
-        );
-        root.appendChild(sp);
-        sp.animate(
-            [
-                { opacity: 0, transform: 'translate(0,0) scale(0.6)' },
-                { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.15 },
-                { opacity: 1, transform: 'translate(' + (x1 - x0).toFixed(1) + 'px,' + (y1 - y0).toFixed(1) + 'px) scale(0.7)', offset: 0.75 },
-                { opacity: 0, transform: 'translate(' + (x1 - x0).toFixed(1) + 'px,' + (y1 - y0 - 6).toFixed(1) + 'px) scale(0.4)' },
-            ],
-            { duration: T_anticipation + T_crouch, delay: Math.round(Math.random() * 120), easing: 'ease-out', fill: 'forwards' }
-        );
-    }
+    spawnStartFX(root, yard, color, pawnSize, T_anticipation + T_crouch);
 
     if (trail) {
         const N_TRAIL = 5;
@@ -313,37 +257,70 @@ export function playPawnLaunch(opts) {
     return scheduleCleanup(root, cleanupMs, onComplete);
 }
 
-function playLandingFX(root, entry, color, pawnSize, label) {
-    const r = el('plnch-ring', boxAt(entry.x, entry.y, 12) + 'color:' + color + ';');
-    root.appendChild(r);
-    r.animate(
+// Start FX: rising halo glow + a fan of upward sparks at the launch point.
+// `at` is the px center of the pawn (container-relative); `fxDur` ms the burst
+// runs for. Shared by the full leap (playPawnLaunch) and the standalone
+// playLaunchStartFX wrapper, so the glow/sparks read identically either way.
+function spawnStartFX(root, at, color, pawnSize, fxDur) {
+    // Same feet offset the pawn glyph uses — anchors the FX at the base.
+    const baseY = pawnSize * 0.36;
+
+    const haloSize = pawnSize * 1.8;
+    const halo = el('plnch-halo', boxAt(at.x, at.y, haloSize, haloSize, baseY) + 'color:' + color + ';');
+    root.appendChild(halo);
+    halo.animate(
         [
             { opacity: 0,    transform: 'scale(0.4)' },
-            { opacity: 0.95, transform: 'scale(1.0)', offset: 0.12 },
-            { opacity: 0,    transform: 'scale(6.5)' },
+            { opacity: 0.55, transform: 'scale(0.85)', offset: 0.35 },
+            { opacity: 0.85, transform: 'scale(1.0)',  offset: 0.7  },
+            { opacity: 0,    transform: 'scale(1.25)' },
         ],
-        { duration: 520, easing: EASE_BURST, fill: 'forwards' }
+        { duration: fxDur + 60, easing: 'cubic-bezier(.4,.0,.5,1)', fill: 'forwards' }
     );
 
-    const N_DUST = 6;
-    for (let i = 0; i < N_DUST; i++) {
-        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6;
-        const r1 = pawnSize * (0.5 + Math.random() * 0.5);
-        const dx = Math.cos(a) * r1;
-        const dy = Math.sin(a) * r1 * 0.6;
-        const sz = 6 + Math.random() * 8;
-        const d = el('plnch-dust', boxAt(entry.x, entry.y, sz, sz, pawnSize * 0.36) + 'background: rgba(235,227,214,0.55);');
-        root.appendChild(d);
-        d.animate(
+    const N_SPARK = 8;
+    for (let i = 0; i < N_SPARK; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
+        const r0 = pawnSize * 0.45;
+        const r1 = pawnSize * (0.9 + Math.random() * 0.6);
+        const x0 = at.x + Math.cos(angle) * r0;
+        const y0 = at.y + Math.sin(angle) * r0 + baseY;
+        const x1 = at.x + Math.cos(angle) * r1;
+        const y1 = at.y + Math.sin(angle) * r1 + baseY - pawnSize * 0.3;
+        const sz = 3 + Math.random() * 3;
+        const sp = el(
+            'plnch-spark',
+            'left:' + x0 + 'px; top:' + y0 + 'px;' +
+            'width:' + sz + 'px; height:' + sz + 'px;' +
+            'background:' + color + ';' +
+            'box-shadow: 0 0 6px ' + color + ';'
+        );
+        root.appendChild(sp);
+        sp.animate(
             [
-                { opacity: 0,    transform: 'translate(0,0) scale(0.4)' },
-                { opacity: 0.85, transform: 'translate(' + (dx * 0.4).toFixed(1) + 'px,' + (dy * 0.4).toFixed(1) + 'px) scale(0.85)', offset: 0.3 },
-                { opacity: 0,    transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(1.1)' },
+                { opacity: 0, transform: 'translate(0,0) scale(0.6)' },
+                { opacity: 1, transform: 'translate(0,0) scale(1)', offset: 0.15 },
+                { opacity: 1, transform: 'translate(' + (x1 - x0).toFixed(1) + 'px,' + (y1 - y0).toFixed(1) + 'px) scale(0.7)', offset: 0.75 },
+                { opacity: 0, transform: 'translate(' + (x1 - x0).toFixed(1) + 'px,' + (y1 - y0 - 6).toFixed(1) + 'px) scale(0.4)' },
             ],
-            { duration: 480, delay: Math.round(Math.random() * 60), easing: 'ease-out', fill: 'forwards' }
+            { duration: fxDur, delay: Math.round(Math.random() * 120), easing: 'ease-out', fill: 'forwards' }
         );
     }
+}
 
+// Standalone burst at the launch point — halo glow + sparks, no pawn, no leap.
+// Lets a caller keep the launch's signature start flourish while moving the
+// pawn some other way (e.g. the normal cell-to-cell hop). `at` = px pawn center.
+const START_FX_MS = 460;
+export function playLaunchStartFX({ container, at, color = '#d97644', pawnSize = 48 }) {
+    if (!container || !at) throw new Error('playLaunchStartFX: container and at are required');
+    injectCSS();
+    const root = createOverlayRoot(container, 'plnch-root');
+    spawnStartFX(root, at, color, pawnSize, START_FX_MS);
+    return scheduleCleanup(root, START_FX_MS + CLEANUP_MARGIN_MS);
+}
+
+function playLandingFX(root, entry, color, pawnSize, label) {
     if (label) {
         const labelEl = el(
             'plnch-label',

@@ -6,7 +6,8 @@ import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./
 import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
-import {playPawnLaunch} from "./pawn-launch.js";
+import {playLaunchStartFX} from "./pawn-launch.js";
+import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
@@ -201,44 +202,124 @@ function clearStackStyles(t) {
     t.style.removeProperty('z-index');
     t.style.removeProperty('display');
     t.style.removeProperty('margin-left');
+    // The peek-fan tilts each pawn via --pawn-tilt on the inner svg — drop it so
+    // a pawn that leaves a stack (back to a lone, full-cell token) stands
+    // upright. (Driven via a custom prop so the rotate composes with the
+    // token-bounce keyframe instead of being clobbered by it.)
+    const svg = t.firstElementChild;
+    if (svg) svg.style.removeProperty('--pawn-tilt');
 }
 
+// Whole-arrangement contact anchor: bottom-center of the cell, raised by 16% so
+// the pawns sit just above the cell's bottom edge. Expressed in % of the
+// (square) cell so the layout is resize-safe with no pixel recompute.
+const STACK_ANCHOR_BOTTOM = 16;
+const PAWN_H = 1.16; // pawn height / width (see pawn-shape.js)
+// Cap a vertical totem's body (bottom pawn base → top pawn head) to 1.25 cells,
+// in % of cell — a 4-tall stack stays readable without eating extra rows.
+const MAX_TOTEM_HEIGHT_PCT = 125;
+
+// Position one stacked pawn. All metrics are % of the cell. `wPct` is the pawn
+// width; height follows the pawn aspect. The horizontal fan tilt rides the
+// inner svg's own transform so the wrapper transform stays free for the FLIP /
+// hop animations that translate the whole token between cells.
+function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
+    t.style.cssText += `position:absolute;left:${leftPct}%;bottom:${bottomPct}%;` +
+        `width:${wPct}%;height:${wPct * PAWN_H}%;z-index:${z};`;
+    const svg = t.firstElementChild;
+    if (!svg) return;
+    if (rotateDeg) svg.style.setProperty('--pawn-tilt', `${rotateDeg}deg`);
+    else svg.style.removeProperty('--pawn-tilt');
+}
+
+// A lone pawn on a path cell. The pawn svg is taller than the (square) cell
+// (PAWN_H 1.16), so left in normal flow it top-aligns and its base overflows
+// BELOW the cell — where the next-row cell, painted later, crops it. Anchor it
+// to the cell floor at full width so the excess height overflows UPWARD instead
+// (over the earlier-painted cell above), matching how stacked pawns sit. Pinned
+// out of flow so it can't stretch its grid track either.
+function placeLonePawn(t) {
+    t.style.cssText += 'position:absolute;left:0;bottom:0;width:100%;height:auto;';
+}
+
+// Case A — total ≤ 4: fan every pawn individually like a hand of cards.
+function peekFan(tokens) {
+    const N = tokens.length;
+    const factor = N >= 4 ? 0.74 : N >= 3 ? 0.82 : 0.9; // N === 2 here (N === 1 stays in flow)
+    const wPct = 96 * factor;
+    const stepPct = wPct * 0.33;  // horizontal spacing — < pawn width, so pawns overlap a touch
+    tokens.forEach((t, i) => {
+        const off = i - (N - 1) / 2;
+        const leftPct = 50 + off * stepPct - wPct / 2;
+        const bottomPct = STACK_ANCHOR_BOTTOM + Math.abs(off) * wPct * 0.05;
+        placeStackPawn(t, leftPct, bottomPct, wPct, off * 7, 10 + i);
+    });
+}
+
+// Case B — total > 4: collapse each color into one vertical totem, then fan the
+// totems. At most 4 colors, so the fan never shows more than 4 leaves.
+function totemFan(tokens) {
+    const groups = new Map(); // playerIndex -> tokens[], first-encounter order
+    for (const t of tokens) {
+        const player = +t.id.split('-')[1];
+        if (!groups.has(player)) groups.set(player, []);
+        groups.get(player).push(t);
+    }
+    const leaves = [...groups.values()];
+    const K = leaves.length;
+    const wPct = K >= 3 ? 80 : 90;
+    const stepPct = wPct * 0.40;  // horizontal spacing between totems — a touch tighter (slight overlap)
+    const pawnHPct = wPct * PAWN_H;       // a single pawn is ~1 cell tall
+    leaves.forEach((stack, gi) => {
+        const off = gi - (K - 1) / 2;
+        const leftPct = 50 + off * stepPct - wPct / 2;
+        // Vertical overlap: the compact natural step (0.26), but compressed so a
+        // full 4-tall totem never rises past MAX_TOTEM_HEIGHT_PCT (1.5 cells) —
+        // pawnH + (n-1)·vStep ≤ cap. Short totems keep the looser natural step.
+        const n = stack.length;
+        const vStepPct = n > 1
+            ? Math.min(pawnHPct * 0.26, (MAX_TOTEM_HEIGHT_PCT - pawnHPct) / (n - 1))
+            : 0;
+        stack.forEach((t, j) => {
+            // Higher pawn in a totem renders in front; later totems sit above
+            // earlier ones — leave room (×8) so totems never z-interleave.
+            placeStackPawn(t, leftPct, STACK_ANCHOR_BOTTOM + j * vStepPct, wPct, off * 5, 10 + gi * 8 + j);
+        });
+    });
+}
+
+// Finish-cell stacking. A finish cell holds ≤4 of ONE player's pawns, so it's
+// always a peek-fan (no totem). The cell is the full ~3×3-cell center zone; the
+// pawns sit as a compact HORIZONTAL fan, tightly overlapping, centered in that
+// player's wedge. Width-driven (height:auto) so the taller pawn isn't
+// letterboxed. Per-player wedge centers (% of the zone) keep each fan on its
+// colored triangle: P0 left, P1 top, P2 right, P3 bottom.
+const FINISH_PAWN_W = 22;      // pawn width, % of the finish zone (compact)
+const FINISH_STEP = 0.28;      // horizontal step as a fraction of pawn width (tight overlap)
+// Wedge centers (% of zone), pushed toward each player's outer edge — the fat
+// part of the triangle — so the compact fan sits inside its wedge and never
+// crosses the centre into another player's home.
+const FINISH_CENTERS = { 0: [22, 50], 1: [50, 22], 2: [78, 50], 3: [50, 78] };
 function applyFinishStacking(cell, tokens) {
     const n = tokens.length;
     if (n === 0) return;
     const playerIdx = parseInt(cell.id[1], 10);
-    const edge = 4;
+    const wPct = FINISH_PAWN_W;
+    const hPct = wPct * PAWN_H;
+    const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
+    const step = wPct * FINISH_STEP;
 
-    function place(t, alongPct, depthPct, sizePct) {
-        let top, left;
-        switch (playerIdx) {
-            case 0: left = depthPct; top = alongPct; break;
-            case 1: left = alongPct; top = depthPct; break;
-            case 2: left = 100 - depthPct - sizePct; top = alongPct; break;
-            case 3: left = alongPct; top = 100 - depthPct - sizePct; break;
+    tokens.forEach((t, i) => {
+        const off = i - (n - 1) / 2;
+        const left = cx + off * step - wPct / 2;
+        const top = cy - hPct / 2;
+        t.style.cssText += `position:absolute;top:${top}%;left:${left}%;width:${wPct}%;height:auto;z-index:${10 + i};`;
+        const svg = t.firstElementChild;
+        if (svg) {
+            if (off) svg.style.setProperty('--pawn-tilt', `${off * 5}deg`);
+            else svg.style.removeProperty('--pawn-tilt');
         }
-        t.style.cssText = `position:absolute;top:${top}%;left:${left}%;width:${sizePct}%;height:${sizePct}%;`;
-    }
-
-    if (n <= 3) {
-        const sizeMap = [22, 22, 22, 17];
-        const gapMap = [0, 0, 4, 3];
-        const s = sizeMap[n];
-        const g = gapMap[n];
-        const totalLen = n * s + (n - 1) * g;
-        const startAlong = (100 - totalLen) / 2;
-        tokens.forEach((t, i) => place(t, startAlong + i * (s + g), edge, s));
-        return;
-    }
-
-    const s = 17;
-    const g = 3;
-    const lineLen = 3 * s + 2 * g;
-    const startAlong = (100 - lineLen) / 2;
-    for (let i = 0; i < 3; i++) {
-        place(tokens[i], startAlong + i * (s + g), edge, s);
-    }
-    place(tokens[3], (100 - s) / 2, edge + s + g, s);
+    });
 }
 
 // Play a FLIP transition (First-Last-Invert-Play) on each token from its
@@ -299,6 +380,8 @@ export function updateCellStacking(cell, opts = {}) {
     tokens.forEach(clearStackStyles);
     const n = tokens.length;
 
+    // Legacy >4 count badge (pre peek-fan). Remove any lingering one — the
+    // totem fan now shows every pawn, so the badge is gone.
     const badge = cell.querySelector('.stack-badge');
     if (badge) badge.remove();
 
@@ -306,32 +389,19 @@ export function updateCellStacking(cell, opts = {}) {
         applyFinishStacking(cell, tokens);
     } else if (n >= 2) {
         cell.style.position = 'relative';
-
-        if (n === 2) {
-            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:64%;height:64%;z-index:1;';
-            tokens[1].style.cssText += ';position:absolute;bottom:4%;right:4%;width:64%;height:64%;z-index:2;';
-        } else if (n === 3) {
-            tokens[0].style.cssText += ';position:absolute;top:2%;left:50%;width:52%;height:52%;z-index:3;margin-left:-26%;';
-            tokens[1].style.cssText += ';position:absolute;bottom:4%;left:0%;width:52%;height:52%;z-index:2;';
-            tokens[2].style.cssText += ';position:absolute;bottom:4%;right:0%;width:52%;height:52%;z-index:2;';
-        } else if (n === 4) {
-            tokens[0].style.cssText += ';position:absolute;top:4%;left:4%;width:46%;height:46%;z-index:1;';
-            tokens[1].style.cssText += ';position:absolute;top:4%;right:4%;width:46%;height:46%;z-index:1;';
-            tokens[2].style.cssText += ';position:absolute;bottom:4%;left:4%;width:46%;height:46%;z-index:1;';
-            tokens[3].style.cssText += ';position:absolute;bottom:4%;right:4%;width:46%;height:46%;z-index:1;';
+        if (n <= 4) {
+            peekFan(tokens);      // fan each pawn individually
         } else {
-            tokens.forEach((t, i) => {
-                if (i > 0) t.style.display = 'none';
-            });
-            tokens[0].style.cssText += ';position:absolute;inset:8%;width:84%;height:84%;z-index:1;';
-            const badgeEl = document.createElement('div');
-            badgeEl.className = 'stack-badge';
-            badgeEl.textContent = `×${n}`;
-            // All visuals (position, colors, sizing) live in wc-board.css .stack-badge.
-            cell.appendChild(badgeEl);
+            totemFan(tokens);     // collapse same color into vertical totems, fan those
         }
+    } else if (n === 1 && cell.classList.contains('path-cell')) {
+        // Lone pawn on a track / home-stretch cell: floor-anchor it so its
+        // taller-than-cell body overflows upward, not down into the cropping
+        // next cell. (Yard dots / finish cells aren't .path-cell, so their
+        // own placement rules are untouched.)
+        cell.style.position = 'relative';
+        placeLonePawn(tokens[0]);
     }
-    // n <= 1 (non-finish): the sole token stays in normal flow at full cell size.
 
     // FLIP steps 2-4 (Last/Invert/Play): animate every token from its snapshot
     // box into the slot it now holds.
@@ -547,9 +617,15 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         x: yardRect.left + yardRect.width / 2 - containerRect.left,
         y: yardRect.top + yardRect.height / 2 - containerRect.top,
     };
-    const entryCenter = {
+    // Feet points (bottom-center) — what playPawnStep hops between, so the
+    // pawn's base tracks the floor like the normal cell-to-cell mover.
+    const yardFeet = {
+        x: yardRect.left + yardRect.width / 2 - containerRect.left,
+        y: yardRect.bottom - containerRect.top,
+    };
+    const entryFeet = {
         x: entryRect.left + entryRect.width / 2 - containerRect.left,
-        y: entryRect.top + entryRect.height / 2 - containerRect.top,
+        y: entryRect.bottom - containerRect.top,
     };
     const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
 
@@ -558,24 +634,31 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     // Keep the yard parking slot (.home-slot-dot) visible during the
     // overlay. Hiding only the live token reveals the empty seat ring,
     // which is exactly how the seat should look once the pawn has
-    // launched — so it reads as "vacated" throughout the leap instead of
+    // launched — so it reads as "vacated" throughout the hop instead of
     // blinking out and reappearing when the promise resolves.
 
     playLaunchSound();
-    return playPawnLaunch({
+    // Keep the launch's signature start flourish — sparkle + radial glow at the
+    // yard — but drop the parabolic leap (and the landing burst). The pawn
+    // travels with the SAME hop the normal cell-to-cell mover uses
+    // (playPawnStep), so launching reads as one big version of an ordinary step.
+    playLaunchStartFX({ container: boardWrap, at: yardCenter, color, pawnSize: cellSize });
+
+    const HOP_DUR = 480;
+    // One hop across a multi-cell gap: a raw hopBig fraction of that long gap
+    // would arc absurdly tall, so cap the apex to ~1.15 cells.
+    const gap = Math.hypot(entryFeet.x - yardFeet.x, entryFeet.y - yardFeet.y) || 1;
+    const hopBig = Math.max(0.16, Math.min(0.5, (cellSize * 1.15) / gap));
+
+    return playPawnStep({
         container: boardWrap,
-        yard: yardCenter,
-        entry: entryCenter,
+        path: [yardFeet, entryFeet],
         color,
-        // Match the real on-board token: a wc-token fills one cell (square),
-        // so the launch pawn is cellSize too — same shape, size and centered
-        // position as the live token at both the yard and entry endpoints.
+        // A wc-token fills one cell (square), so the hop pawn is cellSize too —
+        // same glyph and footprint as the live token at both endpoints.
         pawnSize: cellSize,
-        duration: 1200,
-        // No 'GO!' chip — the leap + shockwave + dust already read as
-        // "this pawn just launched" and the chip stole focus from the
-        // pawn settling on its entry cell.
-        label: '',
+        stepDur: HOP_DUR,
+        hopBig,
     }).then(() => {
         clearStackStyles(element);
         delete element.dataset.moving;
@@ -602,12 +685,13 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
 
         const finalContainer = document.getElementById(path[path.length - 1]);
         const sourceCell = element.parentElement;
+        const boardWrap = element.closest('.board-wrap');
 
-        // Hidden tab: rAF is paused, so the per-cell glide below would never run
-        // and the online replay queue (which awaits this promise) would wedge —
-        // the client desyncs from the server. Land the token in its final cell
-        // immediately; it catches up visually when the tab is shown again.
-        if (isTabHidden()) {
+        // Hidden tab (or no board mounted): rAF is paused, so the hop overlay
+        // would never run and the online replay queue (which awaits this promise)
+        // would wedge — the client desyncs from the server. Land the token in its
+        // final cell immediately; it catches up visually when shown again.
+        if (isTabHidden() || !boardWrap) {
             clearStackStyles(element);
             delete element.dataset.moving;
             finalContainer.appendChild(element);
@@ -617,109 +701,121 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             return;
         }
 
+        const containerRect = boardWrap.getBoundingClientRect();
+        const cellSize = containerRect.width / BOARD_CELLS;
+        const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
+
+        // Feet point (container-relative bottom-center) of a cell id — where a
+        // floor-anchored lone pawn's base sits. The hop pawn lands its feet here,
+        // so its end box equals the settled token's box (no post-reveal pop).
+        const feetOf = (id) => {
+            const r = document.getElementById(id).getBoundingClientRect();
+            return {
+                x: r.left + r.width / 2 - containerRect.left,
+                y: r.bottom - containerRect.top,
+            };
+        };
+
+        // Where the mover sits right now (its stacked slot, if any) — the hop's
+        // first feet point, so the leap starts exactly where the live pawn was.
+        const startRect = element.getBoundingClientRect();
+        const startCenter = {
+            x: startRect.left + startRect.width / 2 - containerRect.left,
+            y: startRect.bottom - containerRect.top,
+        };
+
+        // Viewport box a floor-anchored lone pawn occupies in `cellRect`: full
+        // cell width, taller body (PAWN_ASPECT) overflowing UPWARD with its base
+        // on the cell's bottom edge — i.e. the hop's exact final frame. The
+        // destination FLIP starts from this so a lone landing is a no-op (no
+        // settle glide) and a stack-join eases in from the right spot.
+        const lonePawnBox = (cellRect) => {
+            const h = cellRect.width * PAWN_H;
+            return {
+                left: cellRect.left,
+                top: cellRect.bottom - h,
+                width: cellRect.width,
+                height: h,
+                right: cellRect.right,
+                bottom: cellRect.bottom,
+            };
+        };
+
+        // Hide the live token and reflow the survivors of its source stack into
+        // their new (n-1) layout — the overlay paints its own hopping copy.
+        // dataset.moving keeps updateCellStacking from dragging it back into flow.
         element.dataset.moving = 'true';
-        // Snapshot the mover's on-screen box (its stacked slot, if it shared the
-        // cell) before we re-pin it. We then lift it OUT of flow: pinned
-        // position:absolute filling the source cell, so the cell reflows around
-        // the survivors ALONE — fixing the "lone survivor shoved a cell down"
-        // bug — and the mover travels at full cell size like any sole pawn.
-        const visualRect = element.getBoundingClientRect();
-        clearStackStyles(element);
-        element.style.position = 'absolute';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.width = '100%';
-        element.style.height = '100%';
-        element.style.zIndex = '50';
-        element.style.willChange = 'transform';
-        element.style.transformOrigin = 'top left';
+        element.style.visibility = 'hidden';
+        if (sourceCell) updateCellStacking(sourceCell, { animate: true });
 
-        // Survivors smoothly resize+reposition into their new (n-1) layout.
-        updateCellStacking(sourceCell, { animate: true });
+        const lastId = path[path.length - 1];
+        const lastIsFinish = FINISH_CELL_ID_RE.test(lastId);
+        // The finish-cell arrival has its own flourish (playFinishArrival); the
+        // hop covers every track / home-stretch cell up to (not including) it.
+        const hopIds = lastIsFinish ? path.slice(0, -1) : path;
 
-        const originRect = element.getBoundingClientRect();
-        // Invert: render the mover at its old (possibly smaller, offset) slot so
-        // the first glide step animates it growing to full size AND sliding to
-        // the next cell in one motion — no instant size pop. For a sole pawn
-        // visualRect === originRect, so this is a no-op (unchanged behaviour).
-        const sx = originRect.width ? visualRect.width / originRect.width : 1;
-        const sy = originRect.height ? visualRect.height / originRect.height : 1;
-        const compDx = visualRect.left - originRect.left;
-        const compDy = visualRect.top - originRect.top;
-        if (Math.abs(compDx) > 0.5 || Math.abs(compDy) > 0.5 || Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+        // Reparent the live token into the finish cell and hand off to the home
+        // arrival overlay, starting from the last hopped cell's box.
+        const landFinish = (preRect) => {
             element.style.transition = 'none';
-            element.style.transform = `translate(${compDx}px, ${compDy}px) scale(${sx}, ${sy})`;
-            void element.offsetWidth;
-            element.style.transition = '';
+            element.style.removeProperty('transform');
+            element.style.removeProperty('transform-origin');
+            element.style.willChange = '';
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            finalContainer.appendChild(element);
+            updateCellStacking(finalContainer);
+            element.style.removeProperty('transition');
+            playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
+        };
+
+        // Reparent the live token into its destination cell and FLIP it — along
+        // with any tokens already there — from the last hopped cell into the
+        // final stacked layout, so joining a stack eases in instead of snapping.
+        const landTrack = (firstRect) => {
+            element.style.transition = 'none';
+            element.style.removeProperty('transform');
+            element.style.removeProperty('transform-origin');
+            element.style.willChange = '';
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            element.style.visibility = '';
+            finalContainer.appendChild(element);
+            updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, firstRect]]) });
+            element.style.removeProperty('transition');
+            resolve();
+        };
+
+        // A bare hop into the finish cell (no track cells between): skip straight
+        // to the arrival flourish, sourced from the mover's current box.
+        if (lastIsFinish && hopIds.length === 0) {
+            landFinish(startRect);
+            return;
         }
 
-        const fallbackMs = 400;
+        const hopPath = [startCenter, ...hopIds.map(feetOf)];
 
-        let stepIndex = 0;
-
-        function step() {
-            // Tab went hidden mid-glide: fast-forward to the final cell so the
-            // replay queue keeps draining (rAF is paused while hidden).
-            if (isTabHidden() && stepIndex < path.length) {
-                stepIndex = path.length;
+        playPawnStep({
+            container: boardWrap,
+            path: hopPath,
+            color,
+            // A wc-token fills one cell (square) wide, so the hop pawn is cellSize
+            // too — same glyph and footprint as the live token at every cell.
+            pawnSize: cellSize,
+            // Per-cell footstep, fired as each gap begins (matches the old glide).
+            onStep: () => playStepSound(),
+        }).then(() => {
+            if (lastIsFinish) {
+                // The hop ended on the cell before the finish — arrive from the
+                // pawn's settled box there (not the bare square cell).
+                const cellId = hopIds[hopIds.length - 1];
+                landFinish(lonePawnBox(document.getElementById(cellId).getBoundingClientRect()));
+            } else {
+                // FLIP starts from the hop's exact final box (settled lone-pawn
+                // geometry) → no settle pop on a lone landing.
+                landTrack(lonePawnBox(document.getElementById(lastId).getBoundingClientRect()));
             }
-            if (stepIndex >= path.length) {
-                // Capture the mover's on-screen box at journey's end, then reparent
-                // it into the destination cell and FLIP it — along with any tokens
-                // already there — into the final stacked layout, so a pawn joining
-                // a stack eases into its slot instead of snapping. Clearing
-                // transform under transition:none avoids a double-offset flash once
-                // it's a child of the (already-positioned) destination cell.
-                const moverFirst = element.getBoundingClientRect();
-                element.style.transition = 'none';
-                element.style.removeProperty('transform');
-                element.style.removeProperty('transform-origin');
-                element.style.willChange = '';
-                clearStackStyles(element);
-                delete element.dataset.moving;
-                finalContainer.appendChild(element);
-                updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, moverFirst]]) });
-                element.style.removeProperty('transition'); // restore CSS transition if FLIP skipped it (empty dest)
-                resolve();
-                return;
-            }
-
-            playStepSound();
-            const isFinalStep = stepIndex === path.length - 1;
-            const targetId = path[stepIndex];
-            const isFinishCell = FINISH_CELL_ID_RE.test(targetId);
-
-            if (isFinalStep && isFinishCell) {
-                const targetContainer = document.getElementById(targetId);
-                const preRect = element.getBoundingClientRect();
-
-                element.style.transition = 'none';
-                element.style.transform = '';
-                element.style.position = '';
-                element.style.zIndex = '';
-                element.style.willChange = '';
-                targetContainer.appendChild(element);
-                delete element.dataset.moving;
-                updateCellStacking(targetContainer);
-
-                playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
-                return;
-            }
-
-            const targetContainer = document.getElementById(targetId);
-            const targetRect = targetContainer.getBoundingClientRect();
-            const offsetX = targetRect.left - originRect.left;
-            const offsetY = targetRect.top - originRect.top;
-
-            element.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-
-            waitForTransitionEnd(element, () => {
-                stepIndex++;
-                nextFrame(step);
-            }, fallbackMs);
-        }
-
-        nextFrame(step);
+        });
     });
 }
 

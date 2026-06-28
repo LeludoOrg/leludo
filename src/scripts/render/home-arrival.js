@@ -8,7 +8,7 @@
 //   home: {x, y},          REQUIRED. px center of finish slot, relative to container
 //   source: {x, y} | null, optional — pawn slides source→home (with hop) first
 //   color,                 hex — pawn fill + confetti accent + chip + flash tint
-//   pawnSize,              px height of pawn (~1.2–1.5× cell size). default 48
+//   pawnSize,              px WIDTH of pawn (height = width*1.16). default 48
 //   duration,              total ms. default 1400
 //   flashBoard,            bool — tinted full-bleed pulse (mix-blend-mode: screen)
 //   label,                 string on the chip. default 'HOME!'

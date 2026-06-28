@@ -179,12 +179,16 @@ test.describe('Token animation speed', () => {
 });
 
 test.describe('Token rendering inside cells', () => {
-    test('stacked tokens stay inside the cell (no inline baseline overflow)', async ({ page }) => {
-        // Regression: wc-token's inner <svg> was inline by default, so the
-        // line-box baseline strut pushed the rendered svg ~4–5px below the
-        // wc-token box. On small viewports (24px cells) the pawns visibly
-        // fell below the cell border when 2+ tokens shared a cell.
-        // Fix: wc-token svg { display: block; } — removes the strut.
+    test('peek-fan: ≤4 pawns sit at the cell floor and may rise above it', async ({ page }) => {
+        // Two guards bundled here:
+        //  1. wc-token's inner <svg> was once inline by default, so the line-box
+        //     baseline strut pushed the rendered svg ~4–5px BELOW the wc-token
+        //     box — on small (24px) cells stacked pawns fell below the border.
+        //     Fix: wc-token svg { display:block } — removes the strut. The pawn
+        //     base must never sit below the cell floor.
+        //  2. The peek-fan redesign anchors pawns at the cell's bottom-center
+        //     and lets the (taller-than-cell) pawns OVERFLOW upward — that's
+        //     intentional, so DON'T re-add a "must stay below cell top" assert.
         await bootGame(page, '?positions=39,39,39,39&player=0');
 
         const data = await page.evaluate(async () => {
@@ -198,9 +202,9 @@ test.describe('Token rendering inside cells', () => {
                 return {
                     svgBottom: sr.bottom,
                     cellBottom: cellRect.bottom,
-                    svgTop: sr.top,
-                    cellTop: cellRect.top,
                     svgDisplay: getComputedStyle(svg).display,
+                    svgTransform: getComputedStyle(svg).transform,
+                    pos: getComputedStyle(t).position,
                 };
             });
         });
@@ -208,12 +212,103 @@ test.describe('Token rendering inside cells', () => {
         expect(data.length).toBe(4);
         for (const t of data) {
             expect(t.svgDisplay).toBe('block');
-            // svg must not extend below the cell (tolerate 0.5px sub-pixel)
+            // peek-fan pins each pawn absolutely in the cell…
+            expect(t.pos).toBe('absolute');
+            // …tilted via a rotate on the inner svg (matrix, not 'none')…
+            expect(t.svgTransform).not.toBe('none');
+            // …and the pawn base must not fall below the cell floor.
             expect(t.svgBottom - t.cellBottom).toBeLessThanOrEqual(0.5);
-            // svg must not extend above the cell either
-            expect(t.cellTop - t.svgTop).toBeLessThanOrEqual(0.5);
         }
     });
+
+    test('yard pawn base disc clears the parking-ring bottom line (lifted, not sitting on it)', async ({ page }) => {
+        // The pawn svg is taller than the round home-slot-dot (PAWN_ASPECT 1.16),
+        // so a top-aligned yard pawn used to drop its base disc right onto the
+        // ring's bottom stroke. Fix: `.home-slot-dot wc-token { translateY(-15%) }`
+        // lifts the parked pawn so its base clears the ring with a margin.
+        await startGame(page);
+
+        const m = await page.evaluate(() => {
+            const dot = document.querySelector('#h-0-0');
+            const tok = dot.querySelector('wc-token');
+            const svg = tok.querySelector('svg');
+            const dr = dot.getBoundingClientRect();
+            const sr = svg.getBoundingClientRect();
+            // base disc bottom in the 0 0 100 116 viewBox: ellipse cy=101 ry=6.5
+            const baseDiscBottom = sr.top + (107.5 / 116) * sr.height;
+            return {
+                transform: getComputedStyle(tok).transform,
+                gap: dr.bottom - baseDiscBottom,
+            };
+        });
+
+        // a real upward shift is applied (not the identity matrix)…
+        expect(m.transform).not.toBe('none');
+        // …and the base disc sits clearly inside the ring, off the bottom line.
+        expect(m.gap).toBeGreaterThan(2);
+    });
+
+    test('a lone pawn on a track cell is floor-anchored, not cropped by the next cell', async ({ page }) => {
+        // The pawn svg is taller than its (square) cell (PAWN_ASPECT 1.16). A
+        // lone pawn left in normal flow top-aligned, so its base overflowed
+        // BELOW the cell and the next-row cell — painted later — cropped it.
+        // Fix: updateCellStacking floor-anchors a lone .path-cell pawn so the
+        // excess height overflows upward instead. Pawns sit on vertical-arm
+        // cells m11 & m12 here.
+        await bootGame(page, '?positions=11,12&player=0');
+        await page.locator('#m11 wc-token').waitFor();
+
+        const data = await page.evaluate(() => {
+            return ['m11', 'm12'].map((id) => {
+                const cell = document.getElementById(id);
+                const tok = cell.querySelector('wc-token');
+                const svg = tok.querySelector('svg');
+                const cr = cell.getBoundingClientRect();
+                const sr = svg.getBoundingClientRect();
+                return {
+                    pos: getComputedStyle(tok).position,
+                    belowFloor: sr.bottom - cr.bottom, // >0 means it spills below → croppable
+                };
+            });
+        });
+
+        for (const d of data) {
+            // pinned out of flow…
+            expect(d.pos).toBe('absolute');
+            // …with the body sitting on the cell floor, never spilling below it
+            // (the bottom spill is exactly what the neighbouring cell cropped).
+            expect(d.belowFloor).toBeLessThanOrEqual(0.5);
+        }
+    });
+
+    test('a gliding (moving) pawn keeps full size — same width as a settled pawn', async ({ page }) => {
+        // Regression: the move-glide pins the mover position:absolute. It used
+        // width:100%;height:100%, which squared the wrapper and letterboxed the
+        // taller (1.16) pawn down to ~0.86× cell — the pawn visibly SHRANK while
+        // hopping between cells. Fix: pin width:100%;height:auto so the height
+        // follows the aspect, exactly like a lone settled token.
+        await bootGame(page, '?positions=39,7&player=0');
+
+        const r = await page.evaluate(() => {
+            const cell = document.getElementById('m39');
+            const cellW = cell.getBoundingClientRect().width;
+            const settled = document.getElementById('p-0-0').firstElementChild.getBoundingClientRect();
+            // Apply the exact styles updateTokenContainer sets on a mover.
+            const mover = document.getElementById('p-0-1');
+            mover.style.position = 'absolute';
+            mover.style.left = '0';
+            mover.style.top = '0';
+            mover.style.width = '100%';
+            mover.style.height = 'auto';
+            const pinned = mover.firstElementChild.getBoundingClientRect();
+            return { cellW, settledW: settled.width, pinnedW: pinned.width };
+        });
+
+        // Mover renders at the same width as a settled lone pawn (== one cell).
+        expect(Math.abs(r.pinnedW - r.settledW)).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(r.pinnedW - r.cellW)).toBeLessThanOrEqual(0.5);
+    });
+
 });
 
 test.describe('Finish-cell token stacking', () => {
@@ -248,6 +343,38 @@ test.describe('Finish-cell token stacking', () => {
             expect(t.style).toContain('position: absolute');
             expect(t.style).toMatch(/top:\s*\d+(\.\d+)?%/);
             expect(t.style).toMatch(/left:\s*\d+(\.\d+)?%/);
+        }
+    });
+
+    test('finished pawns are a compact horizontal fan (width-driven, overlapping)', async ({ page }) => {
+        // Finish cells use a compact HORIZONTAL peek-fan. Guards: (1) width-driven
+        // (height ≈ width*1.16, NOT squared/letterboxed); (2) the 4 pawns fan
+        // horizontally — lefts strictly increase, tops equal; (3) tightly overlap
+        // (horizontal step well under one pawn width).
+        await bootGame(page, '?positions=56,56,56,56,7,,,,&player=0');
+
+        const r = await page.evaluate(() => {
+            const finish = Array.from(document.getElementById('p0s6').querySelectorAll(':scope > wc-token'));
+            const rect = finish[0].firstElementChild.getBoundingClientRect();
+            return {
+                count: finish.length,
+                finishW: rect.width,
+                finishH: rect.height,
+                lefts: finish.map(t => parseFloat(t.style.left)),
+                tops: finish.map(t => parseFloat(t.style.top)),
+            };
+        });
+
+        expect(r.count).toBe(4);
+        // width-driven, not letterboxed into a square
+        expect(r.finishH / r.finishW).toBeGreaterThan(1.1);
+        // horizontal fan: all on the same row, lefts increasing, tightly overlapped
+        const wPct = 22, step = wPct * 0.28;
+        for (let i = 1; i < r.count; i++) {
+            expect(r.tops[i]).toBeCloseTo(r.tops[0], 1);              // same row
+            expect(r.lefts[i]).toBeGreaterThan(r.lefts[i - 1]);      // fans rightward
+            expect(r.lefts[i] - r.lefts[i - 1]).toBeLessThan(wPct);  // overlapping
+            expect(r.lefts[i] - r.lefts[i - 1]).toBeCloseTo(step, 1);
         }
     });
 });
