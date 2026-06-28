@@ -40,13 +40,13 @@
 
 :root {
     /* Semantic colors */
-    --color-bg: hsl(37 22% 90%);
+    --color-bg: hsl(40 20% 91%);
     --color-fg: hsl(36 18% 10%);
-    --color-surface: hsl(39 36% 93%);
+    --color-surface: hsl(42 30% 95%);
     --color-surface-hover: hsl(39 28% 95%);
-    --color-border: hsl(37 15% 78%);
-    --color-board-cell: hsl(42 38% 95%);
-    --color-board-border: hsl(37 15% 78%);
+    --color-border: hsl(38 14% 80%);
+    --color-board-cell: hsl(44 26% 97%);
+    --color-board-border: hsl(38 14% 80%);
     --color-safe: hsl(40 28% 87%);
 
     /* CTA pair pulled from the mockup palette for higher contrast
@@ -56,14 +56,14 @@
 
     /* Player palettes — base swatches (kept as raw HSL triplets so they
        can be remapped at runtime via --player-N = var(--base-color-X)). */
-    --base-color-0: 12 88% 57%;
-    --base-color-1: 140 68% 45%;
-    --base-color-2: 45 98% 55%;
-    --base-color-3: 212 84% 56%;
-    --base-color-0-light: 12 76% 88%;
-    --base-color-1-light: 140 38% 85%;
-    --base-color-2-light: 45 72% 82%;
-    --base-color-3-light: 212 50% 88%;
+    --base-color-0: 10 84% 53%;
+    --base-color-1: 140 66% 44%;
+    --base-color-2: 43 90% 50%;
+    --base-color-3: 212 82% 53%;
+    --base-color-0-light: 10 74% 87%;
+    --base-color-1-light: 140 40% 85%;
+    --base-color-2-light: 43 72% 84%;
+    --base-color-3-light: 212 52% 87%;
 
     --player-0: var(--base-color-0);
     --player-1: var(--base-color-1);
@@ -73,10 +73,10 @@
     --player-1-light: var(--base-color-1-light);
     --player-2-light: var(--base-color-2-light);
     --player-3-light: var(--base-color-3-light);
-    --player-0-path: 12 56% 83%;
-    --player-1-path: 140 34% 83%;
-    --player-2-path: 45 68% 78%;
-    --player-3-path: 212 46% 85%;
+    --player-0-path: 10 56% 82%;
+    --player-1-path: 140 36% 82%;
+    --player-2-path: 43 64% 80%;
+    --player-3-path: 212 48% 84%;
 
     /* Spacing scale (4px base) */
     --space-1: 4px;
