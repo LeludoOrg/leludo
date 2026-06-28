@@ -337,22 +337,28 @@ async function netApplyMove({ playerIndex, tokenIndex, fromPosition, toPosition,
             const t = getTokenElement(c.playerIndex, c.tokenIndex);
             if (t) pinTokenForCapture(t);
         }
-        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition);
         const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
         const attack = {
             attackerPlayerIndex: playerIndex,
             attackerTokenIndex: tokenIndex,
             prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
         };
-        for (const c of captures) {
-            emit({
-                type: EVENTS.TOKEN_CAPTURED,
-                byPlayerIndex: playerIndex,
-                capturedPlayerIndex: c.playerIndex,
-                capturedTokenIndex: c.tokenIndex,
-            });
-            await animateCaptureToHome(c.playerIndex, c.tokenIndex, attack);
-        }
+        // Fire the captures on contact (onArrive) so the KO overlaps the
+        // attacker's settle bounce instead of waiting for it to finish.
+        const captureAnims = [];
+        const fireCaptures = () => {
+            for (const c of captures) {
+                emit({
+                    type: EVENTS.TOKEN_CAPTURED,
+                    byPlayerIndex: playerIndex,
+                    capturedPlayerIndex: c.playerIndex,
+                    capturedTokenIndex: c.tokenIndex,
+                });
+                captureAnims.push(animateCaptureToHome(c.playerIndex, c.tokenIndex, attack));
+            }
+        };
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: fireCaptures });
+        await Promise.all(captureAnims);
     } else {
         for (const c of captures) {
             emit({
@@ -603,8 +609,6 @@ async function selectToken(playerIndex, tokenIndex, emit) {
         }
     }
 
-    await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition);
-
     const prevPos = tokenNewPosition > 0 ? tokenNewPosition - 1 : tokenNewPosition;
     const attack = {
         attackerPlayerIndex: state.currentPlayerIndex,
@@ -612,19 +616,28 @@ async function selectToken(playerIndex, tokenIndex, emit) {
         prevCellId: getTokenContainerId(state.currentPlayerIndex, tokenIndex, prevPos),
     };
 
+    // Launch the captures the instant the attacker touches its destination cell
+    // (onArrive), so the KO animation overlaps the attacker's settle bounce
+    // instead of starting only after the whole landing has played out.
     let captureCount = 0;
-    for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
-        for (const ti of pt) {
-            emit({
-                type: EVENTS.TOKEN_CAPTURED,
-                byPlayerIndex: state.currentPlayerIndex,
-                capturedPlayerIndex: pi,
-                capturedTokenIndex: ti,
-            });
-            await animateCaptureToHome(pi, ti, attack);
-            captureCount++;
+    const captureAnims = [];
+    const fireCaptures = () => {
+        for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
+            for (const ti of pt) {
+                emit({
+                    type: EVENTS.TOKEN_CAPTURED,
+                    byPlayerIndex: state.currentPlayerIndex,
+                    capturedPlayerIndex: pi,
+                    capturedTokenIndex: ti,
+                });
+                captureAnims.push(animateCaptureToHome(pi, ti, attack));
+                captureCount++;
+            }
         }
-    }
+    };
+
+    await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition, { onArrive: fireCaptures });
+    await Promise.all(captureAnims);
 
     handleAfterTokenMove(tripComplete, captureCount, emit);
 }
@@ -763,25 +776,6 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
         }
     }
 
-    // Forward teleports walk the player's path cell-by-cell, identical to a
-    // normal turn: updateTokenContainer plays the yard launch, the per-step
-    // glide + step sound, and the finish-cell arrival overlay for us. Backward
-    // / same-cell teleports have no normal-game analog (getContainerPath builds
-    // no reverse path, so the glide would be a no-op), so they snap in place.
-    if (getContainerPath(playerIndex, tokenIndex, fromPosition, toPosition).length > 0) {
-        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition);
-        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
-    } else {
-        // Drop inline stacking styles so the moved token settles cleanly into
-        // its new cell's flow before updateCellStacking re-applies them.
-        token.style.cssText = '';
-        delete token.dataset.moving;
-        targetCell.appendChild(token);
-        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
-        if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
-        updateCellStacking(targetCell);
-    }
-
     // Mirror selectToken: drive the KO arc from the attacker's penultimate
     // cell so the punch comes from the direction it actually moved.
     const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
@@ -790,17 +784,43 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
         attackerTokenIndex: tokenIndex,
         prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
     };
-    for (const [pi, tis] of capturedByPlayer.entries()) {
-        for (const ti of tis) {
-            emit({
-                type: EVENTS.TOKEN_CAPTURED,
-                byPlayerIndex: playerIndex,
-                capturedPlayerIndex: pi,
-                capturedTokenIndex: ti,
-            });
-            await animateCaptureToHome(pi, ti, attack);
+    // Record the teleport, then launch its captures — on contact (onArrive) for
+    // a walked move so the KO overlaps the settle bounce, just like normal play.
+    const captureAnims = [];
+    const fireCaptures = () => {
+        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
+        for (const [pi, tis] of capturedByPlayer.entries()) {
+            for (const ti of tis) {
+                emit({
+                    type: EVENTS.TOKEN_CAPTURED,
+                    byPlayerIndex: playerIndex,
+                    capturedPlayerIndex: pi,
+                    capturedTokenIndex: ti,
+                });
+                captureAnims.push(animateCaptureToHome(pi, ti, attack));
+            }
         }
+    };
+
+    // Forward teleports walk the player's path cell-by-cell, identical to a
+    // normal turn: updateTokenContainer plays the yard launch, the per-step
+    // glide + step sound, and the finish-cell arrival overlay for us. Backward
+    // / same-cell teleports have no normal-game analog (getContainerPath builds
+    // no reverse path, so the glide would be a no-op), so they snap in place.
+    if (getContainerPath(playerIndex, tokenIndex, fromPosition, toPosition).length > 0) {
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: fireCaptures });
+    } else {
+        // Drop inline stacking styles so the moved token settles cleanly into
+        // its new cell's flow before updateCellStacking re-applies them.
+        token.style.cssText = '';
+        delete token.dataset.moving;
+        targetCell.appendChild(token);
+        if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
+        updateCellStacking(targetCell);
+        fireCaptures();
     }
+
+    await Promise.all(captureAnims);
 }
 
 let _pauseCloseHandler = null;

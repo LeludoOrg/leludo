@@ -33,6 +33,10 @@
 //   lean = 11,          max lean in degrees, into the travel direction.
 //   landBounce = true,  settle bounce on the final cell.
 //   onStep,             optional (index) => {} fired as each cell is reached.
+//   onArrive,           optional callback fired the instant the pawn touches its
+//                       final cell — BEFORE the settle bounce. Lets a caller kick
+//                       off a coincident effect (e.g. a capture) on contact
+//                       instead of after the bounce tail.
 //   onComplete,         optional callback after cleanup.
 // }) → Promise<void>
 
@@ -127,6 +131,7 @@ export function playPawnStep(opts) {
     const lean       = opts.lean != null ? opts.lean : 11;
     const landBounce = opts.landBounce !== false;
     const onStep     = opts.onStep || function () {};
+    const onArrive   = opts.onArrive || function () {};
     const onComplete = opts.onComplete || function () {};
 
     const steps    = path.length - 1;
@@ -170,6 +175,7 @@ export function playPawnStep(opts) {
             `translate(${(last.x - p0.x).toFixed(2)}px,${(last.y - p0.y).toFixed(2)}px)`;
         shadow.style.transform = pawn.style.transform;
         shadow.style.opacity = '0';
+        onArrive();
         setTimeout(done, 80);
         return promise;
     }
@@ -238,6 +244,10 @@ export function playPawnStep(opts) {
         shadow.style.transform = baseT + ' scale(1)';
         shadow.style.opacity = '0';
         pawn.style.transform = baseT;
+
+        // Touched down — fire the arrival hook before the (cosmetic) settle bounce
+        // so any coincident effect (capture KO) starts on contact, not after it.
+        onArrive();
 
         if (landBounce && typeof pawn.animate === 'function') {
             pawn.animate(
