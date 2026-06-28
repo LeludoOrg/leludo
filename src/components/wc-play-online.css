@@ -163,6 +163,12 @@ wc-play-online .online-create-chevron {
    columns: Join a friend's room on the LEFT, host-your-own on the RIGHT, both
    vertically centered. The max-height:520px ceiling excludes tablets/desktop. */
 @media (orientation: landscape) and (max-height: 520px) {
+    /* Lift the #game-container 384px width cap while the online setup is mounted
+       so the two-column frame can use the wider viewport. */
+    #game-container:has(wc-play-online) {
+        max-width: none;
+    }
+
     wc-play-online .frame {
         max-width: min(820px, 94vw);
         margin-inline: auto;

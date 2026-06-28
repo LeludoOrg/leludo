@@ -194,6 +194,12 @@ wc-game-room .online-start-btn {
    Start/Leave buttons on the LEFT, the live seat list on the RIGHT (scrolling
    internally if needed). The max-height:520px ceiling excludes tablets/desktop. */
 @media (orientation: landscape) and (max-height: 520px) {
+    /* Lift the #game-container 384px width cap while the lobby is mounted so the
+       two-column frame can use the wider viewport. */
+    #game-container:has(wc-game-room) {
+        max-width: none;
+    }
+
     wc-game-room .frame {
         max-width: min(960px, 94vw);
         margin-inline: auto;
