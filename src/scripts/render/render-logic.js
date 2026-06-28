@@ -9,6 +9,16 @@ import {playHomeArrival} from "./home-arrival.js";
 import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
+import {
+    setBoardQuarterTurns,
+    boardRotationDeg,
+    boardLocalPoint,
+    boardUnrotateVec,
+    quarterTurnsToFacePlayer,
+} from "./board-orientation.js";
+import {isOnlineActive} from "../net/online-state.js";
+import {readBool} from "../platform/storage-util.js";
+import {STORAGE_KEYS} from "../platform/storage-keys.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
 // even though the wake-lock implementation now lives in its own module.
@@ -184,8 +194,13 @@ export function pinTokenForCapture(element) {
     const rect = element.getBoundingClientRect();
     cell.style.position = 'relative';
     element.style.position = 'absolute';
-    element.style.top = `${rect.top - cellRect.top}px`;
-    element.style.left = `${rect.left - cellRect.left}px`;
+    // Freeze the token at its current visual spot in the cell's LOCAL frame.
+    // Map its viewport centre back through any board rotation, then offset by
+    // half its (rotation-invariant) size to get the local top-left. Identity at
+    // 0 turns → `rect.left/top - cellRect.left/top` as before.
+    const c = boardLocalPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, cellRect);
+    element.style.top = `${c.y - rect.height / 2}px`;
+    element.style.left = `${c.x - rect.width / 2}px`;
     element.style.width = `${rect.width}px`;
     element.style.height = `${rect.height}px`;
     element.dataset.moving = 'true';
@@ -339,9 +354,13 @@ function flipTokens(tokens, first) {
         const sx = f.width / last.width;
         const sy = f.height / last.height;
         if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
+        // The token lives inside the rotated .board-rotor, so the translate plays
+        // in board-local space — un-rotate the viewport delta or the rotor spins
+        // it a second time and the glide heads the wrong way. Identity at 0 turns.
+        const v = boardUnrotateVec(dx, dy);
         t.style.transformOrigin = 'top left';
         t.style.transition = 'none';
-        t.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+        t.style.transform = `translate(${v.x}px, ${v.y}px) scale(${sx}, ${sy})`;
         moved.push(t);
     }
     if (!moved.length) return;
@@ -428,11 +447,18 @@ function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
     const fallbackTimer = setTimeout(settle, fallbackMs);
 }
 
+// A cell/token's centre in board-LOCAL coordinates (origin = the .board-wrap
+// rect). boardLocalPoint maps the measured viewport point back through any
+// active board rotation so overlays land on the right cell when the board is
+// flipped to face the opposite player; at 0 quarter-turns it's a plain subtract.
 function rectCenter(rect, origin) {
-    return {
-        x: rect.left + rect.width / 2 - origin.left,
-        y: rect.top + rect.height / 2 - origin.top,
-    };
+    return boardLocalPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, origin);
+}
+
+// A cell/token's foot (bottom-centre) in board-local coordinates — where a
+// floor-anchored pawn's base sits. Same rotation-aware mapping as rectCenter.
+function rectFoot(rect, origin) {
+    return boardLocalPoint(rect.left + rect.width / 2, rect.bottom, origin);
 }
 
 function deriveAttackFrom(prevCell, capCell) {
@@ -544,14 +570,8 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
     const containerRect = boardWrap.getBoundingClientRect();
     const cellSize = containerRect.width / BOARD_CELLS;
     const src = sourceRect || finalRect;
-    const sourceCenter = {
-        x: src.left + src.width / 2 - containerRect.left,
-        y: src.top + src.height / 2 - containerRect.top,
-    };
-    const homeCenter = {
-        x: finalRect.left + finalRect.width / 2 - containerRect.left,
-        y: finalRect.top + finalRect.height / 2 - containerRect.top,
-    };
+    const sourceCenter = rectCenter(src, containerRect);
+    const homeCenter = rectCenter(finalRect, containerRect);
     const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
     const finishCell = element.parentElement;
     const settledCount = finishCell
@@ -613,20 +633,11 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     const entryRect = finalContainer.getBoundingClientRect();
     const cellSize = containerRect.width / BOARD_CELLS;
 
-    const yardCenter = {
-        x: yardRect.left + yardRect.width / 2 - containerRect.left,
-        y: yardRect.top + yardRect.height / 2 - containerRect.top,
-    };
+    const yardCenter = rectCenter(yardRect, containerRect);
     // Feet points (bottom-center) — what playPawnStep hops between, so the
     // pawn's base tracks the floor like the normal cell-to-cell mover.
-    const yardFeet = {
-        x: yardRect.left + yardRect.width / 2 - containerRect.left,
-        y: yardRect.bottom - containerRect.top,
-    };
-    const entryFeet = {
-        x: entryRect.left + entryRect.width / 2 - containerRect.left,
-        y: entryRect.bottom - containerRect.top,
-    };
+    const yardFeet = rectFoot(yardRect, containerRect);
+    const entryFeet = rectFoot(entryRect, containerRect);
     const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
 
     element.dataset.moving = 'true';
@@ -708,21 +719,12 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         // Feet point (container-relative bottom-center) of a cell id — where a
         // floor-anchored lone pawn's base sits. The hop pawn lands its feet here,
         // so its end box equals the settled token's box (no post-reveal pop).
-        const feetOf = (id) => {
-            const r = document.getElementById(id).getBoundingClientRect();
-            return {
-                x: r.left + r.width / 2 - containerRect.left,
-                y: r.bottom - containerRect.top,
-            };
-        };
+        const feetOf = (id) => rectFoot(document.getElementById(id).getBoundingClientRect(), containerRect);
 
         // Where the mover sits right now (its stacked slot, if any) — the hop's
         // first feet point, so the leap starts exactly where the live pawn was.
         const startRect = element.getBoundingClientRect();
-        const startCenter = {
-            x: startRect.left + startRect.width / 2 - containerRect.left,
-            y: startRect.bottom - containerRect.top,
-        };
+        const startCenter = rectFoot(startRect, containerRect);
 
         // Viewport box a floor-anchored lone pawn occupies in `cellRect`: full
         // cell width, taller body (PAWN_ASPECT) overflowing UPWARD with its base
@@ -1021,9 +1023,49 @@ function pillMarkup(idx, finished, active) {
         </div>`;
 }
 
+// Renderer player index === home corner offline (0 TL, 1 TR, 2 BR, 3 BL — see
+// the home-quad markup in wc-board.js). Online remaps seats itself, so this only
+// reasons about the local board.
+function humanCorners() {
+    const out = [];
+    if (!_playerTypes) return out;
+    for (let i = 0; i < 4; i++) if (_playerTypes[i] === 'PLAYER') out.push(i);
+    return out;
+}
+
+// Face-to-face rotation is for the pass-and-play case the player feedback asked
+// about: two people sharing one phone. It only engages offline, with the toggle
+// on, when EXACTLY two humans sit on OPPOSITE halves (one top, one bottom) — the
+// only seating a 180° flip genuinely faces each player in turn.
+function faceToFaceRotationActive() {
+    if (isOnlineActive()) return false;
+    if (!readBool(STORAGE_KEYS.ROTATE_TO_PLAYER, true)) return false;
+    const h = humanCorners();
+    if (h.length !== 2) return false;
+    const topHumans = h.filter((c) => c === 0 || c === 1).length;
+    return topHumans === 1; // one top + one bottom = opposite halves
+}
+
+// Spin the .board-rotor so `pi`'s home faces the near edge, then store the
+// matching quarter-turn so the overlay coordinate helpers stay in sync. A no-op
+// (0 turns) for every mode that isn't offline face-to-play.
+function updateBoardOrientation(pi) {
+    const q = faceToFaceRotationActive() ? quarterTurnsToFacePlayer(pi) : 0;
+    setBoardQuarterTurns(q);
+    const rotor = document.querySelector('.board-rotor');
+    if (rotor) rotor.style.setProperty('--board-rot', `${boardRotationDeg()}deg`);
+}
+
+// Re-apply orientation for the current player out of band — used when the
+// settings toggle flips mid-game so the board responds without waiting a turn.
+export function refreshBoardOrientation() {
+    if (_getCurrentPlayerIndex) updateBoardOrientation(_getCurrentPlayerIndex());
+}
+
 export function updateCornerWidgets() {
     if (!_playerTypes) return;
     const pi = _getCurrentPlayerIndex();
+    updateBoardOrientation(pi);
 
     // Detach wc-dice before wiping any corner contents so we can reparent it.
     const dice = document.getElementById('wc-dice');

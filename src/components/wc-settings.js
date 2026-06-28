@@ -8,6 +8,7 @@ import {
     isGodModeAvailable,
     isGodModeEnabled,
     setGodModeEnabled,
+    refreshBoardOrientation,
 } from "../scripts/index.js";
 import { goTo, back as navBack, registerScreenHandler } from "../scripts/platform/nav-history.js";
 
@@ -107,6 +108,11 @@ function buildSettingsOverlay() {
                 ${settingsGroup('Sound', toggleHtml('s-sound', 'Sound effects', !isSoundMuted(), false))}
 
                 ${settingsGroup('Assist', ASSIST_TOGGLES.map((t, idx, arr) => toggleHtml(t.id, t.label, readAssistPref(t), idx < arr.length - 1)).join(''))}
+
+                ${settingsGroup('Pass &amp; play', `
+                    ${toggleHtml('s-rotate-to-player', 'Rotate board to active player', readBool(STORAGE_KEYS.ROTATE_TO_PLAYER, true), false)}
+                    <div class="god-mode-hint">Two players on one phone: the board spins 180° each turn so it always faces whoever is rolling.</div>
+                `)}
 
                 ${settingsGroup('Bot vibe', `
                     <div class="bot-pool-list">
@@ -245,6 +251,17 @@ function ensureOverlay() {
             setAssistFlag(t.flag, next);
         });
     });
+
+    const rotateEl = overlay.querySelector('#s-rotate-to-player');
+    if (rotateEl) {
+        rotateEl.checked = readBool(STORAGE_KEYS.ROTATE_TO_PLAYER, true);
+        rotateEl.addEventListener('change', ($event) => {
+            writeBool(STORAGE_KEYS.ROTATE_TO_PLAYER, $event.target.checked);
+            // Apply at once so the board reacts under the settings overlay
+            // instead of waiting for the next turn handoff.
+            refreshBoardOrientation();
+        });
+    }
 
     if (isGodModeAvailable()) {
         const godEl = overlay.querySelector('#s-god-mode');

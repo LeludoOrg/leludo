@@ -18,6 +18,7 @@ export const STORAGE_KEYS = Object.freeze({
     THEME: 'theme',                    // 'system' | 'light' | 'dark'
     SOUND_MUTED: 'sound-muted',        // 'true' when muted
     GOD_MODE: 'debug-god-mode',        // localhost-only debug toggle
+    ROTATE_TO_PLAYER: 'rotate-to-player', // offline 2-human: spin the board to face the active player
     BOT_NAME_POOL: 'bot-name-pool',    // active bot-name pool key
     SEAT_NAMES: 'seat-names',          // per-seat remembered display names
     MP_SERVER: 'leludo-mp-server',     // operator override for the ws server URL

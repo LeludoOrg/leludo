@@ -52,6 +52,10 @@ const BOARD_HTML = /*html*/ `
         <!-- Hidden home for wc-dice when no active corner has it yet -->
         <div id="dice-home" class="hidden"><wc-dice id="wc-dice"></wc-dice></div>
 
+        <!-- Rotor: corner plates + board spin together so a local 2-player
+             pass-and-play game can flip 180° to face the active player. -->
+        <div class="board-rotor">
+
         <!-- Top corner row (seats 0/1) -->
         <div id="corner-row-top" class="board-corner-row">
             <div id="b0"></div>
@@ -199,6 +203,8 @@ const BOARD_HTML = /*html*/ `
             <div id="b3"></div>
             <div id="b2"></div>
         </div>
+
+        </div><!-- /.board-rotor -->
 
         <!-- Spacer balances the top one so the board sits vertically centered -->
         <div class="board-spacer"></div>

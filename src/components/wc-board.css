@@ -35,6 +35,26 @@ wc-board .board-spacer {
     flex: 1;
 }
 
+/* Pass-and-play rotor. Wraps the corner plates + board so they spin as one
+   unit, flipping 180° to face the active player in a local 2-human game (see
+   board-orientation.js). Default --board-rot is 0deg, so single-player / online
+   / 3-4-player boards are visually untouched. Stays a vertical flex column so
+   the rows stack exactly as before; a 180° turn keeps the (symmetric) rotor's
+   bounding box identical, so nothing overflows the phone frame. */
+wc-board .board-rotor {
+    display: flex;
+    flex-direction: column;
+    transform: rotate(var(--board-rot, 0deg));
+    transform-origin: center center;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    wc-board .board-rotor {
+        transition: none;
+    }
+}
+
 wc-board .board-corner-row {
     display: flex;
     align-items: flex-start;
