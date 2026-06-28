@@ -56,14 +56,14 @@
 
     /* Player palettes — base swatches (kept as raw HSL triplets so they
        can be remapped at runtime via --player-N = var(--base-color-X)). */
-    --base-color-0: 10 63% 48%;
-    --base-color-1: 152 38% 39%;
-    --base-color-2: 43 75% 48%;
-    --base-color-3: 223 54% 43%;
-    --base-color-0-light: 16 68% 88%;
-    --base-color-1-light: 148 30% 85%;
-    --base-color-2-light: 46 64% 82%;
-    --base-color-3-light: 220 42% 88%;
+    --base-color-0: 12 88% 57%;
+    --base-color-1: 140 68% 45%;
+    --base-color-2: 45 98% 55%;
+    --base-color-3: 212 84% 56%;
+    --base-color-0-light: 12 76% 88%;
+    --base-color-1-light: 140 38% 85%;
+    --base-color-2-light: 45 72% 82%;
+    --base-color-3-light: 212 50% 88%;
 
     --player-0: var(--base-color-0);
     --player-1: var(--base-color-1);
@@ -73,10 +73,10 @@
     --player-1-light: var(--base-color-1-light);
     --player-2-light: var(--base-color-2-light);
     --player-3-light: var(--base-color-3-light);
-    --player-0-path: 18 48% 83%;
-    --player-1-path: 148 26% 83%;
-    --player-2-path: 46 60% 78%;
-    --player-3-path: 215 38% 85%;
+    --player-0-path: 12 56% 83%;
+    --player-1-path: 140 34% 83%;
+    --player-2-path: 45 68% 78%;
+    --player-3-path: 212 46% 85%;
 
     /* Spacing scale (4px base) */
     --space-1: 4px;
@@ -135,19 +135,19 @@
     --cta-bg: #ecdfd0;
     --cta-fg: #1a1410;
 
-    --base-color-0: 10 63% 55%;
-    --base-color-1: 152 38% 45%;
-    --base-color-2: 43 75% 55%;
-    --base-color-3: 223 54% 55%;
-    --base-color-0-light: 10 40% 20%;
-    --base-color-1-light: 152 30% 18%;
-    --base-color-2-light: 43 40% 18%;
-    --base-color-3-light: 223 35% 20%;
+    --base-color-0: 12 88% 57%;
+    --base-color-1: 140 68% 45%;
+    --base-color-2: 45 98% 55%;
+    --base-color-3: 212 84% 56%;
+    --base-color-0-light: 12 48% 20%;
+    --base-color-1-light: 140 38% 18%;
+    --base-color-2-light: 45 48% 18%;
+    --base-color-3-light: 212 43% 20%;
 
-    --player-0-path: 10 30% 25%;
-    --player-1-path: 148 20% 22%;
-    --player-2-path: 43 30% 22%;
-    --player-3-path: 223 25% 25%;
+    --player-0-path: 12 38% 25%;
+    --player-1-path: 140 28% 22%;
+    --player-2-path: 45 38% 22%;
+    --player-3-path: 212 33% 25%;
 }
 
 /* ============================================================
