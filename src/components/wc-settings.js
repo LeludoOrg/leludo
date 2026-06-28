@@ -104,6 +104,10 @@ function buildSettingsOverlay() {
                     </div>
                 `)}
 
+                <!-- Everything past Theme. Wrapped so the landscape layout can
+                     make it the scrollable right column (Theme + the title stay
+                     fixed in the left column). Transparent in portrait. -->
+                <div class="settings-rest">
                 ${settingsGroup('Sound', toggleHtml('s-sound', 'Sound effects', !isSoundMuted(), false))}
 
                 ${settingsGroup('Assist', ASSIST_TOGGLES.map((t, idx, arr) => toggleHtml(t.id, t.label, readAssistPref(t), idx < arr.length - 1)).join(''))}
@@ -129,6 +133,18 @@ function buildSettingsOverlay() {
                     <div class="god-mode-hint">Click a pawn, then click any cell to teleport it. Bypasses dice and turn order.</div>
                 `) : ''}
 
+                <div id="dev-group" class="hidden">
+                ${settingsGroup('Developer', `
+                    ${toggleHtml('s-beta-server', 'Beta multiplayer server', getServerChannel() === 'beta', false)}
+                    <div class="god-mode-hint">Routes Online play to the isolated beta backend. Start a new online game to apply. Testers only.</div>
+                `)}
+                </div>
+                </div><!-- /.settings-rest -->
+
+                <!-- About lives in the left column in landscape (under Theme).
+                     Transparent wrapper so portrait order is unchanged: it sits
+                     last among the visible groups, exactly as before. -->
+                <div class="settings-secondary">
                 ${settingsGroup('About', `
                     <div class="about-list">
                         <div class="about-row">
@@ -144,12 +160,6 @@ function buildSettingsOverlay() {
                             <a href="privacy.html" class="about-link">Read policy</a>
                         </div>
                     </div>
-                `)}
-
-                <div id="dev-group" class="hidden">
-                ${settingsGroup('Developer', `
-                    ${toggleHtml('s-beta-server', 'Beta multiplayer server', getServerChannel() === 'beta', false)}
-                    <div class="god-mode-hint">Routes Online play to the isolated beta backend. Start a new online game to apply. Testers only.</div>
                 `)}
                 </div>
                 </div>

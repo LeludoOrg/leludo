@@ -302,3 +302,119 @@ wc-board #dice-home.hidden {
 /* >4 pawns on a cell no longer use a count badge — they collapse into
    per-color vertical totems that are fanned (see updateCellStacking /
    totemFan in scripts/render/render-logic.js), so every pawn stays visible. */
+
+/* ----- Landscape phone board layout -----
+   Same short-landscape problem the home/setup screens have (see the two
+   matching blocks in wc-quick-start.css): in portrait the board is a square
+   sized off WIDTH (.board-grid { width:100%; aspect-ratio:1/1 }), so in a
+   landscape phone (e.g. 812x375) it balloons to ~772px tall in a 375px
+   viewport — the page scrolls and only a sliver shows. In landscape height is
+   the constraining dimension, so size the board off HEIGHT and move the four
+   player corner-widgets into the left/right gutters flanking it. The
+   max-height:520px ceiling excludes tablets/desktop in landscape. */
+@media (orientation: landscape) and (max-height: 520px) {
+    /* Frame fills the viewport as a 3-col grid: the middle (auto) column
+       shrinks to the board's height-derived width, the 1fr side columns are
+       the gutters. Rows: top-bar (auto), then two equal content rows that
+       define the board's height (and host the top/bottom corner widgets). */
+    wc-board .board-frame {
+        /* Definite height (not min-height:auto) so the two 1fr content rows
+           resolve to a concrete pixel height — the board's height:100% +
+           aspect-ratio then derive a definite WIDTH off it. With an auto
+           frame height the rows would be indefinite and the board would fall
+           back to sizing off width (ballooning past the viewport). */
+        min-height: 0;
+        height: calc(100dvh - 16px);
+        max-height: calc(100dvh - 16px);
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-rows: auto 1fr 1fr;
+    }
+
+    /* Top bar pinned across the top; reduced bottom padding to give the board
+       more height. */
+    wc-board .board-topbar {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding-bottom: var(--space-2);
+    }
+
+    /* Flex spacers are portrait-only centering aids; the grid centers here. */
+    wc-board .board-spacer {
+        display: none;
+    }
+
+    /* Dissolve the corner-row wrappers so b0..b3 become direct grid items. */
+    wc-board #corner-row-top,
+    wc-board #corner-row-bottom {
+        display: contents;
+    }
+
+    /* Place each corner widget in its gutter, aligned to its quadrant corner.
+       display:contents above dropped the wrappers' flex context, so each #bN
+       needs its own display:flex for justify-content to take effect. The
+       widgets hug toward the board (b0/b3 flex-end, b1/b2 flex-start),
+       overriding the id-scoped portrait rules above. */
+    wc-board #b0,
+    wc-board #b1,
+    wc-board #b2,
+    wc-board #b3 {
+        display: flex;
+        align-items: center;
+        padding-inline: var(--space-3);
+        padding-block: var(--space-2);
+    }
+
+    wc-board #b0 {
+        grid-column: 1;
+        grid-row: 2;
+        align-self: start;
+        justify-content: flex-end;
+    }
+
+    wc-board #b3 {
+        grid-column: 1;
+        grid-row: 3;
+        align-self: end;
+        justify-content: flex-end;
+    }
+
+    wc-board #b1 {
+        grid-column: 3;
+        grid-row: 2;
+        align-self: start;
+        justify-content: flex-start;
+    }
+
+    wc-board #b2 {
+        grid-column: 3;
+        grid-row: 3;
+        align-self: end;
+        justify-content: flex-start;
+    }
+
+    /* Board occupies the middle column across both content rows, sized off
+       HEIGHT: it fills the two 1fr tracks vertically and derives its width
+       from the 1/1 aspect ratio. The auto middle column then shrinks to that
+       width, centering the board with gutters either side. */
+    wc-board .board-area {
+        grid-column: 2;
+        grid-row: 2 / 4;
+        height: 100%;
+        min-height: 0;
+        padding: 0;
+    }
+
+    wc-board .board-wrap {
+        width: auto;
+        height: 100%;
+        max-width: 100%;
+        aspect-ratio: 1 / 1;
+    }
+
+    wc-board .board-grid {
+        width: auto;
+        height: 100%;
+        aspect-ratio: 1 / 1;
+    }
+}
