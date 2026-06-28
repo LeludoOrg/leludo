@@ -208,11 +208,10 @@ wc-game-room .online-start-btn {
         max-height: none;
         display: grid;
         grid-template-columns: 1fr 1.1fr;
-        /* topbar / banner (top) / flexible spacer / status / footer (bottom).
-           The banner pins to the top and the footer to the bottom of the content
-           band, so the left column's top + bottom line up with the seat list's
-           first + last rows on the right. */
-        grid-template-rows: auto auto 1fr auto auto;
+        /* topbar / spacer / banner / status / footer / spacer. The flexible
+           spacer rows center the banner+status+footer group as one compact
+           block, matching the centered seat list on the right. */
+        grid-template-rows: auto 1fr auto auto auto 1fr;
         column-gap: var(--space-12);
     }
 
@@ -227,12 +226,12 @@ wc-game-room .online-start-btn {
         display: contents;
     }
 
-    /* Left column, top: room code + share, level with the first seat. */
+    /* Left column: room code + share. */
     wc-game-room .online-room-banner {
         grid-column: 1;
-        grid-row: 2;
-        align-self: start;
-        margin-bottom: 0;
+        grid-row: 3;
+        align-self: end;
+        margin-bottom: var(--space-3);
     }
 
     /* Trim the banner's vertical footprint so the left column (banner + status +
@@ -246,31 +245,29 @@ wc-game-room .online-start-btn {
         margin-top: var(--space-2);
     }
 
-    /* Right column: the live seat list fills the content band (so its first/last
-       rows line up with the left column's top/bottom); scrolls if it overflows. */
+    /* Right column: the live seat list, kept tight and vertically centered to
+       match the left group; scrolls internally if the rows can't fit. */
     wc-game-room .seat-list {
         grid-column: 2;
-        grid-row: 2 / 6;
-        align-self: stretch;
-        justify-content: space-between;
-        gap: var(--space-1);
+        grid-row: 2 / 7;
+        align-self: center;
+        gap: var(--space-2);
         max-height: calc(100dvh - 70px);
         overflow-y: auto;
         padding-right: var(--space-1);
     }
 
-    /* Status sits just above the footer in the left column. */
+    /* Status + footer stack under the banner. */
     wc-game-room .online-status {
         grid-column: 1;
         grid-row: 4;
-        align-self: end;
+        align-self: center;
         margin: 0;
     }
 
-    /* Left column, bottom: the Start / Leave buttons, level with the last seat. */
     wc-game-room .frame-footer {
         grid-column: 1;
         grid-row: 5;
-        align-self: end;
+        align-self: start;
     }
 }
