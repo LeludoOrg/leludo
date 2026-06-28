@@ -49,6 +49,35 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* ----- Landscape phone online-exit layout -----
+   The leave-confirmation (title + helper + countdown + Stay/Leave) overflows a
+   short landscape phone. It's a small dialog, so just compact it vertically so
+   it fits without scrolling. The max-height:520px ceiling excludes desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    #online-exit-menu .frame {
+        min-height: 0;
+        height: calc(100dvh - 16px);
+        max-height: calc(100dvh - 16px);
+    }
+
+    #online-exit-menu .top-bar {
+        padding-bottom: var(--space-1);
+    }
+
+    #online-exit-menu .pause-body .display-title {
+        font-size: 30px;
+    }
+
+    #online-exit-menu .pause-body .body-helper {
+        padding-bottom: var(--space-2);
+    }
+
+    #online-exit-menu .online-exit-countdown {
+        margin-top: var(--space-1);
+        font-size: 2.5rem;
+    }
+}
+
 #pause-menu .pause-body .pause-scoreboard,
 #pause-menu .pause-body .section-label,
 #pause-menu .pause-body #pm-turn-count {
@@ -142,6 +171,77 @@
 
 #pause-menu .pm-finish-dot--idle {
     background: color-mix(in srgb, var(--color-fg) 15%, transparent);
+}
+
+/* Wrapper around the title + helper. Transparent in portrait (they flow in
+   pause-body as before); the landscape grid below makes it the left column. */
+#pause-menu .pause-heading {
+    display: contents;
+}
+
+/* ----- Landscape phone pause layout -----
+   In portrait the pause menu is one column (title + helper + the 4 standings
+   cards + the Resume/Exit buttons) ~634px tall, which overflows a landscape
+   phone (e.g. 812x375). Lay it out as TWO columns like the other screens: the
+   LEFT column holds the heading + the buttons (vertically centered), the RIGHT
+   column holds the standings (the 4 player cards), scrolling internally only if
+   needed. The max-height:520px ceiling excludes tablets/desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    #pause-menu .frame {
+        max-width: min(820px, 94vw);
+        margin-inline: auto;
+        min-height: 0;
+        height: calc(100dvh - 16px);
+        max-height: calc(100dvh - 16px);
+        display: grid;
+        grid-template-columns: 1fr 1.1fr;
+        /* topbar, then a [1fr · heading · footer · 1fr] band: the two flexible
+           spacer rows above and below center the heading+footer pair as one
+           group, matching the standings which centers in the same band. */
+        grid-template-rows: auto 1fr auto auto 1fr;
+        column-gap: var(--space-10);
+    }
+
+    #pause-menu .top-bar {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding-bottom: var(--space-2);
+    }
+
+    /* pause-body is transparent so the heading + standings become grid items. */
+    #pause-menu .pause-body {
+        display: contents;
+    }
+
+    /* Left column: heading + buttons stacked as one vertically-centered group. */
+    #pause-menu .pause-heading {
+        display: block;
+        grid-column: 1;
+        grid-row: 3;
+        text-align: center;
+    }
+
+    #pause-menu .pause-heading .body-helper {
+        padding-bottom: 0;
+    }
+
+    #pause-menu .frame-footer {
+        grid-column: 1;
+        grid-row: 4;
+        margin-top: var(--space-6);
+    }
+
+    /* Right column: the 4 standings cards, centered in the same band, scrolling
+       internally only if they can't fit (the page itself never scrolls). */
+    #pause-menu .pause-standings {
+        grid-column: 2;
+        grid-row: 2 / 6;
+        align-self: center;
+        padding: 0;
+        min-height: 0;
+        max-height: 100%;
+        overflow-y: auto;
+    }
 }
 
 /* ============================================================

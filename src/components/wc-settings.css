@@ -211,3 +211,91 @@
 #settings-overlay .about-link:hover {
     opacity: 1;
 }
+
+/* Wrapper around every setting group past Theme. Transparent in portrait
+   (display:contents) so the groups flow in the single column exactly as before;
+   the landscape grid below promotes it to the scrollable right column. */
+#settings-overlay .settings-rest,
+#settings-overlay .settings-secondary {
+    display: contents;
+}
+
+/* ----- Landscape phone settings layout -----
+   Same short-landscape problem the home/setup/board screens have: in portrait
+   the settings overlay is one ~384px column of stacked group cards ~634px tall,
+   so a landscape phone (e.g. 812x375) scrolls. In landscape, lay it out as TWO
+   columns: the LEFT column keeps the full-size "Preferences" title with the
+   Theme picker under it (fixed), and the RIGHT column holds everything else
+   (Sound, Assist, Bot vibe, Debug, About, Developer) and scrolls on its own —
+   so the page/overlay never scrolls. The max-height:520px ceiling excludes
+   tablets/desktop in landscape. */
+@media (orientation: landscape) and (max-height: 520px) {
+    /* Widen + center the frame and cap it to the viewport height. */
+    #settings-overlay .frame {
+        max-width: min(860px, 94vw);
+        margin-inline: auto;
+        min-height: 0;
+        height: calc(100dvh - 16px);
+        max-height: calc(100dvh - 16px);
+    }
+
+    #settings-overlay .top-bar {
+        padding-bottom: var(--space-2);
+    }
+
+    /* settings-body becomes the two-column grid. Row 1 (auto) holds the title;
+       row 2 (1fr) takes the rest of the height. Left column = title + Theme;
+       the right column spans both rows and scrolls. */
+    #settings-overlay .settings-body {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(260px, 320px) 1fr;
+        grid-template-rows: auto auto 1fr;
+        column-gap: var(--space-8);
+        padding: 0 var(--space-3) var(--space-2);
+        align-items: start;
+    }
+
+    /* Keep the title at its normal large display size, left-aligned over Theme. */
+    #settings-overlay .settings-title-wrap {
+        grid-column: 1;
+        grid-row: 1;
+        text-align: left;
+        padding: 0 0 var(--space-3);
+    }
+
+    /* settings-groups is transparent so the Theme group + .settings-rest become
+       direct grid items of settings-body. */
+    #settings-overlay .settings-groups {
+        display: contents;
+    }
+
+    /* Theme = left column, under the title. */
+    #settings-overlay .settings-groups > div:first-child {
+        grid-column: 1;
+        grid-row: 2;
+        align-self: start;
+    }
+
+    /* About = left column, under Theme. */
+    #settings-overlay .settings-secondary {
+        display: block;
+        grid-column: 1;
+        grid-row: 3;
+        align-self: start;
+    }
+
+    /* The rest = right column, full height, scrollable. */
+    #settings-overlay .settings-rest {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+        grid-column: 2;
+        grid-row: 1 / 4;
+        min-height: 0;
+        height: 100%;
+        overflow-y: auto;
+        padding-right: var(--space-2);
+    }
+}

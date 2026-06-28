@@ -140,16 +140,18 @@ class QuickStart extends HTMLElement {
                     <p class="home-tagline">A quiet, faithful take on the classic four-player race.</p>
                 </div>
 
-                ${saved ? this._resumeCardHtml(saved) : ''}
+                <div class="home-actions-col">
+                    ${saved ? this._resumeCardHtml(saved) : ''}
 
-                <div class="frame-footer home-cta-stack">
-                    <div class="home-mode-toggle" role="tablist" aria-label="Game mode" data-mode="${mode}">
-                        <div class="home-mode-thumb" aria-hidden="true"></div>
-                        <button class="home-mode-seg" role="tab" data-mode="device" data-testid="home-mode-device" aria-selected="${mode === 'device'}">${ICON_DEVICE}<span>On this device</span></button>
-                        <button class="home-mode-seg" role="tab" data-mode="online" data-testid="home-mode-online" aria-selected="${mode === 'online'}">${ICON_GLOBE}<span>Online</span><span class="home-mode-beta">Beta</span></button>
+                    <div class="frame-footer home-cta-stack">
+                        <div class="home-mode-toggle" role="tablist" aria-label="Game mode" data-mode="${mode}">
+                            <div class="home-mode-thumb" aria-hidden="true"></div>
+                            <button class="home-mode-seg" role="tab" data-mode="device" data-testid="home-mode-device" aria-selected="${mode === 'device'}">${ICON_DEVICE}<span>On this device</span></button>
+                            <button class="home-mode-seg" role="tab" data-mode="online" data-testid="home-mode-online" aria-selected="${mode === 'online'}">${ICON_GLOBE}<span>Online</span><span class="home-mode-beta">Beta</span></button>
+                        </div>
+                        <button class="new-game-btn cta-primary" data-testid="home-new-game"><span>New game</span></button>
+                        <p class="home-cta-sub" data-testid="home-cta-sub">${this._modeSubtext(mode)}</p>
                     </div>
-                    <button class="new-game-btn cta-primary" data-testid="home-new-game"><span>New game</span></button>
-                    <p class="home-cta-sub" data-testid="home-cta-sub">${this._modeSubtext(mode)}</p>
                 </div>
             </div>
         `
@@ -310,7 +312,7 @@ class QuickStart extends HTMLElement {
         this.innerHTML = ""
 
         const html = /*html*/ `
-            <div class="frame">
+            <div class="frame setup-frame">
                 <div class="top-bar">
                     <button class="back-btn icon-btn">${ICON_BACK}</button>
                     <div class="top-bar-title"></div>
@@ -318,8 +320,10 @@ class QuickStart extends HTMLElement {
                 </div>
 
                 <div class="frame-body setup-body">
-                    <h2 class="display-title">Who&rsquo;s playing?</h2>
-                    <p id="setup-helper" class="setup-helper" data-default="Each seat is either a person on this phone or a bot.<br>Tap the pill to switch." data-edit="Rename your seat. Tap return when you&rsquo;re done.">Each seat is either a person on this phone or a bot.<br>Tap the pill to switch.</p>
+                    <div class="setup-heading">
+                        <h2 class="display-title">Who&rsquo;s playing?</h2>
+                        <p id="setup-helper" class="setup-helper" data-default="Each seat is either a person on this phone or a bot.<br>Tap the pill to switch." data-edit="Rename your seat. Tap return when you&rsquo;re done.">Each seat is either a person on this phone or a bot.<br>Tap the pill to switch.</p>
+                    </div>
 
                     <div id="seat-list" class="seat-list"></div>
                 </div>

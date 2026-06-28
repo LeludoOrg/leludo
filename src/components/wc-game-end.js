@@ -322,9 +322,9 @@ class GameEnd extends HTMLElement {
                         <h2 class="ge-headline">Game over</h2>
                     </div>
 
-                    <div class="ge-scroll">
-                        <div class="ge-podium">${standingsHTML}</div>
+                    <div class="ge-podium">${standingsHTML}</div>
 
+                    <div class="ge-scroll">
                         ${highlightsBlock}
 
                         ${storeNudgeHtml()}

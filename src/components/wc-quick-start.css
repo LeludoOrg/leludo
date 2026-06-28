@@ -17,6 +17,13 @@ wc-quick-start .home-frame {
     position: relative;
 }
 
+/* Wrapper around the resume card + actions footer. In portrait it's transparent
+   (display:contents) so the children flow in the frame's flex column exactly as
+   before; the landscape grid below promotes it to the right-hand column. */
+wc-quick-start .home-actions-col {
+    display: contents;
+}
+
 wc-quick-start .home-brand-chip {
     line-height: 0;
     padding: 0;
@@ -295,4 +302,170 @@ wc-quick-start .online-search-status {
     font-size: 14px;
     opacity: 0.6;
     max-width: 260px;
+}
+
+/* ----- Landscape phone home layout -----
+   Short-landscape phones (812x375 etc.) can't fit the tall single column
+   (top-bar → hero → footer ~474px) inside ~375px of height — the "New game"
+   CTA + subtext got pushed below the fold and the page scrolled. In landscape
+   under 520px tall, lay the home screen out as a two-column grid that FILLS the
+   viewport: the top-bar pins to the top, and the content band (hero on the
+   left, resume card + actions on the right) centers in the space below. The
+   max-height:520px ceiling excludes tablets/desktop in landscape. */
+@media (orientation: landscape) and (max-height: 520px) {
+    /* The shared #game-container shell caps width at --frame-max-w (384px);
+       lift that cap only while the home screen is mounted so the two-column
+       grid can use the wider frame. (The board, when shown, isn't a home-frame
+       so this :has() doesn't widen it.) */
+    #game-container:has(wc-quick-start .home-frame) {
+        max-width: none;
+    }
+
+    /* Frame fills the viewport height: row 1 is the top-bar (pinned to the top),
+       row 2 (1fr) is the content band. Wide + auto-centered so it uses the
+       available width without slamming the icons into the screen corners. */
+    wc-quick-start .home-frame {
+        max-width: min(960px, 94vw);
+        margin-inline: auto;
+        min-height: calc(100dvh - 16px);
+        height: auto;
+        max-height: none;
+        display: grid;
+        grid-template-columns: 1fr 1.05fr;
+        grid-template-rows: auto 1fr;
+        column-gap: var(--space-12);
+        align-items: center;
+    }
+
+    /* Keep the icons near the top instead of floating with the centered band. */
+    wc-quick-start .home-frame .top-bar {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding-bottom: var(--space-2);
+    }
+
+    /* Left column: hero, vertically centered in the content band. */
+    wc-quick-start .home-frame .home-hero {
+        grid-column: 1;
+        grid-row: 2;
+        padding: 0 var(--space-4);
+    }
+
+    wc-quick-start .home-frame--in-progress .home-hero {
+        padding-bottom: 0;
+    }
+
+    /* Right column: resume card (when present) stacked above the actions, the
+       whole group centered against the hero. */
+    wc-quick-start .home-frame .home-actions-col {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: var(--space-3);
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    wc-quick-start .home-frame .home-resume-row {
+        padding: 0;
+    }
+
+    wc-quick-start .home-frame .home-cta-stack {
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+
+    /* Hero scales up to use the extra room. */
+    wc-quick-start .home-die {
+        margin-bottom: var(--space-4);
+    }
+
+    wc-quick-start .home-title {
+        font-size: clamp(56px, 12vh, 80px);
+    }
+
+    wc-quick-start .home-tagline {
+        margin-top: var(--space-3);
+    }
+}
+
+/* ----- Landscape phone setup layout -----
+   Same short-landscape problem the home screen has: the single 384px column
+   (title "Who's playing?" + helper + 4 seat rows + the Start footer ~641px of
+   content) overflows ~375px of height, pushing "Start game" below the fold and
+   scrolling the page. Mirror the home fix: a two-column grid that FILLS the
+   viewport — top-bar pinned across the top, the heading + Start button stacked
+   in the LEFT column, and the seat list in the RIGHT column (scrolling
+   INTERNALLY if it can't fit, so the page itself never scrolls). The
+   max-height:520px ceiling excludes tablets/desktop in landscape. */
+@media (orientation: landscape) and (max-height: 520px) {
+    /* Lift the #game-container 384px width cap while the setup screen is
+       mounted so the two-column grid can use the wider frame. */
+    #game-container:has(wc-quick-start .setup-frame) {
+        max-width: none;
+    }
+
+    /* Frame fills the viewport: row 1 is the top-bar (pinned), row 2 (1fr) is
+       the main band (heading left / seats right), row 3 holds the Start footer
+       in the left column. */
+    wc-quick-start .setup-frame {
+        max-width: min(960px, 94vw);
+        margin-inline: auto;
+        min-height: calc(100dvh - 16px);
+        height: auto;
+        max-height: none;
+        display: grid;
+        grid-template-columns: 1fr 1.1fr;
+        grid-template-rows: auto 1fr auto;
+        column-gap: var(--space-12);
+        align-items: center;
+    }
+
+    /* Keep the icons near the top instead of floating with the centered band. */
+    wc-quick-start .setup-frame .top-bar {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding-bottom: var(--space-2);
+    }
+
+    /* The body wrapper is transparent so its children (.setup-heading and
+       #seat-list) participate directly in the frame grid. */
+    wc-quick-start .setup-frame .setup-body {
+        display: contents;
+    }
+
+    /* Left column, upper: title + helper, centered against the seat list. */
+    wc-quick-start .setup-frame .setup-heading {
+        grid-column: 1;
+        grid-row: 2;
+        align-self: center;
+        margin: 0;
+    }
+
+    wc-quick-start .setup-frame .setup-heading .display-title {
+        margin: 0;
+    }
+
+    /* Right column: the seat list, vertically centered, spanning the main +
+       footer rows. Tighter row gap so all 4 seats fit the short band without
+       scrolling; the max-height + overflow stays as a safety net (the page
+       itself never scrolls). The right padding keeps the scrollbar off the
+       rows. */
+    wc-quick-start .setup-frame #seat-list {
+        grid-column: 2;
+        grid-row: 2 / 4;
+        align-self: center;
+        gap: var(--space-1);
+        max-height: calc(100dvh - 70px);
+        overflow-y: auto;
+        padding-right: var(--space-1);
+    }
+
+    /* Left column, lower: the Start button + subtext, under the heading. */
+    wc-quick-start .setup-frame .frame-footer {
+        grid-column: 1;
+        grid-row: 3;
+        align-self: center;
+        padding-bottom: var(--space-2);
+    }
 }

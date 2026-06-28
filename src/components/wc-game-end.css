@@ -579,3 +579,81 @@ wc-game-end .ge-cta:active {
         animation: none !important;
     }
 }
+
+/* ----- Landscape phone game-end layout -----
+   In portrait the recap is one column (Game over → podium → highlight cards →
+   Play again) that scrolls. On a landscape phone (e.g. 812x375) the scrollable
+   middle is too short and the podium clips. Lay it out using the width: the
+   "Game over" headline spans the top, the podium sits on the LEFT, the highlight
+   cards scroll on the RIGHT, and Play again spans the bottom — so nothing clips
+   and the page never scrolls. The max-height:520px ceiling excludes
+   tablets/desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    wc-game-end .ge-inner {
+        max-width: min(900px, 94vw);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        /* header, headline, body (podium | highlights), footer */
+        grid-template-rows: auto auto 1fr auto;
+        column-gap: var(--space-8);
+        align-items: start;
+    }
+
+    wc-game-end .ge-header {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+
+    /* Compact headline so the body band gets the height. */
+    wc-game-end .ge-hero {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        padding-top: 4px;
+        padding-bottom: 6px;
+    }
+
+    wc-game-end .ge-headline {
+        font-size: 30px;
+    }
+
+    /* Left column: the podium, vertically centered in the body band. */
+    wc-game-end .ge-podium {
+        grid-column: 1;
+        grid-row: 3;
+        align-self: center;
+        padding-top: 0;
+    }
+
+    /* Right column: the highlight cards (+ store nudge), scrolling internally.
+       Spans down past the footer row so the cards use the full height and the
+       (left-only) Play again button doesn't overlap them. */
+    wc-game-end .ge-scroll {
+        grid-column: 2;
+        grid-row: 3 / 5;
+        align-self: stretch;
+        min-height: 0;
+        height: 100%;
+    }
+
+    /* The "Highlights" label has top padding for the portrait stack; trim it so
+       the cards start at the top of the right column. */
+    wc-game-end .ge-scroll .ge-section-label:first-child {
+        padding-top: 0;
+    }
+
+    wc-game-end .ge-footer {
+        grid-column: 1;
+        grid-row: 4;
+        padding-top: 8px;
+    }
+
+    /* Shrink the podium steps so the whole podium (steps + 4th-place row) fits
+       the shorter body band without clipping. */
+    wc-game-end .ge-pod-1 .ge-pod-step { min-height: 64px; }
+    wc-game-end .ge-pod-2 .ge-pod-step { min-height: 50px; }
+    wc-game-end .ge-pod-3 .ge-pod-step { min-height: 40px; }
+
+    wc-game-end .ge-loser {
+        margin-top: 10px;
+    }
+}
