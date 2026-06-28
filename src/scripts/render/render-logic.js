@@ -229,6 +229,10 @@ function clearStackStyles(t) {
 // the pawns sit just above the cell's bottom edge. Expressed in % of the
 // (square) cell so the layout is resize-safe with no pixel recompute.
 const STACK_ANCHOR_BOTTOM = 16;
+// Bloom: when a pawn lands on a cell that becomes a 2+ stack, the group spreads
+// from its just-landed overlap into the fan with this springy, deliberate
+// transition (slight overshoot) instead of wc-token's quick 150ms snap.
+const STACK_BLOOM_TRANSITION = 'transform 320ms cubic-bezier(.34,1.28,.5,1)';
 const PAWN_H = 1.16; // pawn height / width (see pawn-shape.js)
 // Cap a vertical totem's body (bottom pawn base → top pawn head) to 1.25 cells,
 // in % of cell — a 4-tall stack stays readable without eating extra rows.
@@ -338,11 +342,13 @@ function applyFinishStacking(cell, tokens) {
 }
 
 // Play a FLIP transition (First-Last-Invert-Play) on each token from its
-// snapshot box (`first`) to the slot it now occupies. It rides wc-token's own
-// 150ms transform transition and only ever sets transform/transform-origin, so
-// it animates position AND size (translate + scale) without touching layout —
-// that's how stackmates smoothly resize+reposition when one of them leaves.
-function flipTokens(tokens, first) {
+// snapshot box (`first`) to the slot it now occupies. By default it rides
+// wc-token's own 150ms transform transition; pass `transition` to override with
+// a custom CSS transition (e.g. a longer, springier "bloom" when a pawn joins a
+// stack). It only ever sets transform/transform-origin, so it animates position
+// AND size (translate + scale) without touching layout — that's how stackmates
+// smoothly resize+reposition when one of them arrives or leaves.
+function flipTokens(tokens, first, transition = '') {
     const moved = [];
     for (const t of tokens) {
         const f = first.get(t);
@@ -366,19 +372,19 @@ function flipTokens(tokens, first) {
     if (!moved.length) return;
     void moved[0].offsetWidth; // commit the inverted (old-slot) state in one reflow
     for (const t of moved) {
-        t.style.transition = '';  // restore the CSS transform transition
-        t.style.transform = '';   // play back to the real slot
+        t.style.transition = transition;  // '' restores wc-token's own transition
+        t.style.transform = '';           // play back to the real slot
         waitForTransitionEnd(t, () => {
             t.style.removeProperty('transition');
             t.style.removeProperty('transform');
             t.style.removeProperty('transform-origin');
-        }, 250);
+        }, transition ? 600 : 250);
     }
 }
 
 export function updateCellStacking(cell, opts = {}) {
     if (!cell) return;
-    const { animate = false, firstRects = null } = opts;
+    const { animate = false, firstRects = null, flipTransition = '' } = opts;
     const allTokens = Array.from(cell.querySelectorAll(':scope > wc-token'));
     // Only relayout settled tokens. A token mid-animation (moving='true') is
     // pinned position:absolute and out of flow — clearing its styles here would
@@ -424,7 +430,7 @@ export function updateCellStacking(cell, opts = {}) {
 
     // FLIP steps 2-4 (Last/Invert/Play): animate every token from its snapshot
     // box into the slot it now holds.
-    if (animate) flipTokens(tokens, first);
+    if (animate) flipTokens(tokens, first, flipTransition);
 }
 
 /**
@@ -605,13 +611,14 @@ export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
 // Yard-launch overlay: live token hidden, parabolic-leap copy plays from yard
 // parking slot to entry cell, then real token is parented into the entry cell
 // and revealed. Source rect = token's current yard-slot rect.
-export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
+export function playYardLaunch(playerIndex, tokenIndex, entryCellId, opts = {}) {
+    const onArrive = opts.onArrive || function () {};
     const element = getTokenElement(playerIndex, tokenIndex);
-    if (!element) return Promise.resolve();
+    if (!element) { onArrive(); return Promise.resolve(); }
     const finalContainer = document.getElementById(entryCellId);
-    if (!finalContainer) return Promise.resolve();
+    if (!finalContainer) { onArrive(); return Promise.resolve(); }
     const boardWrap = element.closest('.board-wrap');
-    if (!boardWrap) return Promise.resolve();
+    if (!boardWrap) { onArrive(); return Promise.resolve(); }
 
     const sourceCell = element.parentElement;
 
@@ -625,6 +632,7 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         if (sourceCell && sourceCell !== finalContainer) updateCellStacking(sourceCell);
         updateCellStacking(finalContainer);
         element.style.visibility = '';
+        onArrive();
         return Promise.resolve();
     }
 
@@ -670,6 +678,9 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         pawnSize: cellSize,
         stepDur: HOP_DUR,
         hopBig,
+        // Fire any coincident capture the instant the pawn lands on the entry
+        // square, overlapping the settle bounce instead of waiting it out.
+        onArrive,
     }).then(() => {
         clearStackStyles(element);
         delete element.dataset.moving;
@@ -682,17 +693,21 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     });
 }
 
-export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition) {
+export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition, opts = {}) {
+    // onArrive fires the instant the mover touches its destination cell — before
+    // the settle bounce — so a caller (command-handler) can launch a coincident
+    // capture on contact rather than after the bounce tail. Defaults to a no-op.
+    const onArrive = opts.onArrive || function () {};
 
     const path = getContainerPath(playerIndex, tokenIndex, currentTokenPosition, newTokenPosition);
     const element = getTokenElement(playerIndex, tokenIndex);
 
     if (currentTokenPosition === YARD && newTokenPosition === ENTRY_SQUARE) {
-        return playYardLaunch(playerIndex, tokenIndex, path[path.length - 1]);
+        return playYardLaunch(playerIndex, tokenIndex, path[path.length - 1], { onArrive });
     }
 
     return new Promise((resolve) => {
-        if (path.length === 0) { resolve(); return; }
+        if (path.length === 0) { onArrive(); resolve(); return; }
 
         const finalContainer = document.getElementById(path[path.length - 1]);
         const sourceCell = element.parentElement;
@@ -708,6 +723,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             finalContainer.appendChild(element);
             if (sourceCell && sourceCell !== finalContainer) updateCellStacking(sourceCell);
             updateCellStacking(finalContainer);
+            onArrive();
             resolve();
             return;
         }
@@ -771,10 +787,39 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
         };
 
-        // Reparent the live token into its destination cell and FLIP it — along
-        // with any tokens already there — from the last hopped cell into the
-        // final stacked layout, so joining a stack eases in instead of snapping.
-        const landTrack = (firstRect) => {
+        // A bare hop into the finish cell (no track cells between): skip straight
+        // to the arrival flourish, sourced from the mover's current box.
+        if (lastIsFinish && hopIds.length === 0) {
+            onArrive();
+            landFinish(startRect);
+            return;
+        }
+
+        // Finish landing: hop across the track cells up to (not including) the
+        // finish, land lone on the last one, then hand off to the arrival
+        // flourish. (Finish cells never host an opposing capture.)
+        if (lastIsFinish) {
+            const hopPath = [startCenter, ...hopIds.map(feetOf)];
+            playPawnStep({
+                container: boardWrap,
+                path: hopPath,
+                color,
+                pawnSize: cellSize,
+                onStep: () => playStepSound(),
+                onArrive,
+            }).then(() => {
+                const cellId = hopIds[hopIds.length - 1];
+                landFinish(lonePawnBox(document.getElementById(cellId).getBoundingClientRect()));
+            });
+            return;
+        }
+
+        // Track landing — the mover hops in and lands stacked on top of any
+        // current occupant (full cell size), then the whole group BLOOMS apart
+        // from that overlap into the final fan with a springy, deliberate spread
+        // (STACK_BLOOM_TRANSITION) instead of snapping into place instantly. A
+        // lone landing has nothing to fan, so the bloom is a no-op.
+        const landTrack = () => {
             element.style.transition = 'none';
             element.style.removeProperty('transform');
             element.style.removeProperty('transform-origin');
@@ -783,17 +828,18 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             delete element.dataset.moving;
             element.style.visibility = '';
             finalContainer.appendChild(element);
-            updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, firstRect]]) });
+            // The mover's pre-bloom box is the full-cell seat the hop overlay
+            // ended on (centred, on top of the stack), so the bloom starts
+            // exactly where the live token appears — no reveal pop.
+            const firstRect = lonePawnBox(document.getElementById(lastId).getBoundingClientRect());
+            updateCellStacking(finalContainer, {
+                animate: true,
+                firstRects: new Map([[element, firstRect]]),
+                flipTransition: STACK_BLOOM_TRANSITION,
+            });
             element.style.removeProperty('transition');
             resolve();
         };
-
-        // A bare hop into the finish cell (no track cells between): skip straight
-        // to the arrival flourish, sourced from the mover's current box.
-        if (lastIsFinish && hopIds.length === 0) {
-            landFinish(startRect);
-            return;
-        }
 
         const hopPath = [startCenter, ...hopIds.map(feetOf)];
 
@@ -806,18 +852,8 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             pawnSize: cellSize,
             // Per-cell footstep, fired as each gap begins (matches the old glide).
             onStep: () => playStepSound(),
-        }).then(() => {
-            if (lastIsFinish) {
-                // The hop ended on the cell before the finish — arrive from the
-                // pawn's settled box there (not the bare square cell).
-                const cellId = hopIds[hopIds.length - 1];
-                landFinish(lonePawnBox(document.getElementById(cellId).getBoundingClientRect()));
-            } else {
-                // FLIP starts from the hop's exact final box (settled lone-pawn
-                // geometry) → no settle pop on a lone landing.
-                landTrack(lonePawnBox(document.getElementById(lastId).getBoundingClientRect()));
-            }
-        });
+            onArrive,
+        }).then(landTrack);
     });
 }
 

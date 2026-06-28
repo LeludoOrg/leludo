@@ -107,6 +107,48 @@ describe('playPawnStep', () => {
         expect(called).toBe(true);
     });
 
+    it('fires onArrive exactly once, on contact, before cleanup', async () => {
+        // Regression: a capturing move used to start its KO only after the
+        // attacker's full landing (settle bounce + handoff) had played out — a
+        // visible dead beat. onArrive fires the instant the pawn touches its
+        // final cell (before the bounce/cleanup), so the caller can launch the
+        // capture on contact and overlap the settle.
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        let arriveCount = 0;
+        let rootMountedAtArrive = false;
+        await playPawnStep({
+            container,
+            path: PATH,
+            stepDur: 20,
+            onArrive: () => {
+                arriveCount++;
+                rootMountedAtArrive = !!container.querySelector('.pstep-root');
+            },
+        });
+        expect(arriveCount).toBe(1);
+        expect(rootMountedAtArrive).toBe(true); // fired while the overlay still lived
+    });
+
+    it('reduced motion still fires onArrive on the snap', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const orig = window.matchMedia;
+        window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+        try {
+            let arrived = 0;
+            await playPawnStep({
+                container,
+                path: PATH,
+                stepDur: 1000,
+                onArrive: () => { arrived++; },
+            });
+            expect(arrived).toBe(1);
+        } finally {
+            window.matchMedia = orig;
+        }
+    });
+
     it('reduced motion snaps to the destination instead of hopping', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
