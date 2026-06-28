@@ -5,9 +5,12 @@
 //
 // A top-heavy matte chess-pawn: sphere head, slim waist, flared base, drawn in
 // a 0 0 100 116 viewBox (taller than wide — the contact point is bottom-center).
-// Colors derive from a single `base` fill: the dark stroke / base-disc is a
-// black-mixed shade of it, and the sheen is a colour-independent white gradient.
-// Each overlay's drop-shadow lives in its own CSS via the `svgClass` it passes.
+// The body + head carry a near-black contour (the theme-tuned --pawn-outline
+// token, same hue for every player) so a resting pawn reads distinct from its
+// same-colour yard ring; the base disc the pawn stands on is its own colour with
+// a soft black overlay, the collar keeps a colour-mixed edge, and the sheen is a
+// colour-independent white gradient. Each overlay's drop-shadow lives in its own
+// CSS via the `svgClass` it passes.
 
 export const PAWN_VIEWBOX = '0 0 100 116';
 export const PAWN_ASPECT = 1.16;            // height = width * 1.16
@@ -64,15 +67,16 @@ export function pawnSVG(color, size, svgClass, uidPrefix, opts) {
                     '<stop offset="62%" stop-color="#fff" stop-opacity="0"/>' +
                 '</linearGradient>' +
             '</defs>' +
-            // base disc / cast shadow
-            '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:' + dark + '"/>' +
+            // base disc the pawn stands on — own colour + soft dark overlay
+            '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:' + color + '"/>' +
+            '<ellipse cx="50" cy="101" rx="26" ry="6.5" style="fill:#000;opacity:0.1"/>' +
             // body
-            '<path d="' + PAWN_BODY + '" style="fill:' + color + ';stroke:' + dark + ';stroke-width:1.4"/>' +
+            '<path d="' + PAWN_BODY + '" style="fill:' + color + ';stroke:var(--pawn-outline);stroke-width:var(--pawn-outline-w)"/>' +
             '<path d="' + PAWN_BODY + '" style="fill:' + sheen + '"/>' +
             // collar
             '<ellipse cx="50" cy="41" rx="15" ry="4.6" style="fill:' + color + ';stroke:' + dark + ';stroke-width:1"/>' +
             // head
-            '<circle cx="50" cy="24" r="20" style="fill:' + color + ';stroke:' + dark + ';stroke-width:1.4"/>' +
+            '<circle cx="50" cy="24" r="20" style="fill:' + color + ';stroke:var(--pawn-outline);stroke-width:var(--pawn-outline-w)"/>' +
             '<circle cx="50" cy="24" r="20" style="fill:' + sheen + '"/>' +
         '</svg>'
     );

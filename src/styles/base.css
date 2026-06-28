@@ -49,6 +49,12 @@
     --color-board-border: hsl(38 14% 80%);
     --color-safe: hsl(40 28% 87%);
 
+    /* Pawn glyph outline — a near-black contour (same hue for every player)
+       so a resting pawn reads as a distinct piece against its same-colour
+       yard ring. Theme-tuned opacity + width (design handoff). */
+    --pawn-outline: rgba(0, 0, 0, 0.42);
+    --pawn-outline-w: 2.0;
+
     /* CTA pair pulled from the mockup palette for higher contrast
        than the muddier --color-fg / --color-bg tokens. */
     --cta-bg: #1a1410;
@@ -131,6 +137,9 @@
     --color-board-cell: hsl(30 12% 20%);
     --color-board-border: hsl(30 12% 28%);
     --color-safe: hsl(30 15% 20%);
+
+    --pawn-outline: rgba(0, 0, 0, 0.55);
+    --pawn-outline-w: 2.4;
 
     --cta-bg: #ecdfd0;
     --cta-fg: #1a1410;
