@@ -158,51 +158,26 @@ wc-play-online .online-create-chevron {
 }
 
 /* ----- Landscape phone online-setup layout -----
-   In portrait the join hero + "host your own" card stack in one column that
-   overflows a landscape phone (e.g. 812x375). In landscape, split into two
-   columns: Join a friend's room on the LEFT, host-your-own on the RIGHT, both
-   vertically centered. The max-height:520px ceiling excludes tablets/desktop. */
+   The join hero + "host your own" card are only a handful of elements, so keep
+   the single centered column (as in portrait) but compact the spacing so it
+   fits a landscape phone (e.g. 812x375) without scrolling. The max-height:520px
+   ceiling excludes tablets/desktop. */
 @media (orientation: landscape) and (max-height: 520px) {
-    /* Lift the #game-container 384px width cap while the online setup is mounted
-       so the two-column frame can use the wider viewport. */
-    #game-container:has(wc-play-online) {
-        max-width: none;
-    }
-
     wc-play-online .frame {
-        max-width: min(820px, 94vw);
-        margin-inline: auto;
         min-height: calc(100dvh - 16px);
         height: auto;
     }
 
     wc-play-online .top-bar {
-        padding-bottom: var(--space-2);
+        padding-bottom: var(--space-1);
     }
 
-    /* Both columns stretch to the same (content-driven) height and the cluster
-       is centered in the body, so the right column can bottom-align its Create
-       card with the left column's Join room button. */
     wc-play-online .online-setup-body {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        align-content: center;
-        align-items: stretch;
-        column-gap: var(--space-10);
-        gap: 0;
+        justify-content: center;
+        gap: var(--space-3);
     }
 
     wc-play-online .online-join {
-        grid-column: 1;
-    }
-
-    /* Right column: divider pinned to the top (level with the join lead) and the
-       Create card to the bottom (level with the Join room button). */
-    wc-play-online .online-host {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        gap: var(--space-5);
-        grid-column: 2;
+        gap: var(--space-2);
     }
 }
