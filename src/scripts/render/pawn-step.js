@@ -165,6 +165,7 @@ export function playPawnStep(opts) {
         pawn.style.transform =
             `translate(${(last.x - p0.x).toFixed(2)}px,${(last.y - p0.y).toFixed(2)}px)`;
         shadow.style.transform = pawn.style.transform;
+        shadow.style.opacity = '0';
         setTimeout(done, 80);
         return promise;
     }
@@ -213,7 +214,11 @@ export function playPawnStep(opts) {
         const sScale = 1 - lift * 0.5;
         shadow.style.transform =
             `translate(${(x - p0.x).toFixed(2)}px,${(y - p0.y).toFixed(2)}px) scale(${sScale.toFixed(3)})`;
-        shadow.style.opacity = (0.85 - lift * 0.55).toFixed(3);
+        // On the final hop, fade the ground shadow out across the descent so it
+        // hands off to the on-board token's own resting drop-shadow instead of
+        // popping away when the overlay is torn down.
+        const landFade = si === steps - 1 ? (1 - frac) : 1;
+        shadow.style.opacity = ((0.85 - lift * 0.55) * landFade).toFixed(3);
 
         if (t < totalDur) {
             requestAnimationFrame(render);
@@ -224,8 +229,10 @@ export function playPawnStep(opts) {
 
     function finish() {
         const baseT = `translate(${(last.x - p0.x).toFixed(2)}px,${(last.y - p0.y).toFixed(2)}px)`;
+        // Final cell: no ground shadow — the on-board token's own drop-shadow takes
+        // over, so leaving the overlay shadow up would pop when the root is removed.
         shadow.style.transform = baseT + ' scale(1)';
-        shadow.style.opacity = '0.85';
+        shadow.style.opacity = '0';
         pawn.style.transform = baseT;
 
         if (landBounce && typeof pawn.animate === 'function') {
