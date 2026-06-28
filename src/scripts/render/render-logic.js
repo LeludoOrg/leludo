@@ -7,6 +7,7 @@ import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
 import {playPawnLaunch} from "./pawn-launch.js";
+import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
@@ -671,12 +672,13 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
 
         const finalContainer = document.getElementById(path[path.length - 1]);
         const sourceCell = element.parentElement;
+        const boardWrap = element.closest('.board-wrap');
 
-        // Hidden tab: rAF is paused, so the per-cell glide below would never run
-        // and the online replay queue (which awaits this promise) would wedge —
-        // the client desyncs from the server. Land the token in its final cell
-        // immediately; it catches up visually when the tab is shown again.
-        if (isTabHidden()) {
+        // Hidden tab (or no board mounted): rAF is paused, so the hop overlay
+        // would never run and the online replay queue (which awaits this promise)
+        // would wedge — the client desyncs from the server. Land the token in its
+        // final cell immediately; it catches up visually when shown again.
+        if (isTabHidden() || !boardWrap) {
             clearStackStyles(element);
             delete element.dataset.moving;
             finalContainer.appendChild(element);
@@ -686,113 +688,121 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             return;
         }
 
+        const containerRect = boardWrap.getBoundingClientRect();
+        const cellSize = containerRect.width / BOARD_CELLS;
+        const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
+
+        // Feet point (container-relative bottom-center) of a cell id — where a
+        // floor-anchored lone pawn's base sits. The hop pawn lands its feet here,
+        // so its end box equals the settled token's box (no post-reveal pop).
+        const feetOf = (id) => {
+            const r = document.getElementById(id).getBoundingClientRect();
+            return {
+                x: r.left + r.width / 2 - containerRect.left,
+                y: r.bottom - containerRect.top,
+            };
+        };
+
+        // Where the mover sits right now (its stacked slot, if any) — the hop's
+        // first feet point, so the leap starts exactly where the live pawn was.
+        const startRect = element.getBoundingClientRect();
+        const startCenter = {
+            x: startRect.left + startRect.width / 2 - containerRect.left,
+            y: startRect.bottom - containerRect.top,
+        };
+
+        // Viewport box a floor-anchored lone pawn occupies in `cellRect`: full
+        // cell width, taller body (PAWN_ASPECT) overflowing UPWARD with its base
+        // on the cell's bottom edge — i.e. the hop's exact final frame. The
+        // destination FLIP starts from this so a lone landing is a no-op (no
+        // settle glide) and a stack-join eases in from the right spot.
+        const lonePawnBox = (cellRect) => {
+            const h = cellRect.width * PAWN_H;
+            return {
+                left: cellRect.left,
+                top: cellRect.bottom - h,
+                width: cellRect.width,
+                height: h,
+                right: cellRect.right,
+                bottom: cellRect.bottom,
+            };
+        };
+
+        // Hide the live token and reflow the survivors of its source stack into
+        // their new (n-1) layout — the overlay paints its own hopping copy.
+        // dataset.moving keeps updateCellStacking from dragging it back into flow.
         element.dataset.moving = 'true';
-        // Snapshot the mover's on-screen box (its stacked slot, if it shared the
-        // cell) before we re-pin it. We then lift it OUT of flow: pinned
-        // position:absolute filling the source cell, so the cell reflows around
-        // the survivors ALONE — fixing the "lone survivor shoved a cell down"
-        // bug — and the mover travels at full cell size like any sole pawn.
-        const visualRect = element.getBoundingClientRect();
-        clearStackStyles(element);
-        element.style.position = 'absolute';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.width = '100%';
-        // Height follows the pawn aspect (height = width*1.16) — same as a lone
-        // settled token (which has no explicit height, so its svg sizes from
-        // width). Pinning height:100% would square the box and letterbox the
-        // taller pawn smaller, so it visibly shrank while gliding.
-        element.style.height = 'auto';
-        element.style.zIndex = '50';
-        element.style.willChange = 'transform';
-        element.style.transformOrigin = 'top left';
+        element.style.visibility = 'hidden';
+        if (sourceCell) updateCellStacking(sourceCell, { animate: true });
 
-        // Survivors smoothly resize+reposition into their new (n-1) layout.
-        updateCellStacking(sourceCell, { animate: true });
+        const lastId = path[path.length - 1];
+        const lastIsFinish = FINISH_CELL_ID_RE.test(lastId);
+        // The finish-cell arrival has its own flourish (playFinishArrival); the
+        // hop covers every track / home-stretch cell up to (not including) it.
+        const hopIds = lastIsFinish ? path.slice(0, -1) : path;
 
-        const originRect = element.getBoundingClientRect();
-        // Invert: render the mover at its old (possibly smaller, offset) slot so
-        // the first glide step animates it growing to full size AND sliding to
-        // the next cell in one motion — no instant size pop. For a sole pawn
-        // visualRect === originRect, so this is a no-op (unchanged behaviour).
-        const sx = originRect.width ? visualRect.width / originRect.width : 1;
-        const sy = originRect.height ? visualRect.height / originRect.height : 1;
-        const compDx = visualRect.left - originRect.left;
-        const compDy = visualRect.top - originRect.top;
-        if (Math.abs(compDx) > 0.5 || Math.abs(compDy) > 0.5 || Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+        // Reparent the live token into the finish cell and hand off to the home
+        // arrival overlay, starting from the last hopped cell's box.
+        const landFinish = (preRect) => {
             element.style.transition = 'none';
-            element.style.transform = `translate(${compDx}px, ${compDy}px) scale(${sx}, ${sy})`;
-            void element.offsetWidth;
-            element.style.transition = '';
+            element.style.removeProperty('transform');
+            element.style.removeProperty('transform-origin');
+            element.style.willChange = '';
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            finalContainer.appendChild(element);
+            updateCellStacking(finalContainer);
+            element.style.removeProperty('transition');
+            playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
+        };
+
+        // Reparent the live token into its destination cell and FLIP it — along
+        // with any tokens already there — from the last hopped cell into the
+        // final stacked layout, so joining a stack eases in instead of snapping.
+        const landTrack = (firstRect) => {
+            element.style.transition = 'none';
+            element.style.removeProperty('transform');
+            element.style.removeProperty('transform-origin');
+            element.style.willChange = '';
+            clearStackStyles(element);
+            delete element.dataset.moving;
+            element.style.visibility = '';
+            finalContainer.appendChild(element);
+            updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, firstRect]]) });
+            element.style.removeProperty('transition');
+            resolve();
+        };
+
+        // A bare hop into the finish cell (no track cells between): skip straight
+        // to the arrival flourish, sourced from the mover's current box.
+        if (lastIsFinish && hopIds.length === 0) {
+            landFinish(startRect);
+            return;
         }
 
-        const fallbackMs = 400;
+        const hopPath = [startCenter, ...hopIds.map(feetOf)];
 
-        let stepIndex = 0;
-
-        function step() {
-            // Tab went hidden mid-glide: fast-forward to the final cell so the
-            // replay queue keeps draining (rAF is paused while hidden).
-            if (isTabHidden() && stepIndex < path.length) {
-                stepIndex = path.length;
+        playPawnStep({
+            container: boardWrap,
+            path: hopPath,
+            color,
+            // A wc-token fills one cell (square) wide, so the hop pawn is cellSize
+            // too — same glyph and footprint as the live token at every cell.
+            pawnSize: cellSize,
+            // Per-cell footstep, fired as each gap begins (matches the old glide).
+            onStep: () => playStepSound(),
+        }).then(() => {
+            if (lastIsFinish) {
+                // The hop ended on the cell before the finish — arrive from the
+                // pawn's settled box there (not the bare square cell).
+                const cellId = hopIds[hopIds.length - 1];
+                landFinish(lonePawnBox(document.getElementById(cellId).getBoundingClientRect()));
+            } else {
+                // FLIP starts from the hop's exact final box (settled lone-pawn
+                // geometry) → no settle pop on a lone landing.
+                landTrack(lonePawnBox(document.getElementById(lastId).getBoundingClientRect()));
             }
-            if (stepIndex >= path.length) {
-                // Capture the mover's on-screen box at journey's end, then reparent
-                // it into the destination cell and FLIP it — along with any tokens
-                // already there — into the final stacked layout, so a pawn joining
-                // a stack eases into its slot instead of snapping. Clearing
-                // transform under transition:none avoids a double-offset flash once
-                // it's a child of the (already-positioned) destination cell.
-                const moverFirst = element.getBoundingClientRect();
-                element.style.transition = 'none';
-                element.style.removeProperty('transform');
-                element.style.removeProperty('transform-origin');
-                element.style.willChange = '';
-                clearStackStyles(element);
-                delete element.dataset.moving;
-                finalContainer.appendChild(element);
-                updateCellStacking(finalContainer, { animate: true, firstRects: new Map([[element, moverFirst]]) });
-                element.style.removeProperty('transition'); // restore CSS transition if FLIP skipped it (empty dest)
-                resolve();
-                return;
-            }
-
-            playStepSound();
-            const isFinalStep = stepIndex === path.length - 1;
-            const targetId = path[stepIndex];
-            const isFinishCell = FINISH_CELL_ID_RE.test(targetId);
-
-            if (isFinalStep && isFinishCell) {
-                const targetContainer = document.getElementById(targetId);
-                const preRect = element.getBoundingClientRect();
-
-                element.style.transition = 'none';
-                element.style.transform = '';
-                element.style.position = '';
-                element.style.zIndex = '';
-                element.style.willChange = '';
-                targetContainer.appendChild(element);
-                delete element.dataset.moving;
-                updateCellStacking(targetContainer);
-
-                playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
-                return;
-            }
-
-            const targetContainer = document.getElementById(targetId);
-            const targetRect = targetContainer.getBoundingClientRect();
-            const offsetX = targetRect.left - originRect.left;
-            const offsetY = targetRect.top - originRect.top;
-
-            element.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-
-            waitForTransitionEnd(element, () => {
-                stepIndex++;
-                nextFrame(step);
-            }, fallbackMs);
-        }
-
-        nextFrame(step);
+        });
     });
 }
 
