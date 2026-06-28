@@ -180,10 +180,14 @@ wc-play-online .online-create-chevron {
         padding-bottom: var(--space-2);
     }
 
+    /* Both columns stretch to the same (content-driven) height and the cluster
+       is centered in the body, so the right column can bottom-align its Create
+       card with the left column's Join room button. */
     wc-play-online .online-setup-body {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        align-items: center;
+        align-content: center;
+        align-items: stretch;
         column-gap: var(--space-10);
         gap: 0;
     }
@@ -192,10 +196,12 @@ wc-play-online .online-create-chevron {
         grid-column: 1;
     }
 
-    /* Right column: divider + Create card, vertically centered against Join. */
+    /* Right column: divider pinned to the top (level with the join lead) and the
+       Create card to the bottom (level with the Join room button). */
     wc-play-online .online-host {
         display: flex;
         flex-direction: column;
+        justify-content: space-between;
         gap: var(--space-5);
         grid-column: 2;
     }
