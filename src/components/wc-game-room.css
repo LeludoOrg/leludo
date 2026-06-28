@@ -186,3 +186,82 @@ wc-game-room .online-start-btn {
 
 /* Your own seat row carries an inline editable name (the shared .seat-name-wrap
    / .seat-name look from components/seat-list.css) — no extra rules needed. */
+
+/* ----- Landscape phone lobby layout -----
+   Same short-landscape problem as the offline setup: the room banner + 4 seat
+   rows + the Start/Leave footer overflow a landscape phone. Mirror the setup
+   fix — a two-column grid that fills the viewport: room code + Share + the
+   Start/Leave buttons on the LEFT, the live seat list on the RIGHT (scrolling
+   internally if needed). The max-height:520px ceiling excludes tablets/desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    wc-game-room .frame {
+        max-width: min(960px, 94vw);
+        margin-inline: auto;
+        min-height: calc(100dvh - 16px);
+        height: auto;
+        max-height: none;
+        display: grid;
+        grid-template-columns: 1fr 1.1fr;
+        /* topbar / banner band (1fr) / status / footer — status + footer stack
+           under the banner in the left column without overlapping it. */
+        grid-template-rows: auto 1fr auto auto;
+        column-gap: var(--space-12);
+        align-items: center;
+    }
+
+    wc-game-room .top-bar {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding-bottom: var(--space-2);
+    }
+
+    /* Body is transparent so the banner, seat list and status become grid items. */
+    wc-game-room .online-room-body {
+        display: contents;
+    }
+
+    /* Left column, upper: room code + share, centered against the seats. */
+    wc-game-room .online-room-banner {
+        grid-column: 1;
+        grid-row: 2;
+        align-self: center;
+        margin-bottom: 0;
+    }
+
+    /* Trim the banner's vertical footprint so the left column (banner + status +
+       Start/Leave) clears the short viewport, even with an error status line. */
+    wc-game-room .online-code-display {
+        font-size: 34px;
+        margin: 4px 0 2px;
+    }
+
+    wc-game-room .online-share-btn {
+        margin-top: var(--space-2);
+    }
+
+    /* Right column: the live seat list, vertically centered, spanning all rows;
+       scrolls internally if the four rows can't fit. */
+    wc-game-room .seat-list {
+        grid-column: 2;
+        grid-row: 2 / 5;
+        align-self: center;
+        gap: var(--space-1);
+        max-height: calc(100dvh - 70px);
+        overflow-y: auto;
+        padding-right: var(--space-1);
+    }
+
+    wc-game-room .online-status {
+        grid-column: 1;
+        grid-row: 3;
+        align-self: center;
+        margin: 0;
+    }
+
+    /* Left column, lower: the Start / Leave buttons. */
+    wc-game-room .frame-footer {
+        grid-column: 1;
+        grid-row: 4;
+        align-self: center;
+    }
+}

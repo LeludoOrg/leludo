@@ -49,6 +49,35 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* ----- Landscape phone online-exit layout -----
+   The leave-confirmation (title + helper + countdown + Stay/Leave) overflows a
+   short landscape phone. It's a small dialog, so just compact it vertically so
+   it fits without scrolling. The max-height:520px ceiling excludes desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    #online-exit-menu .frame {
+        min-height: 0;
+        height: calc(100dvh - 16px);
+        max-height: calc(100dvh - 16px);
+    }
+
+    #online-exit-menu .top-bar {
+        padding-bottom: var(--space-1);
+    }
+
+    #online-exit-menu .pause-body .display-title {
+        font-size: 30px;
+    }
+
+    #online-exit-menu .pause-body .body-helper {
+        padding-bottom: var(--space-2);
+    }
+
+    #online-exit-menu .online-exit-countdown {
+        margin-top: var(--space-1);
+        font-size: 2.5rem;
+    }
+}
+
 #pause-menu .pause-body .pause-scoreboard,
 #pause-menu .pause-body .section-label,
 #pause-menu .pause-body #pm-turn-count {

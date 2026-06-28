@@ -13,6 +13,13 @@ wc-play-online .online-setup-body {
     gap: var(--space-8);
 }
 
+/* Groups the "or host your own" divider + Create-a-room card. Transparent in
+   portrait (they flow in the single column as before); the landscape grid
+   below promotes it to the right-hand column. */
+wc-play-online .online-host {
+    display: contents;
+}
+
 /* ----- Join a friend's room (hero) ----- */
 
 wc-play-online .online-join {
@@ -148,4 +155,42 @@ wc-play-online .online-create-chevron {
     flex-shrink: 0;
     display: flex;
     opacity: 0.4;
+}
+
+/* ----- Landscape phone online-setup layout -----
+   In portrait the join hero + "host your own" card stack in one column that
+   overflows a landscape phone (e.g. 812x375). In landscape, split into two
+   columns: Join a friend's room on the LEFT, host-your-own on the RIGHT, both
+   vertically centered. The max-height:520px ceiling excludes tablets/desktop. */
+@media (orientation: landscape) and (max-height: 520px) {
+    wc-play-online .frame {
+        max-width: min(820px, 94vw);
+        margin-inline: auto;
+        min-height: calc(100dvh - 16px);
+        height: auto;
+    }
+
+    wc-play-online .top-bar {
+        padding-bottom: var(--space-2);
+    }
+
+    wc-play-online .online-setup-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        column-gap: var(--space-10);
+        gap: 0;
+    }
+
+    wc-play-online .online-join {
+        grid-column: 1;
+    }
+
+    /* Right column: divider + Create card, vertically centered against Join. */
+    wc-play-online .online-host {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+        grid-column: 2;
+    }
 }

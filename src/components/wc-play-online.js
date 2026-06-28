@@ -40,13 +40,15 @@ class PlayOnline extends HTMLElement {
                         <p class="online-status" data-testid="online-status"></p>
                     </div>
 
-                    <div class="online-host-divider"><span>or host your own</span></div>
+                    <div class="online-host">
+                        <div class="online-host-divider"><span>or host your own</span></div>
 
-                    <button class="online-create-card" data-testid="online-create">
-                        <span class="online-create-chip">${QUAD_CHIP_SVG(34)}</span>
-                        <span class="online-create-text">Create a room</span>
-                        <span class="online-create-chevron">${ICON_CHEVRON}</span>
-                    </button>
+                        <button class="online-create-card" data-testid="online-create">
+                            <span class="online-create-chip">${QUAD_CHIP_SVG(34)}</span>
+                            <span class="online-create-text">Create a room</span>
+                            <span class="online-create-chevron">${ICON_CHEVRON}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         `
