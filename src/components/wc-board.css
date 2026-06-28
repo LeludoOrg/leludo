@@ -145,6 +145,16 @@ wc-board .home-slot-dot {
     border-style: solid;
 }
 
+/* The pawn svg is taller than the round parking slot (PAWN_ASPECT 1.16), so a
+   top-aligned yard pawn drops its base disc onto the slot's bottom ring line.
+   Lift the parked pawn so its base clears the ring with a small margin. The
+   FLIP launch/return animations measure getBoundingClientRect at both ends, so
+   this constant shift composes cleanly. */
+wc-board .home-slot-dot wc-token {
+    transform: translateY(-14%) scale(1.18);
+    transform-origin: bottom center;
+}
+
 /* Home quadrant solid backgrounds gain subtle radial highlight */
 wc-board .home-quad.player-bg-0,
 wc-board .home-quad.player-bg-1,

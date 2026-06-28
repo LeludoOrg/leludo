@@ -221,6 +221,66 @@ test.describe('Token rendering inside cells', () => {
         }
     });
 
+    test('yard pawn base disc clears the parking-ring bottom line (lifted, not sitting on it)', async ({ page }) => {
+        // The pawn svg is taller than the round home-slot-dot (PAWN_ASPECT 1.16),
+        // so a top-aligned yard pawn used to drop its base disc right onto the
+        // ring's bottom stroke. Fix: `.home-slot-dot wc-token { translateY(-15%) }`
+        // lifts the parked pawn so its base clears the ring with a margin.
+        await startGame(page);
+
+        const m = await page.evaluate(() => {
+            const dot = document.querySelector('#h-0-0');
+            const tok = dot.querySelector('wc-token');
+            const svg = tok.querySelector('svg');
+            const dr = dot.getBoundingClientRect();
+            const sr = svg.getBoundingClientRect();
+            // base disc bottom in the 0 0 100 116 viewBox: ellipse cy=101 ry=6.5
+            const baseDiscBottom = sr.top + (107.5 / 116) * sr.height;
+            return {
+                transform: getComputedStyle(tok).transform,
+                gap: dr.bottom - baseDiscBottom,
+            };
+        });
+
+        // a real upward shift is applied (not the identity matrix)…
+        expect(m.transform).not.toBe('none');
+        // …and the base disc sits clearly inside the ring, off the bottom line.
+        expect(m.gap).toBeGreaterThan(2);
+    });
+
+    test('a lone pawn on a track cell is floor-anchored, not cropped by the next cell', async ({ page }) => {
+        // The pawn svg is taller than its (square) cell (PAWN_ASPECT 1.16). A
+        // lone pawn left in normal flow top-aligned, so its base overflowed
+        // BELOW the cell and the next-row cell — painted later — cropped it.
+        // Fix: updateCellStacking floor-anchors a lone .path-cell pawn so the
+        // excess height overflows upward instead. Pawns sit on vertical-arm
+        // cells m11 & m12 here.
+        await bootGame(page, '?positions=11,12&player=0');
+        await page.locator('#m11 wc-token').waitFor();
+
+        const data = await page.evaluate(() => {
+            return ['m11', 'm12'].map((id) => {
+                const cell = document.getElementById(id);
+                const tok = cell.querySelector('wc-token');
+                const svg = tok.querySelector('svg');
+                const cr = cell.getBoundingClientRect();
+                const sr = svg.getBoundingClientRect();
+                return {
+                    pos: getComputedStyle(tok).position,
+                    belowFloor: sr.bottom - cr.bottom, // >0 means it spills below → croppable
+                };
+            });
+        });
+
+        for (const d of data) {
+            // pinned out of flow…
+            expect(d.pos).toBe('absolute');
+            // …with the body sitting on the cell floor, never spilling below it
+            // (the bottom spill is exactly what the neighbouring cell cropped).
+            expect(d.belowFloor).toBeLessThanOrEqual(0.5);
+        }
+    });
+
     test('a gliding (moving) pawn keeps full size — same width as a settled pawn', async ({ page }) => {
         // Regression: the move-glide pins the mover position:absolute. It used
         // width:100%;height:100%, which squared the wrapper and letterboxed the

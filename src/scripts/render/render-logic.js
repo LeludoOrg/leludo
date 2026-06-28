@@ -231,6 +231,16 @@ function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
     else svg.style.removeProperty('--pawn-tilt');
 }
 
+// A lone pawn on a path cell. The pawn svg is taller than the (square) cell
+// (PAWN_H 1.16), so left in normal flow it top-aligns and its base overflows
+// BELOW the cell — where the next-row cell, painted later, crops it. Anchor it
+// to the cell floor at full width so the excess height overflows UPWARD instead
+// (over the earlier-painted cell above), matching how stacked pawns sit. Pinned
+// out of flow so it can't stretch its grid track either.
+function placeLonePawn(t) {
+    t.style.cssText += 'position:absolute;left:0;bottom:0;width:100%;height:auto;';
+}
+
 // Case A — total ≤ 4: fan every pawn individually like a hand of cards.
 function peekFan(tokens) {
     const N = tokens.length;
@@ -383,8 +393,14 @@ export function updateCellStacking(cell, opts = {}) {
         } else {
             totemFan(tokens);     // collapse same color into vertical totems, fan those
         }
+    } else if (n === 1 && cell.classList.contains('path-cell')) {
+        // Lone pawn on a track / home-stretch cell: floor-anchor it so its
+        // taller-than-cell body overflows upward, not down into the cropping
+        // next cell. (Yard dots / finish cells aren't .path-cell, so their
+        // own placement rules are untouched.)
+        cell.style.position = 'relative';
+        placeLonePawn(tokens[0]);
     }
-    // n <= 1 (non-finish): the sole token stays in normal flow at full cell size.
 
     // FLIP steps 2-4 (Last/Invert/Play): animate every token from its snapshot
     // box into the slot it now holds.
