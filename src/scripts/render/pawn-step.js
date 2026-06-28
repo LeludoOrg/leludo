@@ -69,7 +69,11 @@ function injectCSS() {
       }
       .pstep-pawn-svg {
         display: block;
-        filter: drop-shadow(0 4px 9px rgba(0,0,0,0.45));
+        /* Match the on-board wc-token's resting drop-shadow exactly
+         * (wc-token.css). A bigger/darker shadow here read as a soft dark
+         * halo behind the pawn that popped away when the overlay handed off
+         * to the live token on the destination cell. */
+        filter: drop-shadow(0 3px 3px rgba(0,0,0,0.38));
       }
       .pstep-shadow {
         position: absolute;

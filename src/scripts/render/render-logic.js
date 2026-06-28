@@ -6,7 +6,7 @@ import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./
 import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playHomeArrival} from "./home-arrival.js";
-import {playPawnLaunch} from "./pawn-launch.js";
+import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
 
@@ -617,9 +617,15 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
         x: yardRect.left + yardRect.width / 2 - containerRect.left,
         y: yardRect.top + yardRect.height / 2 - containerRect.top,
     };
-    const entryCenter = {
+    // Feet points (bottom-center) — what playPawnStep hops between, so the
+    // pawn's base tracks the floor like the normal cell-to-cell mover.
+    const yardFeet = {
+        x: yardRect.left + yardRect.width / 2 - containerRect.left,
+        y: yardRect.bottom - containerRect.top,
+    };
+    const entryFeet = {
         x: entryRect.left + entryRect.width / 2 - containerRect.left,
-        y: entryRect.top + entryRect.height / 2 - containerRect.top,
+        y: entryRect.bottom - containerRect.top,
     };
     const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
 
@@ -628,24 +634,31 @@ export function playYardLaunch(playerIndex, tokenIndex, entryCellId) {
     // Keep the yard parking slot (.home-slot-dot) visible during the
     // overlay. Hiding only the live token reveals the empty seat ring,
     // which is exactly how the seat should look once the pawn has
-    // launched — so it reads as "vacated" throughout the leap instead of
+    // launched — so it reads as "vacated" throughout the hop instead of
     // blinking out and reappearing when the promise resolves.
 
     playLaunchSound();
-    return playPawnLaunch({
+    // Keep the launch's signature start flourish — sparkle + radial glow at the
+    // yard — but drop the parabolic leap (and the landing burst). The pawn
+    // travels with the SAME hop the normal cell-to-cell mover uses
+    // (playPawnStep), so launching reads as one big version of an ordinary step.
+    playLaunchStartFX({ container: boardWrap, at: yardCenter, color, pawnSize: cellSize });
+
+    const HOP_DUR = 480;
+    // One hop across a multi-cell gap: a raw hopBig fraction of that long gap
+    // would arc absurdly tall, so cap the apex to ~1.15 cells.
+    const gap = Math.hypot(entryFeet.x - yardFeet.x, entryFeet.y - yardFeet.y) || 1;
+    const hopBig = Math.max(0.16, Math.min(0.5, (cellSize * 1.15) / gap));
+
+    return playPawnStep({
         container: boardWrap,
-        yard: yardCenter,
-        entry: entryCenter,
+        path: [yardFeet, entryFeet],
         color,
-        // Match the real on-board token: a wc-token fills one cell (square),
-        // so the launch pawn is cellSize too — same shape, size and centered
-        // position as the live token at both the yard and entry endpoints.
+        // A wc-token fills one cell (square), so the hop pawn is cellSize too —
+        // same glyph and footprint as the live token at both endpoints.
         pawnSize: cellSize,
-        duration: 1200,
-        // No 'GO!' chip — the leap + shockwave + dust already read as
-        // "this pawn just launched" and the chip stole focus from the
-        // pawn settling on its entry cell.
-        label: '',
+        stepDur: HOP_DUR,
+        hopBig,
     }).then(() => {
         clearStackStyles(element);
         delete element.dataset.moving;
