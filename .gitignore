@@ -44,3 +44,6 @@ android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 *.jks
 android/keystore.properties
+
+# Promo video build (local-only assets: rendered mp4s, audio, sources)
+promo-build/
