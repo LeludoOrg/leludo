@@ -523,3 +523,46 @@ test.describe('Tap highlight', () => {
         expect(highlight).toBe('rgba(0, 0, 0, 0)');
     });
 });
+
+test.describe('FX overlay stacking', () => {
+    // Pawn-step / pawn-launch / ko-capture overlays mount into .board-wrap at
+    // z-index:1000 (OVERLAY_Z). The wrap MUST create its own stacking context
+    // (isolation: isolate) so that z stays local to the board. Without it,
+    // pausing mid-hop left the animating pawn copy painting ABOVE the
+    // root-level pause / settings / game-end overlays (z 50–70) — the pawn
+    // was visible on top of the "Take a breather" pause screen.
+    test('.board-wrap isolates so FX overlay z-index stays below page overlays', async ({ page }) => {
+        await startGame(page);
+        const isolation = await page.evaluate(() =>
+            getComputedStyle(document.querySelector('wc-board .board-wrap')).isolation
+        );
+        expect(isolation).toBe('isolate');
+    });
+
+    test('an FX overlay in .board-wrap renders behind the shown pause menu', async ({ page }) => {
+        await startGame(page);
+        // Simulate a gameplay FX overlay mid-animation (same layer the real
+        // pawn-step overlay uses), then show the pause menu, and assert the
+        // pause menu wins the stacking order at the overlay's center point.
+        const onTopIsPauseMenu = await page.evaluate(() => {
+            const wrap = document.querySelector('wc-board .board-wrap');
+            const fx = document.createElement('div');
+            fx.id = '__fx-probe';
+            fx.style.cssText =
+                'position:absolute;inset:0;z-index:1000;background:rgba(255,0,0,1);';
+            wrap.appendChild(fx);
+
+            const pause = document.getElementById('pause-menu');
+            pause.classList.remove('hidden');
+
+            const r = pause.getBoundingClientRect();
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            const wins = pause.contains(top) || top === pause;
+
+            fx.remove();
+            pause.classList.add('hidden');
+            return wins;
+        });
+        expect(onTopIsPauseMenu).toBe(true);
+    });
+});

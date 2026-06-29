@@ -39,6 +39,7 @@ import { applyNativeBarTheme } from "../scripts/platform/native-bars.js";
 import { getServerChannel, setServerChannel } from "../scripts/net/net-client.js";
 import { readBool, writeBool } from "../scripts/platform/storage-util.js";
 import { SCREENS } from "../scripts/platform/screens.js";
+import { finishActiveOverlays } from "../scripts/render/overlay-base.js";
 import { ICON_BACK, ICON_SETTINGS } from "./wc-icons.js";
 
 const SETTINGS_HTML = /*html*/ `
@@ -205,6 +206,9 @@ function openSettings() {
     if (gameVisible && !isGameLogicPaused()) {
         pauseGameLogic();
         _pausedBySettings = true;
+        // Snap any in-flight pawn hop to its end so it doesn't freeze mid-air
+        // under the settings panel — same handling as the pause menu.
+        finishActiveOverlays();
     }
     overlay.classList.remove('hidden');
     goTo(SCREENS.SETTINGS);
