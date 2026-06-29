@@ -1,5 +1,5 @@
 // Shared scaffolding for the gameplay FX overlays (pawn-launch, ko-capture,
-// home-arrival). Each overlay keeps its own prefixed CSS and animation tuning;
+// pawn-step). Each overlay keeps its own prefixed CSS and animation tuning;
 // this module owns the boilerplate all three repeated: the style-injection
 // guard, the absolutely-positioned root layer, the cleanup timer, the
 // parabolic-arc helper, and the shared easing/timing constants. The pawn glyph

@@ -130,6 +130,26 @@ describe('playPawnStep', () => {
         expect(rootMountedAtArrive).toBe(true); // fired while the overlay still lived
     });
 
+    it('accepts finalHopBig (taller last hop) without breaking the hop loop', async () => {
+        // The finish leap reuses this hop with only a taller final segment. A bad
+        // last-step branch could skip onStep/onArrive or wedge cleanup — guard it.
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const steps = [];
+        let arrived = 0;
+        await playPawnStep({
+            container,
+            path: PATH,            // 3 points → 2 gaps; the 2nd is the "final" hop
+            stepDur: 20,
+            finalHopBig: 1.6,      // much taller than the default 0.64 big-hop
+            onStep: (i) => steps.push(i),
+            onArrive: () => { arrived++; },
+        });
+        expect(steps).toEqual([0, 1]);
+        expect(arrived).toBe(1);
+        expect(container.querySelector('.pstep-root')).toBeNull();
+    });
+
     it('reduced motion still fires onArrive on the snap', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);

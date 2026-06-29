@@ -6,9 +6,10 @@
 // stretching tall mid-air, leans into the travel direction, and lands with a
 // small settle bounce on the destination cell.
 //
-// Companion to pawn-launch.js (yard → entry leap), ko-capture.js (knocked out)
-// and home-arrival.js (reaching the finish). Same conventions: self-injects its
-// CSS once (`pstep-*`), takes per-call colors, paints its own pawn copy via the
+// Companion to pawn-launch.js (yard → entry leap) and ko-capture.js (knocked
+// out). It also handles reaching the finish: the home-stretch hops plus one extra
+// tall hop (finalHopBig) into the center triangle. Same conventions: self-injects
+// its CSS once (`pstep-*`), takes per-call colors, paints its own pawn copy via the
 // shared pawn-shape glyph, and resolves a Promise after DOM cleanup. The live
 // on-board token is hidden by the caller while this plays and revealed after.
 //
@@ -24,9 +25,12 @@
 //   pawnSize,           px WIDTH of the pawn (height = width * PAWN_ASPECT) —
 //                       pass cellSize so it matches the on-board wc-token.
 //                       default 48.
-//   stepDur = 260,      ms spent travelling each cell gap.
+//   stepDur = 190,      ms spent travelling each cell gap.
 //   hopBig = 0.64,      big-hop height as a fraction of the gap distance.
 //   hopSkip = 0.34,     low-skip (off-beat) height as a fraction of the gap.
+//   finalHopBig = null, height (fraction of gap) of the LAST hop only. null keeps
+//                       the normal rhythm; set it taller for a dramatic landing
+//                       leap (the jump into the center finish triangle).
 //   alternate = true,   swing big / low hops. false = every hop is hopBig.
 //   squash = 0.11,      squash-&-stretch amount (0 = rigid). Kept modest so the
 //                       pawn never reads as too slim at the mid-air apex.
@@ -123,9 +127,13 @@ export function playPawnStep(opts) {
     const path       = opts.path;
     const color      = opts.color || '#cf4a3a';
     const pawnSize   = opts.pawnSize || 48;
-    const stepDur    = opts.stepDur != null ? opts.stepDur : 260;
+    const stepDur    = opts.stepDur != null ? opts.stepDur : 190;
     const hopBig     = opts.hopBig != null ? opts.hopBig : 0.64;
     const hopSkip    = opts.hopSkip != null ? opts.hopSkip : 0.34;
+    // Height (fraction of the gap) of the LAST hop only — null = use the normal
+    // big/skip rhythm. Lets a caller make the final landing hop taller (e.g. the
+    // leap into the center finish triangle) without touching the others.
+    const finalHopBig = opts.finalHopBig != null ? opts.finalHopBig : null;
     const alternate  = opts.alternate !== false;
     const squash     = opts.squash != null ? opts.squash : 0.11;
     const lean       = opts.lean != null ? opts.lean : 11;
@@ -202,10 +210,12 @@ export function playPawnStep(opts) {
         const y = a.y + dy * travel;
 
         // Alternating big / low hop rhythm — a skipping gait, not uniform bounces.
-        const big = alternate ? (si % 2 === 0) : true;
-        const hScale = big ? hopBig : hopSkip;
+        // The last hop can be forced taller via finalHopBig (e.g. the finish leap).
+        const isLast = si === steps - 1;
+        const big = (isLast && finalHopBig != null) ? true : (alternate ? (si % 2 === 0) : true);
+        const hScale = (isLast && finalHopBig != null) ? finalHopBig : (big ? hopBig : hopSkip);
         const hop = -Math.sin(Math.pow(frac, HOP_APEX_SKEW) * Math.PI) * gap * hScale;
-        const lift = -hop / (gap * Math.max(hopBig, 0.001)); // 0..1 normalized height
+        const lift = -hop / (gap * Math.max(hopBig, hScale, 0.001)); // 0..1 normalized height
 
         // Squash on take-off & landing, stretch tall mid-air.
         const prof = pw(SQUASH_STOPS, SQUASH_VALS, frac);

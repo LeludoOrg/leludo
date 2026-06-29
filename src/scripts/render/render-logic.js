@@ -5,7 +5,6 @@ import { MINI_PAWN_BODY } from "./pawn-mini.js";
 import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
-import {playHomeArrival} from "./home-arrival.js";
 import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
@@ -304,6 +303,9 @@ const FINISH_STEP = 0.28;      // horizontal step as a fraction of pawn width (t
 // part of the triangle — so the compact fan sits inside its wedge and never
 // crosses the centre into another player's home.
 const FINISH_CENTERS = { 0: [22, 50], 1: [50, 22], 2: [78, 50], 3: [50, 78] };
+// Height of the final hop into the center triangle, as a fraction of that hop's
+// gap (vs the normal 0.64 big-hop). Taller = a more dramatic leap home.
+const FINISH_LEAP_HEIGHT = 0.9;
 function applyFinishStacking(cell, tokens) {
     const n = tokens.length;
     if (n === 0) return;
@@ -533,59 +535,29 @@ export function animateCaptureToHome(playerIndex, tokenIndex, attack) {
     });
 }
 
-// Home-arrival overlay: source = pawn's pre-move viewport rect, home = final
-// stacked-slot center after the token has been parented into the finish cell.
-// Live token is hidden during the overlay's ~1.4s flourish, then revealed.
-export function playFinishArrival(playerIndex, tokenIndex, sourceRect) {
-    const element = getTokenElement(playerIndex, tokenIndex);
-    if (!element) return Promise.resolve();
-    const boardWrap = element.closest('.board-wrap');
-    if (!boardWrap) return Promise.resolve();
-
-    // Hidden tab: the token is already parented into the finish cell — skip the
-    // cosmetic arrival overlay so the online replay queue doesn't stall on it.
-    if (isTabHidden()) return Promise.resolve();
-
-    const finalRect = element.getBoundingClientRect();
-    const containerRect = boardWrap.getBoundingClientRect();
-    const cellSize = containerRect.width / BOARD_CELLS;
-    const src = sourceRect || finalRect;
-    const sourceCenter = {
-        x: src.left + src.width / 2 - containerRect.left,
-        y: src.top + src.height / 2 - containerRect.top,
+// Landing target for the finish leap. The center zone isn't a hoppable square,
+// so the final pawn-step hop aims at the mover's WEDGE (FINISH_CENTERS — the same
+// wedge the settled fan occupies), landing a cell-sized pawn centered there.
+//   feet    — container-relative bottom-center contact point for playPawnStep.
+//   seatBox — the viewport box that cell-sized pawn occupies on landing; the
+//             post-leap bloom shrinks the live token from here into its (smaller)
+//             finish slot, reusing the same FLIP that track stack-joins use.
+function finishLandingTarget(finishCell, containerRect, cellSize) {
+    const playerIdx = parseInt(finishCell.id[1], 10);
+    const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
+    const zone = finishCell.getBoundingClientRect();
+    const h = cellSize * PAWN_H;
+    const centerVX = zone.left + (cx / 100) * zone.width;   // viewport center x
+    const centerVY = zone.top + (cy / 100) * zone.height;   // viewport center y
+    const bottomV = centerVY + h / 2;                       // pawn feet (body centered on cy)
+    return {
+        feet: { x: centerVX - containerRect.left, y: bottomV - containerRect.top },
+        seatBox: {
+            left: centerVX - cellSize / 2, top: centerVY - h / 2,
+            width: cellSize, height: h,
+            right: centerVX + cellSize / 2, bottom: bottomV,
+        },
     };
-    const homeCenter = {
-        x: finalRect.left + finalRect.width / 2 - containerRect.left,
-        y: finalRect.top + finalRect.height / 2 - containerRect.top,
-    };
-    const color = readTokenColor(playerIndex, tokenIndex, '#d97644');
-    const finishCell = element.parentElement;
-    const settledCount = finishCell
-        ? finishCell.querySelectorAll(':scope > wc-token').length
-        : 1;
-    const isLastPawn = settledCount >= 4;
-
-    element.style.visibility = 'hidden';
-    playFinishSound();
-    return playHomeArrival({
-        container: boardWrap,
-        home: homeCenter,
-        source: sourceCenter,
-        color,
-        // Match the real token at both ends: start at the pre-move size
-        // (~one cell), then shrink to the finish slot's settled size. The
-        // finish cell stacks tokens far smaller than a cell, so endScale
-        // carries the pawn down to the live token's final footprint.
-        pawnSize: src.width,
-        endScale: finalRect.width / src.width,
-        // Confetti/ring/label spread is independent of the (tiny) finish-slot
-        // pawn so the burst flies out across the board, not a small cluster.
-        burstSize: cellSize * 2.5,
-        duration: 1400,
-        flashBoard: isLastPawn,
-    }).then(() => {
-        element.style.visibility = '';
-    });
 }
 
 // Yard-launch overlay: live token hidden, parabolic-leap copy plays from yard
@@ -766,58 +738,18 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
 
         const lastId = path[path.length - 1];
         const lastIsFinish = FINISH_CELL_ID_RE.test(lastId);
-        // The finish-cell arrival has its own flourish (playFinishArrival); the
-        // hop covers every track / home-stretch cell up to (not including) it.
+        // The finish cell is a center zone, not a hoppable square — so the hop
+        // covers the home-stretch cells, then takes ONE extra hop into the mover's
+        // wedge of the center triangle. That final hop is the same pawn-step hop as
+        // every other, just taller (finalHopBig) — a satisfying leap home.
         const hopIds = lastIsFinish ? path.slice(0, -1) : path;
 
-        // Reparent the live token into the finish cell and hand off to the home
-        // arrival overlay, starting from the last hopped cell's box.
-        const landFinish = (preRect) => {
-            element.style.transition = 'none';
-            element.style.removeProperty('transform');
-            element.style.removeProperty('transform-origin');
-            element.style.willChange = '';
-            clearStackStyles(element);
-            delete element.dataset.moving;
-            finalContainer.appendChild(element);
-            updateCellStacking(finalContainer);
-            element.style.removeProperty('transition');
-            playFinishArrival(playerIndex, tokenIndex, preRect).then(resolve);
-        };
-
-        // A bare hop into the finish cell (no track cells between): skip straight
-        // to the arrival flourish, sourced from the mover's current box.
-        if (lastIsFinish && hopIds.length === 0) {
-            onArrive();
-            landFinish(startRect);
-            return;
-        }
-
-        // Finish landing: hop across the track cells up to (not including) the
-        // finish, land lone on the last one, then hand off to the arrival
-        // flourish. (Finish cells never host an opposing capture.)
-        if (lastIsFinish) {
-            const hopPath = [startCenter, ...hopIds.map(feetOf)];
-            playPawnStep({
-                container: boardWrap,
-                path: hopPath,
-                color,
-                pawnSize: cellSize,
-                onStep: () => playStepSound(),
-                onArrive,
-            }).then(() => {
-                const cellId = hopIds[hopIds.length - 1];
-                landFinish(lonePawnBox(document.getElementById(cellId).getBoundingClientRect()));
-            });
-            return;
-        }
-
-        // Track landing — the mover hops in and lands stacked on top of any
-        // current occupant (full cell size), then the whole group BLOOMS apart
-        // from that overlap into the final fan with a springy, deliberate spread
-        // (STACK_BLOOM_TRANSITION) instead of snapping into place instantly. A
-        // lone landing has nothing to fan, so the bloom is a no-op.
-        const landTrack = () => {
+        // Land the mover into finalContainer and BLOOM it from `fromRect` into its
+        // settled slot (STACK_BLOOM_TRANSITION) instead of snapping in place.
+        // `fromRect` is the cell-sized seat the hop ended on, so a lone track
+        // landing is a no-op; a stack-join (or the finish leap's shrink into the
+        // compact fan) eases into place.
+        const land = (fromRect) => {
             element.style.transition = 'none';
             element.style.removeProperty('transform');
             element.style.removeProperty('transform-origin');
@@ -826,18 +758,38 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             delete element.dataset.moving;
             element.style.visibility = '';
             finalContainer.appendChild(element);
-            // The mover's pre-bloom box is the full-cell seat the hop overlay
-            // ended on (centred, on top of the stack), so the bloom starts
-            // exactly where the live token appears — no reveal pop.
-            const firstRect = lonePawnBox(document.getElementById(lastId).getBoundingClientRect());
+            // Clear the temporary `none` BEFORE stacking: the FLIP (flipTokens)
+            // sets its own bloom transition on the mover and tears it down on
+            // transitionend. Removing the inline transition AFTER stacking used to
+            // clobber that bloom, dropping the cell→slot shrink back to wc-token's
+            // quick 150ms default — the sudden size snap at the finish.
+            element.style.removeProperty('transition');
             updateCellStacking(finalContainer, {
                 animate: true,
-                firstRects: new Map([[element, firstRect]]),
+                firstRects: new Map([[element, fromRect]]),
                 flipTransition: STACK_BLOOM_TRANSITION,
             });
-            element.style.removeProperty('transition');
             resolve();
         };
+
+        // Finish move: append the wedge landing point so the last hop carries the
+        // pawn into the center triangle, make that hop tall, and crown it with the
+        // finish sound on touchdown. A bare hop (mover already on the last
+        // home-stretch cell) is just this single tall leap.
+        if (lastIsFinish) {
+            const target = finishLandingTarget(finalContainer, containerRect, cellSize);
+            const hopPath = [startCenter, ...hopIds.map(feetOf), target.feet];
+            playPawnStep({
+                container: boardWrap,
+                path: hopPath,
+                color,
+                pawnSize: cellSize,
+                finalHopBig: FINISH_LEAP_HEIGHT,
+                onStep: () => playStepSound(),
+                onArrive: () => { onArrive(); playFinishSound(); },
+            }).then(() => land(target.seatBox));
+            return;
+        }
 
         const hopPath = [startCenter, ...hopIds.map(feetOf)];
 
@@ -851,7 +803,11 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
             // Per-cell footstep, fired as each gap begins (matches the old glide).
             onStep: () => playStepSound(),
             onArrive,
-        }).then(landTrack);
+        }).then(() => {
+            // The seat the hop overlay ended on (the last hopped cell).
+            const seatBox = lonePawnBox(document.getElementById(lastId).getBoundingClientRect());
+            land(seatBox);
+        });
     });
 }
 

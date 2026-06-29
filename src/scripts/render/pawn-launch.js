@@ -1,6 +1,6 @@
 // Pawn Launch overlay — pawn leaves its yard and lands on its entry cell on
 // the track. Self-contained DOM/style. Companion to ko-capture.js and
-// home-arrival.js; shares the pawn shape with them via pawn-shape.js.
+// pawn-step.js; shares the pawn shape with them via pawn-shape.js.
 //
 // playPawnLaunch({
 //   container,             HTMLElement (position: relative/absolute)

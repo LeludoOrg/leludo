@@ -8,7 +8,7 @@ import {
 import { pawnSVG } from "../scripts/render/pawn-shape.js";
 
 // The on-board pawn is built from the shared pawn-shape builder so the glyph
-// can't drift from the launch / capture / home-arrival overlays. `currentColor`
+// can't drift from the launch / capture / pawn-step overlays. `currentColor`
 // (from the player-fg-N class) drives the fill; the dark outline / base disc
 // derive from it, so runtime applyColorMap recolors the pawn for free. `fill`
 // mode omits width/height — wc-token.css sizes the svg to its (possibly

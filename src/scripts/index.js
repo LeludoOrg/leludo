@@ -19,6 +19,8 @@ import { installAnalyticsListener } from "./listeners/analytics-listener.js";
 import { initNavHistory } from "./platform/nav-history.js";
 import { initBackgroundSuspend } from "./platform/background-suspend.js";
 import { initAnalytics } from "./platform/analytics.js";
+import { initAppUpdate } from "./platform/app-update.js";
+import { initNativeBars } from "./platform/native-bars.js";
 
 setCommandHandler(commandHandler);
 installPersistenceListener();
@@ -28,3 +30,5 @@ installAnalyticsListener();
 initAnalytics();
 initNavHistory();
 initBackgroundSuspend();
+initAppUpdate();
+initNativeBars();

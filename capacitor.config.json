@@ -22,10 +22,12 @@
       "splashFullScreen": true,
       "splashImmersive": true
     },
-    "StatusBar": {
-      "backgroundColor": "#EFE9DC",
-      "style": "LIGHT",
-      "overlaysWebView": false
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "style": "LIGHT"
+    },
+    "EdgeToEdge": {
+      "backgroundColor": "#EFE9DC"
     }
   }
 }

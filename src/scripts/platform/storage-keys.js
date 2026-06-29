@@ -24,4 +24,6 @@ export const STORAGE_KEYS = Object.freeze({
     MP_SESSION: 'leludo-mp-session',   // stable per-device reconnect session id
     USERNAME: 'leludo-username',       // remembered online display name
     ONLINE_COLOR: 'leludo-online-color', // preferred online seat colour (0..3)
+    UPDATE_PROMPT_AT: 'leludo-update-prompt-at', // last in-app update consent prompt (epoch ms)
+    UPDATE_CHECK_AT: 'leludo-update-check-at',   // last update check ran (epoch ms) — rate-limits foreground re-checks
 });
