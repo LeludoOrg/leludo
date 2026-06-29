@@ -26,4 +26,5 @@ export const STORAGE_KEYS = Object.freeze({
     ONLINE_COLOR: 'leludo-online-color', // preferred online seat colour (0..3)
     UPDATE_PROMPT_AT: 'leludo-update-prompt-at', // last in-app update consent prompt (epoch ms)
     UPDATE_CHECK_AT: 'leludo-update-check-at',   // last update check ran (epoch ms) — rate-limits foreground re-checks
+    REVIEW_PROMPT_AT: 'leludo-review-prompt-at', // last native in-app review request (epoch ms) — cooldown between asks
 });

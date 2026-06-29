@@ -1,6 +1,6 @@
 {
   "name": "leludo",
-  "version": "0.29.13",
+  "version": "0.29.14",
   "description": "Ludo board game — browser + Android via Capacitor",
   "license": "GPL-3.0-or-later",
   "author": "Vishal Gidwani",
@@ -54,6 +54,7 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
+    "@capawesome/capacitor-app-review": "^8.0.1",
     "@capawesome/capacitor-app-update": "^8.0.3"
   },
   "overrides": {

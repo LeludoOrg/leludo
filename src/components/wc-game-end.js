@@ -18,7 +18,7 @@ import {
     COMMANDS,
     escapeHtml,
     shouldShowStoreNudge,
-    isCapacitorNative,
+    requestAppReview,
     openPlayStore,
 } from "../scripts/index.js";
 import {trackEvent} from "../scripts/platform/analytics.js";
@@ -73,7 +73,6 @@ function pawnSvg(playerIndex, size) {
     </svg>`;
 }
 
-const ICON_STAR = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.6 5.9 20.4l1.4-6.8L2.2 9l6.9-.7z"/></svg>`;
 const ICON_DOWNLOAD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>`;
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M15 6l-6 6 6 6"/></svg>`;
 const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>`;
@@ -85,28 +84,21 @@ const CARD_ICONS = {
 };
 
 /**
- * Play Store nudge shown on the recap, Android only. Inside the APK it
- * asks for a rating; in an Android browser it drives the install. Both
- * route through openPlayStore(). Returns '' on non-Android so the card
- * never renders elsewhere.
+ * Install nudge shown on the recap — Android *web* only, worded to drive
+ * installs and routed through openPlayStore(). The installed APK shows no
+ * card; it gets the passive native review sheet instead (requestAppReview).
+ * Returns '' everywhere else so the card never renders.
  */
 function storeNudgeHtml() {
     if (!shouldShowStoreNudge()) return '';
-    const native = isCapacitorNative();
-    const icon = native ? ICON_STAR : ICON_DOWNLOAD;
-    const title = native ? 'Enjoying Leludo?' : 'Get the Leludo app';
-    const body = native
-        ? 'A quick Play Store rating helps a ton.'
-        : 'Free on the Play Store — play offline, no ads.';
-    const action = native ? 'Rate us' : 'Get the app';
     return `
-        <button id="ge-store" class="ge-store" data-native="${native ? '1' : '0'}">
-            <span class="ge-store-icon">${icon}</span>
+        <button id="ge-store" class="ge-store" data-native="0">
+            <span class="ge-store-icon">${ICON_DOWNLOAD}</span>
             <span class="ge-store-text">
-                <span class="ge-store-title">${title}</span>
-                <span class="ge-store-body">${body}</span>
+                <span class="ge-store-title">Get the Leludo app</span>
+                <span class="ge-store-body">Free on the Play Store — play offline, no ads.</span>
             </span>
-            <span class="ge-store-action">${action}</span>
+            <span class="ge-store-action">Get the app</span>
         </button>`;
 }
 
@@ -387,6 +379,11 @@ class GameEnd extends HTMLElement {
         }
 
         this.appendChild(el);
+
+        // Passive native rating ask (Android APK only). The recap is a natural
+        // pause — Google's recommended moment. Self-throttled + Play-quota
+        // capped, fire-and-forget; web / desktop / iOS are no-ops.
+        requestAppReview();
     }
 }
 
