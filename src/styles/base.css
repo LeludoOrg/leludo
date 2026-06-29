@@ -654,3 +654,55 @@ wc-quick-start, wc-board {
 wc-token .animate-bounce {
     filter: drop-shadow(0 0 4px currentColor);
 }
+
+/* ============================================================
+   Update-available toast (web; injected by scripts/platform/app-update.js
+   when a new deploy's hashed bundle differs from the loaded one)
+   ============================================================ */
+
+.update-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-4));
+    transform: translateX(-50%);
+    z-index: 70; /* above .frame-overlay (60) */
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    max-width: calc(100vw - 2 * var(--space-4));
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    box-shadow: 0 8px 22px -8px rgb(var(--shadow-tint) / 0.45);
+    font-family: var(--font-sans);
+    animation: update-toast-in 0.28s ease-out;
+}
+
+.update-toast-label {
+    color: var(--color-fg);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.update-toast-btn {
+    flex: none;
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--color-fg);
+    color: var(--color-bg);
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.update-toast-btn:hover {
+    opacity: 0.9;
+}
+
+@keyframes update-toast-in {
+    from { opacity: 0; transform: translate(-50%, 12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
