@@ -35,6 +35,7 @@ import {
     VERSION,
 } from "./index.js"
 import { STORAGE_KEYS } from "../scripts/platform/storage-keys.js";
+import { applyNativeBarTheme } from "../scripts/platform/native-bars.js";
 import { getServerChannel, setServerChannel } from "../scripts/net/net-client.js";
 import { readBool, writeBool } from "../scripts/platform/storage-util.js";
 import { SCREENS } from "../scripts/platform/screens.js";
@@ -185,6 +186,11 @@ function updateTheme(theme) {
     }
 
     localStorage.setItem(STORAGE_KEYS.THEME, theme)
+
+    // Repaint the Android status/navigation bars to the new theme's background
+    // (no-op on web). Keeps the system-bar edges from reading as mismatched
+    // light strips around the dark theme.
+    applyNativeBarTheme();
 }
 
 let _overlayInitialized = false;
