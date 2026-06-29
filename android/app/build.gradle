@@ -13,8 +13,8 @@ android {
         applicationId "com.leludo.ludo"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 29012
-        versionName "0.29.12"
+        versionCode 29013
+        versionName "0.29.13"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
