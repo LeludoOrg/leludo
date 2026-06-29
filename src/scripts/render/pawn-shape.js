@@ -1,6 +1,6 @@
 // Shared pawn geometry + SVG builder. This is the ONE source for the pawn
 // glyph: the on-board wc-token AND the gameplay overlays (pawn-launch,
-// ko-capture, home-arrival) all build their pawn from here, so the shape can
+// ko-capture, pawn-step) all build their pawn from here, so the shape can
 // never drift between the board and the FX that fly across it.
 //
 // A top-heavy matte chess-pawn: sphere head, slim waist, flared base, drawn in

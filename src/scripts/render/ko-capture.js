@@ -1,6 +1,6 @@
 // KO Punch capture overlay. Self-contained DOM/style; shares the pawn shape
 // (pawn-shape.js) and overlay scaffolding (overlay-base.js) with the sibling
-// launch / home-arrival overlays.
+// launch / pawn-step overlays.
 //
 // playKOCapture({
 //   container,              HTMLElement (position: relative/absolute)
