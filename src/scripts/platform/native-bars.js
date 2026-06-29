@@ -26,6 +26,13 @@ function systemBars() {
     try { return window.Capacitor?.Plugins?.SystemBars || null; } catch { return null; }
 }
 
+// Our own MainActivity plugin (see SystemChromePlugin.java) — paints the
+// window background so the left/right cutout strips the edge-to-edge plugin
+// leaves unpainted (the landscape notch area) match the theme instead of black.
+function systemChrome() {
+    try { return window.Capacitor?.Plugins?.SystemChrome || null; } catch { return null; }
+}
+
 // Resolve --color-bg (a raw `hsl(...)` token) to the `#rrggbb` the plugins
 // want by letting the browser compute it: a hidden probe inherits the var as
 // a color, which getComputedStyle reports back as `rgb(r, g, b)`.
@@ -67,6 +74,11 @@ export async function applyNativeBarTheme() {
         if (e2e.setNavigationBarColor) await e2e.setNavigationBarColor({ color });
         // Older plugin builds only expose the combined setter.
         else if (e2e.setBackgroundColor) await e2e.setBackgroundColor({ color });
+        // The edge-to-edge plugin paints only the top/bottom inset strips, so
+        // the left/right cutout strip in landscape stays the (black) window
+        // background — paint that too so the notch area matches the theme.
+        const chrome = systemChrome();
+        if (chrome?.setBackgroundColor) await chrome.setBackgroundColor({ color });
     } catch { /* bar theming is cosmetic — never throw into boot/theme paths */ }
 }
 
