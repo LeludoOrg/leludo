@@ -23,8 +23,10 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No Tailwind, 
 ├── tools/               build helpers (all Node .mjs) — stays at repo root
 ├── docs/                internal docs (CONTRIBUTING, ATTRIBUTIONS, plans)
 ├── dev-assets/          dev/build-only sources — design/ (icon PNGs/SVGs),
-│                        screenshots/ (store shots), distribution/ (gen'd whatsnew).
-│                        NOT served, NOT shipped — referenced only by tools/*.mjs.
+│                        screenshots/ (store shots), distribution/store-notes/
+│                        (committed Play "What's new", edited per release).
+│                        NOT served, NOT shipped — referenced only by tools/*.mjs
+│                        + the Play upload jobs.
 ├── .local/             (gitignored) local-only generated junk: coverage,
 │                        test-results, e2e recordings, signed release artifacts.
 ├── www/                 (gitignored) Capacitor shipping dir, built by tools/build-www.mjs
@@ -98,13 +100,14 @@ GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
 - `ci.yml` — runs on PRs to `main` and pushes to other branches.
   Three jobs: vitest, Playwright E2E, and a `www/` build smoke test.
 - `release.yml` — **the production release** (manual `workflow_dispatch`,
-  one input: `release_notes`). One run ships everything for a version:
+  no inputs). One run ships everything for a version:
   prod MP Worker (`leludo-mp`) + Cloudflare Pages `leludo` (leludo.org) +
   Android AAB → Play **production** track + HTML5 build → itch.io + the
   `vX.Y.Z` tag and GH release (web zip + apk + aab). The Android build
   runs at `MP_CHANNEL=prod` (default): `versionCode = base`, prod backend
-  baked in. Play "What's new" comes from the `release_notes` input (not
-  the changelog — see Versioning), capped at 500 chars by a build step.
+  baked in. Play "What's new" comes from the committed file
+  `dev-assets/distribution/store-notes/whatsnew-en-US` (not the changelog
+  — see Versioning), shared with the internal track.
 - `release-beta.yml` — **the beta channel** (`workflow_dispatch` +
   every push to `main`). Always: beta MP Worker (`leludo-mp-beta`) +
   Cloudflare Pages `leludo-beta` (beta.leludo.org). On a **manual
@@ -135,8 +138,9 @@ never renumber an existing band.
 `softprops/action-gh-release@v2`. Typical flow: bump `VERSION` + add a
 changelog entry → push to `main` (auto-deploys beta.leludo.org) →
 dispatch `release-beta.yml` to push the internal AAB → test on the
-internal track (it dials the beta backend) → dispatch `release.yml`
-with the `release_notes` to ship production everywhere.
+internal track (it dials the beta backend) → edit
+`dev-assets/distribution/store-notes/whatsnew-en-US` with the store notes →
+dispatch `release.yml` to ship production everywhere.
 
 ### Playwright runner
 
@@ -324,18 +328,25 @@ Minimum sections per entry:
 - **Highlights** — short bullet list of changes. For user-visible diffs, describe what the player will see. For pure internal work (refactors, dead-code removal, dep bumps), say so plainly — e.g. "Internal code cleanup: …. No gameplay or UI changes." Don't invent user-facing narrative.
 - For Play Store releases only (versions actually shipped to a listing): also include **Play Store description — short** (≤80 chars) and **Play Store description — full** sections so the published copy stays in sync with the app.
 
-**Play "What's new" no longer comes from the changelog.** The
-`release_notes` input on `release.yml` (production) / `release-beta.yml`
-(internal) is the store text; a workflow step writes it to
-`dev-assets/distribution/whatsnew/whatsnew-en-US` and **fails the release
-if it exceeds 500 chars** (Play's en-US cap). So author release notes
-fresh in the dispatch form — they don't have to mirror the changelog.
+**Play "What's new" does NOT come from the changelog.** It is the
+committed file `dev-assets/distribution/store-notes/whatsnew-en-US` —
+**edit it per release** (see that dir's README). Both `release.yml`
+(production) and `release-beta.yml` (internal) point `whatsNewDirectory`
+straight at it, so prod and the internal/beta build ship the SAME notes
+(a tester never sees a generic "internal testing build" string). It is
+NOT a workflow-dispatch input anymore — GitHub's single-line dispatch
+field silently stripped newlines, flattening every bullet onto one line;
+a committed file keeps real line breaks and is reviewable in the PR.
+`src/test/tools/store-notes.test.js` runs in the `test` job (upstream of
+both Play upload jobs) and **fails CI if the file is missing or exceeds
+500 chars** (Play's en-US cap), so an invalid file can never reach the
+store.
 
-The changelog itself isn't length-capped by the pipeline anymore, but
-keep Highlights concise. [tools/extract-whatsnew.mjs](tools/extract-whatsnew.mjs)
-still derives ≤500-char notes from the current entry (no longer auto-wired
-into a release — handy if you want to paste the changelog bullets into the
-`release_notes` field). Sanity-check the changelog length while drafting:
+The changelog itself isn't length-capped by the pipeline, but keep
+Highlights concise. [tools/extract-whatsnew.mjs](tools/extract-whatsnew.mjs)
+derives ≤500-char notes from the current entry (NOT wired into any
+release — a standalone helper if you want a starting point to paste into
+the store-notes file). Sanity-check the changelog length while drafting:
 
 ```bash
 node -e "const fs=require('fs');const html=fs.readFileSync('changelog.html','utf8');const a=html.match(/<article[^>]*>([\s\S]*?)<\/article>/)[1];const ul=a.match(/Highlights[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/)[1];const b=[...ul.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map(m=>m[1].replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim());console.log(b.map(x=>'• '+x).join('\n').length,'chars')"

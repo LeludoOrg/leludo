@@ -30,12 +30,10 @@ name: Release (Beta)
 # is a SEPARATE artifact built by release.yml (MP_CHANNEL=prod).
 
 on:
+  # No inputs: the Play internal "What's new" is the SAME committed file as
+  # prod — dev-assets/distribution/store-notes/whatsnew-en-US — so a tester
+  # sees the real notes, not a generic "internal testing build" string.
   workflow_dispatch:
-    inputs:
-      release_notes:
-        description: "Play internal 'What's new' (en-US, ≤500 chars; optional — blank = generic beta note)"
-        required: false
-        type: string
   push:
     branches: [main]
 
@@ -301,34 +299,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
       - name: Download Android (beta) artifact
         uses: actions/download-artifact@v5
         with:
           name: android-dist-beta
           path: android-dist
 
-      - name: Write Play release notes (internal)
-        env:
-          NOTES: ${{ inputs.release_notes }}
-          VERSION: ${{ needs.detect-version.outputs.version }}
-        run: |
-          mkdir -p dev-assets/distribution/whatsnew
-          if [ -z "$NOTES" ]; then
-            NOTES="Beta ${VERSION} — internal testing build (beta multiplayer backend)."
-          fi
-          printf '%s' "$NOTES" > dev-assets/distribution/whatsnew/whatsnew-en-US
-          LEN=$(node -e "const fs=require('fs');process.stdout.write(String(fs.readFileSync('dev-assets/distribution/whatsnew/whatsnew-en-US','utf8').length))")
-          if [ "$LEN" -gt 500 ]; then
-            echo "::error::release notes are $LEN chars — Play caps the en-US 'What's new' at 500. Shorten the release_notes input and re-run." >&2
-            exit 1
-          fi
-          echo "Release notes: $LEN chars"
-
+      # Internal "What's new" is the SAME committed file as prod
+      # (dev-assets/distribution/store-notes/whatsnew-en-US), so testers see the
+      # real notes. The `test` job (upstream of build-android-beta, which this
+      # job needs) runs store-notes.test.js and fails on a missing/over-cap file
+      # — so an invalid file can never reach the store. No write step here.
       - name: Upload AAB to Google Play (internal)
         uses: r0adkll/upload-google-play@v1
         with:
@@ -337,4 +318,4 @@ jobs:
           releaseFiles: android-dist/ludo-beta-v${{ needs.detect-version.outputs.version }}.aab
           tracks: internal
           status: completed
-          whatsNewDirectory: dev-assets/distribution/whatsnew
+          whatsNewDirectory: dev-assets/distribution/store-notes

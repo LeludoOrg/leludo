@@ -1,6 +1,6 @@
 {
   "name": "leludo",
-  "version": "0.29.5",
+  "version": "0.29.6",
   "description": "Ludo board game — browser + Android via Capacitor",
   "license": "GPL-3.0-or-later",
   "author": "Vishal Gidwani",

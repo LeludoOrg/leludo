@@ -4,8 +4,9 @@ name: Release (Production)
 # multiplayer Worker, builds + uploads the Android AAB to the Play PRODUCTION
 # track, pushes the HTML5 build to itch.io, and cuts the GitHub release/tag —
 # all from one manual dispatch. The Play "What's new" text comes from the
-# `release_notes` input (the public changelog.html is the canonical web log, but
-# it isn't shaped for a store listing, so prod release notes are authored here).
+# committed file dev-assets/distribution/store-notes/whatsnew-en-US (the public
+# changelog.html is the canonical web log, but it isn't shaped for a store
+# listing, so the store notes are authored in that file, edited per release).
 #
 # Android channel: builds with MP_CHANNEL=prod (default) → versionCode = base
 # (tools/sync-android-version.mjs) and the prod multiplayer backend baked in
@@ -15,12 +16,11 @@ name: Release (Production)
 # collision between the two tracks.
 
 on:
+  # No inputs: the Play "What's new" text is the committed file
+  # dev-assets/distribution/store-notes/whatsnew-en-US (edited per release).
+  # GitHub's single-line dispatch field silently stripped newlines, so the
+  # notes live in a reviewable file instead. See that dir's README.
   workflow_dispatch:
-    inputs:
-      release_notes:
-        description: "Play Store 'What's new' (en-US, ≤500 chars)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -269,34 +269,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
       - name: Download Android artifact
         uses: actions/download-artifact@v5
         with:
           name: android-dist
           path: android-dist
 
-      - name: Write Play release notes (from workflow input)
-        env:
-          NOTES: ${{ inputs.release_notes }}
-        run: |
-          if [ -z "$NOTES" ]; then
-            echo "::error::release_notes input is empty — provide the Play Store 'What's new' text when dispatching." >&2
-            exit 1
-          fi
-          mkdir -p dev-assets/distribution/whatsnew
-          printf '%s' "$NOTES" > dev-assets/distribution/whatsnew/whatsnew-en-US
-          LEN=$(node -e "const fs=require('fs');process.stdout.write(String(fs.readFileSync('dev-assets/distribution/whatsnew/whatsnew-en-US','utf8').length))")
-          if [ "$LEN" -gt 500 ]; then
-            echo "::error::release notes are $LEN chars — Play caps the en-US 'What's new' at 500. Shorten the release_notes input and re-run." >&2
-            exit 1
-          fi
-          echo "Release notes: $LEN chars"
-
+      # "What's new" is the committed file
+      # dev-assets/distribution/store-notes/whatsnew-en-US. The `test` job
+      # (upstream of build-android, which this job needs) runs
+      # store-notes.test.js, which fails if the file is missing or >500 chars
+      # — so an over-cap file can never reach the store. No write step here.
       - name: Upload AAB to Google Play (production)
         uses: r0adkll/upload-google-play@v1
         with:
@@ -305,7 +288,7 @@ jobs:
           releaseFiles: android-dist/ludo-v${{ needs.detect-version.outputs.version }}.aab
           tracks: production
           status: completed
-          whatsNewDirectory: dev-assets/distribution/whatsnew
+          whatsNewDirectory: dev-assets/distribution/store-notes
 
   publish-itch:
     name: Publish HTML5 build to itch.io
