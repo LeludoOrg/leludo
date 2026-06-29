@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { playPawnStep } from '../../scripts/render/pawn-step.js';
+import { finishActiveOverlays } from '../../scripts/render/overlay-base.js';
 
 // happy-dom doesn't implement Element.animate. Stub it so the landing bounce's
 // keyframe call becomes a harmless no-op in tests.
@@ -148,6 +149,34 @@ describe('playPawnStep', () => {
         expect(steps).toEqual([0, 1]);
         expect(arrived).toBe(1);
         expect(container.querySelector('.pstep-root')).toBeNull();
+    });
+
+    it('finishActiveOverlays snaps a mid-hop pawn home silently (no onStep burst) but still hands off', async () => {
+        // Regression: pausing mid-hop called finishActiveOverlays(), whose snap
+        // used to replay every remaining onStep — i.e. the per-cell footstep
+        // SOUND — firing the whole tail at once as an audible burst on pause.
+        // The snap must place the pawn + fire onArrive once, WITHOUT any onStep.
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const steps = [];
+        let arrived = 0;
+
+        // Long step so the hop is still mid-flight when we "pause".
+        const promise = playPawnStep({
+            container,
+            path: PATH,
+            stepDur: 1000,
+            onStep: (i) => steps.push(i),
+            onArrive: () => { arrived++; },
+        });
+
+        // Pause before any animation frame advances a cell.
+        finishActiveOverlays();
+        await promise;
+
+        expect(steps).toEqual([]);        // no footstep-sound burst
+        expect(arrived).toBe(1);          // arrival handoff still fires once
+        expect(container.querySelector('.pstep-root')).toBeNull(); // torn down
     });
 
     it('reduced motion still fires onArrive on the snap', async () => {

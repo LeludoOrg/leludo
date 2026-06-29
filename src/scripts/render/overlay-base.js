@@ -49,6 +49,37 @@ export function createOverlayRoot(container, rootClass) {
     return root;
 }
 
+// --- Finish-now registry ---------------------------------------------------
+// Gameplay FX (pawn hop / launch / capture) animate on their own rAF + Web
+// Animations timeline, independent of the turn scheduler. When the game pauses
+// mid-animation we don't want a pawn frozen halfway through its hop under the
+// pause card — so each running overlay registers a `finisher` that snaps it to
+// its end frame (pawn on its destination cell, firing its onArrive handoff).
+// handleGamePause calls finishActiveOverlays() to drain them before the pause
+// overlay appears. Each overlay unregisters its finisher in its own teardown.
+const _activeFinishers = new Set();
+
+/** Register an overlay's "jump to end" callback. Returns an unregister fn the
+ *  overlay MUST call from its own cleanup so a completed overlay isn't finished
+ *  a second time. */
+export function registerOverlayFinisher(finisher) {
+    _activeFinishers.add(finisher);
+    return () => _activeFinishers.delete(finisher);
+}
+
+/** Snap every in-flight FX overlay to its final frame, immediately. Safe to
+ *  call when nothing is animating (no-op). We drain only the finishers present
+ *  when called: a snap's onArrive handoff can register a NEW overlay (e.g. a
+ *  capture KO) mid-loop, and that one should keep playing, not be force-ended. */
+export function finishActiveOverlays() {
+    if (_activeFinishers.size === 0) return;
+    const snapshot = [..._activeFinishers];
+    for (const finisher of snapshot) {
+        _activeFinishers.delete(finisher);
+        try { finisher(); } catch { /* a wedged finisher must not block the pause */ }
+    }
+}
+
 /** Remove `root` after `ms`, fire `onComplete`, resolve. The standard overlay
  *  teardown — callers add CLEANUP_MARGIN_MS to their animation length. */
 export function scheduleCleanup(root, ms, onComplete) {

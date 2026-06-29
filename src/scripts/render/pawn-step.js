@@ -52,6 +52,7 @@ import {
     injectOnce,
     createOverlayRoot,
     overlayRootCSS,
+    registerOverlayFinisher,
 } from "./overlay-base.js";
 
 const STYLE_ID = 'pstep-styles';
@@ -170,11 +171,45 @@ export function playPawnStep(opts) {
     let resolveFn;
     const promise = new Promise(resolve => { resolveFn = resolve; });
 
+    let finished = false;
+    let arrived = false;
+    let rafId = null;
+    let lastStep = -1;
+    let start = null;
+
+    // onArrive is the overlay→live-token handoff; fire it exactly once whether the
+    // hop ends naturally, via reduced-motion, or via a pause-triggered snap.
+    function fireArrive() {
+        if (arrived) return;
+        arrived = true;
+        onArrive();
+    }
+
     function done() {
+        if (finished) return;
+        finished = true;
+        unregister();
+        if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
         if (root.parentNode) root.parentNode.removeChild(root);
         onComplete();
         if (resolveFn) resolveFn();
     }
+
+    // Pause taken mid-hop: jump straight to the destination frame, fire the
+    // arrival handoff, and tear down — no settle bounce. Deliberately does NOT
+    // replay the remaining onStep callbacks: those are the per-cell footstep
+    // sound, and firing the whole tail at once on pause is an audible burst. The
+    // on-board token still lands on its target cell, just silently and instantly.
+    function snapToEnd() {
+        if (finished) return;
+        pawn.style.transform =
+            `translate(${(last.x - p0.x).toFixed(2)}px,${(last.y - p0.y).toFixed(2)}px)`;
+        shadow.style.opacity = '0';
+        fireArrive();
+        done();
+    }
+
+    const unregister = registerOverlayFinisher(snapToEnd);
 
     // Reduced motion: skip the hop choreography and snap to the destination.
     if (prefersReducedMotion()) {
@@ -183,13 +218,10 @@ export function playPawnStep(opts) {
             `translate(${(last.x - p0.x).toFixed(2)}px,${(last.y - p0.y).toFixed(2)}px)`;
         shadow.style.transform = pawn.style.transform;
         shadow.style.opacity = '0';
-        onArrive();
+        fireArrive();
         setTimeout(done, 80);
         return promise;
     }
-
-    let lastStep = -1;
-    let start = null;
 
     function render(now) {
         if (start === null) start = now;
@@ -241,8 +273,9 @@ export function playPawnStep(opts) {
         shadow.style.opacity = ((0.85 - lift * 0.55) * landFade).toFixed(3);
 
         if (t < totalDur) {
-            requestAnimationFrame(render);
+            rafId = requestAnimationFrame(render);
         } else {
+            rafId = null;
             finish();
         }
     }
@@ -257,7 +290,9 @@ export function playPawnStep(opts) {
 
         // Touched down — fire the arrival hook before the (cosmetic) settle bounce
         // so any coincident effect (capture KO) starts on contact, not after it.
-        onArrive();
+        fireArrive();
+
+        if (finished) return; // a pause snapped us to the end during this frame
 
         if (landBounce && typeof pawn.animate === 'function') {
             pawn.animate(
@@ -275,6 +310,6 @@ export function playPawnStep(opts) {
         }
     }
 
-    requestAnimationFrame(render);
+    rafId = requestAnimationFrame(render);
     return promise;
 }

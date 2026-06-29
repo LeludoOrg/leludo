@@ -82,6 +82,15 @@ wc-board .board-area {
 wc-board .board-wrap {
     position: relative;
     width: 100%;
+    /* Isolate so the gameplay FX overlays (pawn-step / pawn-launch /
+       ko-capture) — which mount here at z-index:1000 (OVERLAY_Z) — keep
+       that z LOCAL to the board's stacking context. Without it, a pawn
+       mid-hop when the game pauses paints ABOVE the root-level pause /
+       settings / game-end overlays (z 50–70): position:relative with no
+       z-index creates no stacking context, so 1000 escapes to root.
+       isolation doesn't clip, so tokens still render past the board edge.
+       Guarded by board-styles.spec.js. */
+    isolation: isolate;
 }
 
 wc-board .board-grid {

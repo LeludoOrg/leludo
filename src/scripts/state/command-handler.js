@@ -66,6 +66,7 @@ import {
     isGameLogicPaused,
 } from "../platform/scheduler.js";
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "../platform/nav-history.js";
+import { finishActiveOverlays } from "../render/overlay-base.js";
 import { dispatch } from "./game-store.js";
 import { isOnlineActive, onlineNet, onlineLocalSelf } from "../net/online-state.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
@@ -828,6 +829,16 @@ let _pauseCloseHandler = null;
 function handleGamePause(emit) {
     if (isGameLogicPaused()) return;
     pauseGameLogic();
+
+    // Pawn-hop / launch / capture FX run on their own rAF + Web Animations
+    // timeline, NOT the scheduler — so a pause taken mid-animation would leave a
+    // pawn frozen partway through its hop under the pause card. Snap any in-flight
+    // FX straight to its end frame (pawn placed on its destination cell, captures
+    // sent home) so the overlay rises over a settled board. Each finisher fires
+    // its onArrive, so the move's follow-up logic (capture launch, turn advance →
+    // scheduleTurn) runs and then defers under _paused exactly as before.
+    finishActiveOverlays();
+
     emit({ type: EVENTS.GAME_PAUSED });
     showPauseMenu();
     goTo(SCREENS.PAUSE);
