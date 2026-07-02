@@ -9,6 +9,7 @@ import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
 import { PAWN_ASPECT } from "./pawn-shape.js";
+import { DIE_PIPS } from "../core/dice-faces.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
 // even though the wake-lock implementation now lives in its own module.
@@ -949,16 +950,6 @@ export function setLastRoll(playerIndex, value) {
 export function resetLastRolls() {
     _lastRollByPlayer = [null, null, null, null];
 }
-
-// Pip layout per face value (grid row/column, 3x3 grid) — mirrors wc-dice.
-const DIE_PIPS = {
-    1: [[2, 2]],
-    2: [[1, 1], [3, 3]],
-    3: [[1, 1], [2, 2], [3, 3]],
-    4: [[1, 1], [1, 3], [3, 1], [3, 3]],
-    5: [[1, 1], [1, 3], [2, 2], [3, 1], [3, 3]],
-    6: [[1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3]],
-};
 
 // Reuses the exact live-dice classes (.die / .dice-face / .dice-dot) so the
 // faded copy inherits identical light/dark styling — only one face, no id.

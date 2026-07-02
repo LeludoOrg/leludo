@@ -4,22 +4,15 @@
 // the home pawn rendering a different shape than a lobby pawn, etc.).
 
 import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "../scripts/render/pawn-mini.js";
+import { DIE_PIPS } from "../scripts/core/dice-faces.js";
 
 export const DICE_SVG = (value, size = 56) => {
-    const PIP_LAYOUTS = {
-        1: [[1,1]],
-        2: [[0,0],[2,2]],
-        3: [[0,0],[1,1],[2,2]],
-        4: [[0,0],[0,2],[2,0],[2,2]],
-        5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
-        6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
-    };
     const pad = size * 0.2;
     const pip = size * 0.15;
     const cell = (size - pad * 2) / 2;
-    const pips = PIP_LAYOUTS[value] || PIP_LAYOUTS[1];
-    const pipSvgs = pips.map(([gr, gc]) =>
-        `<circle cx="${pad + gc * cell}" cy="${pad + gr * cell}" r="${pip/2}" fill="var(--color-fg)"/>`
+    const pips = DIE_PIPS[value] || DIE_PIPS[1];
+    const pipSvgs = pips.map(([r, c]) =>
+        `<circle cx="${pad + (c - 1) * cell}" cy="${pad + (r - 1) * cell}" r="${pip/2}" fill="var(--color-fg)"/>`
     ).join('');
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${size * 0.22}" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="1"/>

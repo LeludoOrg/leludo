@@ -5,43 +5,20 @@ import {
     dispatch,
     COMMANDS,
 } from "../scripts/index.js";
+import { DIE_PIPS } from "../scripts/core/dice-faces.js";
+
+// Generate the six dice faces from the shared pip layout.
+const diceFace = (value) => {
+    const dots = DIE_PIPS[value]
+        .map(([r, c]) => `<div class="dice-dot" style="grid-row:${r};grid-column:${c};"></div>`)
+        .join("");
+    return `<div id="d${value}" class="dice-face${value === 1 ? '' : ' hidden'}">${dots}</div>`;
+};
 
 //language=HTML
 const DICE_HTML = /*html*/ `
 <div id="dice" class="die">
-    <div id="d1" class="dice-face">
-        <div class="dice-dot" style="grid-row:2;grid-column:2;"></div>
-    </div>
-    <div id="d2" class="dice-face hidden">
-        <div class="dice-dot"></div>
-        <div class="dice-dot" style="grid-row:3;grid-column:3;"></div>
-    </div>
-    <div id="d3" class="dice-face hidden">
-        <div class="dice-dot"></div>
-        <div class="dice-dot" style="grid-row:2;grid-column:2;"></div>
-        <div class="dice-dot" style="grid-row:3;grid-column:3;"></div>
-    </div>
-    <div id="d4" class="dice-face hidden">
-        <div class="dice-dot"></div>
-        <div class="dice-dot" style="grid-column:3;"></div>
-        <div class="dice-dot" style="grid-row:3;"></div>
-        <div class="dice-dot" style="grid-row:3;grid-column:3;"></div>
-    </div>
-    <div id="d5" class="dice-face hidden">
-        <div class="dice-dot"></div>
-        <div class="dice-dot" style="grid-column:3;"></div>
-        <div class="dice-dot" style="grid-row:2;grid-column:2;"></div>
-        <div class="dice-dot" style="grid-row:3;"></div>
-        <div class="dice-dot" style="grid-row:3;grid-column:3;"></div>
-    </div>
-    <div id="d6" class="dice-face hidden">
-        <div class="dice-dot"></div>
-        <div class="dice-dot" style="grid-column:3;"></div>
-        <div class="dice-dot" style="grid-row:2;"></div>
-        <div class="dice-dot" style="grid-row:2;grid-column:3;"></div>
-        <div class="dice-dot" style="grid-row:3;"></div>
-        <div class="dice-dot" style="grid-row:3;grid-column:3;"></div>
-    </div>
+    ${[1, 2, 3, 4, 5, 6].map(diceFace).join("\n    ")}
 </div>
 `
 
