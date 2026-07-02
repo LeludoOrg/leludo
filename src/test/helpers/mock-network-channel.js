@@ -1,5 +1,5 @@
 /**
- * Mock-network channel — a test seam that JSON-serializes every command
+ * Mock-network channel — test helper that JSON-serializes every command
  * and event hop so the suite catches non-serializable payloads early.
  * Stands in for the real networked transport without any sockets.
  *
