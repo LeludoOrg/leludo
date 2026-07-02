@@ -3,8 +3,8 @@
  *
  * NOT on the launch path. The shipped client is private-rooms-only
  * (components/wc-quick-start.js), so no client sends `mode=public` yet; this DO
- * is wired for parity with docs/multiplayer-plan.md and to keep the queue logic
- * (server/matchmaker.js) deployed and testable.
+ * stays wired to keep the queue logic (server/matchmaker.js) deployed and
+ * testable.
  *
  * Cross-DO caveat — why this needs one more client change before it's live:
  *   A WebSocket belongs to exactly ONE Durable Object. A socket queued *here*

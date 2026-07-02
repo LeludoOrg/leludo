@@ -13,7 +13,7 @@ runtime-agnostic engine the local Node server uses:
 | `cf-utils.js` | — | shared JSON/env/socket helpers |
 
 All game rules stay in `scripts/*`; these files only move bytes + own sockets
-(`docs/multiplayer-plan.md` → "the DO is a thin transport + state shell").
+(the DO is a thin transport + state shell).
 
 ## Local dev / tests — this IS the dev runtime
 
@@ -92,4 +92,4 @@ think-time. On the paid plan duration is billed beyond 400,000 GB-s/month
 INCLUDED; at ~1000 4p-games/day × ~13 GB-s × 30 ≈ 390k GB-s/month the caps keep
 it right at the included ceiling. Hibernation would cut that further — revisit it
 with **alarm-based** bot-pacing/grace timers so it doesn't reintroduce the
-per-move lag (see `docs/multiplayer-plan.md`).
+per-move lag.

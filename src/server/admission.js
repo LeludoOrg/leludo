@@ -6,11 +6,11 @@
  *   - a Cloudflare Durable Object (production AND dev/e2e under `wrangler dev`),
  *   - vitest (unit tests, with `now` advanced by hand).
  *
- * See docs/multiplayer-plan.md → "AdmissionDO". Caps are sized to stay inside
- * the Cloudflare Workers Paid ($5/mo) plan's INCLUDED Durable-Object allowance
- * (no overage); hitting one returns a friendly BUSY reason rather than spending
- * into a throttle / paid overage. The caps remain the real footgun guard on the
- * paid plan (a Cloudflare billing alert is the backstop) — see multiplayer-plan.
+ * Caps are sized to stay inside the Cloudflare Workers Paid ($5/mo) plan's
+ * INCLUDED Durable-Object allowance (no overage); hitting one returns a friendly
+ * BUSY reason rather than spending into a throttle / paid overage. The caps
+ * remain the real footgun guard on the paid plan (a Cloudflare billing alert is
+ * the backstop).
  */
 
 import { BUSY } from '../scripts/net/net-protocol.js';

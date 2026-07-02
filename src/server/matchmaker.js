@@ -1,7 +1,7 @@
 /**
  * Matchmaker — public random-match queue, runtime-agnostic.
  *
- * The MatchmakingDO from docs/multiplayer-plan.md. Players who pick "public"
+ * Backs the public-match DO (MatchmakingDO). Players who pick "public"
  * join a per-size queue; when `size` players are waiting a match forms. A
  * fill-timeout forms a partial match topped up with bots so a lone player is
  * never stuck forever. Private (room-code) games skip this entirely.

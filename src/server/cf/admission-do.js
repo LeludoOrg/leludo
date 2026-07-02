@@ -2,9 +2,9 @@
  * AdmissionDO — the hard-capacity gate as a Cloudflare Durable Object.
  *
  * A single global instance (idFromName("global")) is the ONLY place that
- * authorizes a new room, so the operator's caps protect every path
- * (docs/multiplayer-plan.md → "AdmissionDO"). It wraps the runtime-agnostic
- * `Admission` class unchanged; this shell just persists the counters to DO
+ * authorizes a new room, so the operator's caps protect every path. It wraps
+ * the runtime-agnostic `Admission` class (server/admission.js) unchanged; this
+ * shell just persists the counters to DO
  * storage so they survive the eviction/hibernation this DO undergoes between
  * calls (it holds no long-lived socket to pin it in memory).
  *

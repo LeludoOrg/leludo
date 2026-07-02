@@ -5,8 +5,7 @@
  * server/admission.js, server/matchmaker.js). This Worker is the transport layer
  * for both production AND dev/e2e: the Durable Objects and dev/Playwright tests
  * run against the same Worker code (under `wrangler dev` for dev/e2e). All game
- * rules stay in scripts/* (see docs/multiplayer-plan.md → "Reuse of existing
- * pure modules").
+ * rules stay in scripts/* — this shell only moves bytes.
  *
  * The Worker holds NO game state. It terminates `wss://`, then forwards the
  * upgrade to the Durable Object that owns the room:
