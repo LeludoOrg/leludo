@@ -47,11 +47,11 @@ test.describe('Home — offline / online split', () => {
         await expect(page.locator('.seat-list')).toHaveCount(0); // NOT the offline setup
     });
 
-    // Initial release ships private rooms only — the "Find a public match" entry
-    // is hidden behind PUBLIC_MATCH_ENABLED in wc-quick-start.js. The entry screen
-    // is join-first: a code field + "Join room" as the hero, then a quieter
-    // "Create a room" card. Name + colour are picked later, in the lobby — NOT
-    // here. It must NOT show the public entry.
+    // Initial release ships private rooms only — the public-match entry is not
+    // wired up. The entry screen is join-first: a code field + "Join room" as
+    // the hero, then a quieter "Create a room" card. Name + colour are picked
+    // later, in the lobby — NOT here. It must NOT show the public entry.
+    // See _enterMatchmaking(size) in wc-quick-start.js (dormant method).
     test('online path offers the private-room join / create entry only', async ({ page }) => {
         await page.goto('/');
         await goHomeOnline(page);
@@ -464,13 +464,13 @@ test.describe('Online — invite links', () => {
     });
 });
 
-// Public matchmaking is hidden for the initial release (PUBLIC_MATCH_ENABLED =
-// false in components/wc-quick-start.js). The queue/auto-start backend stays
-// wired and unit-tested (test/scripts/net-client + online-game); these UI flows
-// are unreachable until the entry button returns, so the suite is skipped.
+// Public matchmaking UI entry is not wired up for the initial release. The
+// queue/auto-start backend stays deployed and unit-tested (test/scripts/net-client
+// + online-game); these UI flows are unreachable until _enterMatchmaking(size) in
+// wc-quick-start.js is called from a button, so the suite is skipped.
 // NOTE: the old room-size segmented control (online-players-*) was replaced by
 // the seat-setup add/remove rows — re-enabling public also needs a size source
-// (e.g. reuse the seat count) and these tests updated. Un-skip with the flag.
+// (e.g. reuse the seat count) and these tests updated.
 test.describe.skip('Online — public matchmaking', () => {
     test('cancelling a public search returns to the online menu', async ({ page }) => {
         await openOnline(page, 'Solo');

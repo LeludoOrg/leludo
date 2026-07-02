@@ -17,12 +17,6 @@ import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_B
 import "./wc-play-online.js";
 import "./wc-game-room.js";
 
-// Initial release ships private rooms only. The public-matchmaking backend
-// (queue + auto-start) stays wired and tested — this flag just hides the entry
-// UI ("Find a public match"). Flip to true to bring it back; the public e2e
-// suite in test/e2e/online-screens.spec.js is gated on the same switch.
-const PUBLIC_MATCH_ENABLED = false;
-
 // Public match: how long the "Match found!" announcement stays up before the
 // board is revealed. The board mounts and runs underneath immediately — this is
 // a purely cosmetic cover so an auto-started public game doesn't snap straight
@@ -848,6 +842,12 @@ class QuickStart extends HTMLElement {
         this._pendingJoin = true
     }
 
+    // ----- Public matchmaking (dormant) -----
+    // No UI entry point calls this today — the initial release ships private
+    // rooms only. The server half (matchmaker + MatchmakingDO) stays deployed
+    // and tested; to relaunch public matches, add a button that calls
+    // _enterMatchmaking(size). See src/server/cf/match-do.js for the remaining
+    // client redial work.
     _enterMatchmaking(size) {
         this._isPublic = true
         this.showOnlineSearch(size)
