@@ -78,20 +78,8 @@ describe('reducer', () => {
         expect(state.sentHomeCount[1]).toBe(1);
     });
 
-    it('DICE_ROLLED tracks per-player best streak of any face', () => {
-        const state = initialGameState();
-        state.playerTypes[0] = 'PLAYER';
-        state.currentPlayerIndex = 0;
-        reducer(state, { type: EVENTS.DICE_ROLLED, value: 4 });
-        reducer(state, { type: EVENTS.DICE_ROLLED, value: 4 });
-        reducer(state, { type: EVENTS.DICE_ROLLED, value: 4 });
-        expect(state.bestDiceStreak[0]).toEqual({ value: 4, length: 3, atTurn: 0 });
-        // Different value breaks the streak; previous best persists.
-        reducer(state, { type: EVENTS.DICE_ROLLED, value: 2 });
-        expect(state.bestDiceStreak[0].length).toBe(3);
-    });
 
-    it('TOKEN_MOVED accumulates distance and records first-home-stretch + first-finish turn', () => {
+    it('TOKEN_MOVED accumulates distance traveled', () => {
         const state = initialGameState();
         state.playerTokenPositions[0] = [-1, -1, -1, -1];
         state.turnCount = 12;
@@ -101,21 +89,18 @@ describe('reducer', () => {
         reducer(state, { type: EVENTS.TOKEN_MOVED, playerIndex: 0, tokenIndex: 0, fromPosition: 0, toPosition: 5 });
         // Enter home stretch
         reducer(state, { type: EVENTS.TOKEN_MOVED, playerIndex: 0, tokenIndex: 0, fromPosition: 50, toPosition: 52 });
-        expect(state.firstHomeStretchTurn[0]).toBe(12);
         // Finish
         reducer(state, { type: EVENTS.TOKEN_MOVED, playerIndex: 0, tokenIndex: 0, fromPosition: 55, toPosition: 56 });
-        expect(state.firstFinishTurn[0]).toBe(12);
         expect(state.distanceTraveled[0]).toBeGreaterThan(0);
     });
 
-    it('TURN_ADVANCED increments turnCount and samples pawn-at-base at turn 20', () => {
+    it('TURN_ADVANCED increments turnCount', () => {
         const state = initialGameState();
         state.playerTypes[0] = 'PLAYER';
         state.playerTokenPositions[0] = [-1, -1, -1, 5];
         state.turnCount = 19;
         reducer(state, { type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 0 });
         expect(state.turnCount).toBe(20);
-        expect(state.pawnsAtBaseAtTurn20[0]).toBe(3);
     });
 
     it('PLAYER_FINISHED sets rank, time, lastRank, and first winner', () => {

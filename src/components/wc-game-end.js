@@ -5,11 +5,7 @@ import {
     playerRanks,
     playerTypes,
     sentHomeCount,
-    firstHomeStretchTurn,
-    firstFinishTurn,
     distanceTraveled,
-    pawnsAtBaseAtTurn20,
-    bestDiceStreak,
     state,
     selectHighlights,
     selectHighlightsBySeat,
@@ -200,11 +196,7 @@ function buildStats() {
     return {
         playerCaptures: Array.from(playerCaptures),
         sentHomeCount: Array.from(sentHomeCount),
-        bestDiceStreak: Array.from(bestDiceStreak),
-        firstFinishTurn: Array.from(firstFinishTurn),
-        firstHomeStretchTurn: Array.from(firstHomeStretchTurn),
         distanceTraveled: Array.from(distanceTraveled),
-        pawnsAtBaseAtTurn20: Array.from(pawnsAtBaseAtTurn20),
         turnCount: state.turnCount || 0,
     };
 }

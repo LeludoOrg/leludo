@@ -15,7 +15,7 @@
  */
 
 import { initialGameState, PHASES } from './game-state.js';
-import { YARD, HOME_STRETCH_START, FINISH } from '../core/board-constants.js';
+import { YARD } from '../core/board-constants.js';
 
 export const EVENTS = Object.freeze({
     GAME_STARTED: 'GAME_STARTED',
@@ -44,15 +44,10 @@ export const EVENTS = Object.freeze({
 
 // Reset seat `i`'s per-game highlight-reel stats to their "nothing happened
 // yet" defaults. Identical across a fresh start, a resume, and a full clear, so
-// it lives in one place (the -1s are "turn not reached yet" sentinels, not
-// board positions). Shared by resetArraysInPlace + GAME_STARTED + GAME_RESUMED.
+// it lives in one place. Shared by resetArraysInPlace + GAME_STARTED + GAME_RESUMED.
 function resetPlayerStats(state, i) {
     state.sentHomeCount[i] = 0;
-    state.firstHomeStretchTurn[i] = -1;
-    state.firstFinishTurn[i] = -1;
     state.distanceTraveled[i] = 0;
-    state.pawnsAtBaseAtTurn20[i] = -1;
-    state.bestDiceStreak[i] = null;
     state.noMoveStreak[i] = 0;
 }
 
@@ -67,7 +62,6 @@ function resetArraysInPlace(state) {
         state.playerCaptures[i] = 0;
         resetPlayerStats(state, i);
     }
-    state.currentDiceStreak = null;
 }
 
 export function reducer(state, event) {
@@ -93,7 +87,6 @@ export function reducer(state, event) {
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
             }
-            state.currentDiceStreak = null;
             state.currentPlayerIndex = event.currentPlayerIndex;
             return state;
         }
@@ -120,7 +113,6 @@ export function reducer(state, event) {
                     ? event.playerTokenPositions[i].slice()
                     : undefined;
             }
-            state.currentDiceStreak = null;
             return state;
         }
 
@@ -145,28 +137,6 @@ export function reducer(state, event) {
             state.currentDiceRoll = event.value;
             if (event.value === 6) state.consecutiveSixesCount++;
             else state.consecutiveSixesCount = 0;
-
-            const pi = state.currentPlayerIndex;
-            const prev = state.currentDiceStreak;
-            if (prev && prev.playerIndex === pi && prev.value === event.value) {
-                prev.length++;
-            } else {
-                state.currentDiceStreak = {
-                    playerIndex: pi,
-                    value: event.value,
-                    length: 1,
-                    atTurn: state.turnCount,
-                };
-            }
-            const cur = state.currentDiceStreak;
-            const best = state.bestDiceStreak[pi];
-            if (!best || cur.length > best.length) {
-                state.bestDiceStreak[pi] = {
-                    value: cur.value,
-                    length: cur.length,
-                    atTurn: cur.atTurn,
-                };
-            }
             return state;
         }
 
@@ -192,14 +162,6 @@ export function reducer(state, event) {
                 state.distanceTraveled[pi] += event.toPosition - event.fromPosition;
             } else if (event.fromPosition === YARD && event.toPosition >= 0) {
                 state.distanceTraveled[pi] += 1;
-            }
-            if (event.fromPosition < HOME_STRETCH_START && event.toPosition >= HOME_STRETCH_START && event.toPosition <= FINISH) {
-                if (state.firstHomeStretchTurn[pi] === -1) {
-                    state.firstHomeStretchTurn[pi] = state.turnCount;
-                }
-            }
-            if (event.toPosition === FINISH && state.firstFinishTurn[pi] === -1) {
-                state.firstFinishTurn[pi] = state.turnCount;
             }
             return state;
         }
@@ -240,15 +202,6 @@ export function reducer(state, event) {
             state.phase = PHASES.AWAITING_ROLL;
             state.movableTokenIndexes = [];
             state.turnCount++;
-            state.currentDiceStreak = null;
-            if (state.turnCount === 20) {
-                for (let i = 0; i < 4; i++) {
-                    if (state.pawnsAtBaseAtTurn20[i] !== -1) continue;
-                    if (!state.playerTypes[i] || !state.playerTokenPositions[i]) continue;
-                    state.pawnsAtBaseAtTurn20[i] =
-                        state.playerTokenPositions[i].filter(p => p === YARD).length;
-                }
-            }
             return state;
         }
 

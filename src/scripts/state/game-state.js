@@ -44,12 +44,7 @@ export function initialGameState() {
         // Per-game stats feeding the end-of-game highlight reel
         // (wc-game-end). All reset on GAME_STARTED/RESTARTED.
         sentHomeCount: new Array(4).fill(0),
-        firstHomeStretchTurn: new Array(4).fill(-1),
-        firstFinishTurn: new Array(4).fill(-1),
         distanceTraveled: new Array(4).fill(0),
-        pawnsAtBaseAtTurn20: new Array(4).fill(-1),
-        bestDiceStreak: new Array(4).fill(null),
-        currentDiceStreak: null,
 
         gameStartedAt: 0,
         turnCount: 0,
@@ -81,9 +76,5 @@ export const playerCaptures = state.playerCaptures;
 export const playerNames = state.playerNames;
 export const botPersonalities = state.botPersonalities;
 export const sentHomeCount = state.sentHomeCount;
-export const firstHomeStretchTurn = state.firstHomeStretchTurn;
-export const firstFinishTurn = state.firstFinishTurn;
 export const distanceTraveled = state.distanceTraveled;
-export const pawnsAtBaseAtTurn20 = state.pawnsAtBaseAtTurn20;
-export const bestDiceStreak = state.bestDiceStreak;
 

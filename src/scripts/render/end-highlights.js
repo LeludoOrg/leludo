@@ -11,18 +11,14 @@
  * @typedef {Object} EndStats
  * @property {number[]} playerCaptures
  * @property {number[]} sentHomeCount
- * @property {Array<{value:number,length:number,atTurn:number}|null>} bestDiceStreak
- * @property {number[]} firstFinishTurn        first turn each player landed a pawn on cell 56
- * @property {number[]} firstHomeStretchTurn   first turn each player entered cell 51+
  * @property {number[]} distanceTraveled
- * @property {number[]} pawnsAtBaseAtTurn20    -1 = never sampled (game ended <20 turns)
  * @property {number} turnCount
  */
 
 /**
  * @typedef {Object} HighlightCard
  * @property {number} playerIndex     0-3, used to color the card
- * @property {string} type            one of: 'ko' | 'bolt' | 'send' | 'crown'
+ * @property {string} type            one of: 'ko' | 'bolt' | 'send'
  * @property {string} title
  * @property {string} body
  * @property {string} stat
@@ -142,11 +138,7 @@ export function selectHighlightsBySeat({ stats, seats, winnerIndex, localOfSeat,
     const seatStats = {
         playerCaptures: reorder(stats.playerCaptures),
         sentHomeCount: reorder(stats.sentHomeCount),
-        bestDiceStreak: reorder(stats.bestDiceStreak),
-        firstFinishTurn: reorder(stats.firstFinishTurn),
-        firstHomeStretchTurn: reorder(stats.firstHomeStretchTurn),
         distanceTraveled: reorder(stats.distanceTraveled),
-        pawnsAtBaseAtTurn20: reorder(stats.pawnsAtBaseAtTurn20),
         turnCount: stats.turnCount,
     };
     const seatSeats = localOfSeat.map((local) => seats[local]);
