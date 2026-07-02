@@ -894,7 +894,7 @@ function renderPauseScoreboard() {
     board.innerHTML = rows.join('')
 }
 
-export function showPauseMenu() {
+export function showPauseMenu(turnCount) {
     const overlay = document.getElementById("pause-menu")
     const turnEl = overlay.querySelector("#pm-turn-count")
     if (turnEl) turnEl.textContent = `Turn ${turnCount}`
@@ -921,8 +921,6 @@ export function applyColorMap(colorMap) {
         root.style.setProperty(`--player-${position}-path`, `var(--base-color-${originalColor}-light)`)
     })
 }
-
-let turnCount = 0;
 
 let _playerTypes = null;
 let _playerNames = ['', '', '', ''];
@@ -1057,33 +1055,13 @@ export function updateCornerWidgets() {
     }
 }
 
-// Single place the "Turn N" label is written — every counter mutation paints
-// through here so the DOM never drifts from the variable.
-function renderTurnCount() {
+// Pure paint function: write the "Turn N" label into the DOM with validation.
+// Called by command-handler when state.turnCount is the source of truth.
+// Does NOT manage its own counter — the value is passed as a parameter.
+export function renderTurnCount(n) {
+    const validated = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
     const el = document.getElementById('turn-counter');
-    if (el) el.textContent = `Turn ${turnCount}`;
-}
-
-export function updateTurnCounter() {
-    turnCount++;
-    renderTurnCount();
-}
-
-export function resetTurnCount() {
-    turnCount = 0;
-    renderTurnCount();
-}
-
-export function getTurnCount() {
-    return turnCount;
-}
-
-// Force the counter to an exact value and repaint. Used by resume (restore the
-// saved turn) and online play (the server is authoritative for the turn number,
-// so every client shows the same one).
-export function setTurnCount(n) {
-    turnCount = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    renderTurnCount();
+    if (el) el.textContent = `Turn ${validated}`;
 }
 
 

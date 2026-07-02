@@ -7,7 +7,7 @@
 
 import { state } from '../state/game-state.js';
 import { EVENTS, subscribe } from '../state/game-store.js';
-import { serializeGameState, getTurnCount } from '../index.js';
+import { serializeGameState } from '../index.js';
 import { STORAGE_KEYS } from '../platform/storage-keys.js';
 
 const SAVE_AFTER = new Set([
@@ -41,7 +41,7 @@ function save() {
             playerTimes: state.playerTimes,
             lastRank: state.lastRank,
             gameStartedAt: state.gameStartedAt,
-            turnCount: getTurnCount(),
+            turnCount: state.turnCount,
         });
         localStorage.setItem(STORAGE_KEYS.SAVE, JSON.stringify(serialized));
     } catch (e) {

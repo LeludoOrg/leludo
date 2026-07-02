@@ -38,9 +38,7 @@ import {
     animateCaptureToHome,
     updateDiceFace,
     updateTokenContainer,
-    updateTurnCounter,
-    resetTurnCount,
-    setTurnCount,
+    renderTurnCount,
     initRailDeps,
     setPlayerNames,
     setLastRoll,
@@ -207,7 +205,7 @@ function resetGameDom() {
 function startGame(quickStartId, namesByPlayerIndex, emit) {
     // Allowed from any phase — starting a new game resets the machine.
     resetGameDom();
-    resetTurnCount();
+    renderTurnCount(0);
     initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(quickStartId);
@@ -269,7 +267,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
 // driver replays the server's rolls/moves through NET_APPLY_ROLL/MOVE.
 function netStartGame(payload, emit) {
     resetGameDom();
-    resetTurnCount();
+    renderTurnCount(0);
     initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
     applyColorMap(payload.colorMap || [0, 1, 2, 3]);
 
@@ -427,7 +425,7 @@ function netSyncState(cmd, emit) {
         ranks: cmd.ranks,
     });
 
-    setTurnCount(state.turnCount);
+    renderTurnCount(state.turnCount);
     if (cmd.dice > 0 && cmd.dice !== prevFace) updateDiceFace(prevFace, cmd.dice);
     updateCornerWidgets();
 
@@ -517,7 +515,7 @@ function resumeSavedGame(emit) {
         playerCaptures: saved.capturesArr,
     });
 
-    setTurnCount(state.turnCount);
+    renderTurnCount(state.turnCount);
     setPlayerNames(state.playerNames);
 
     showGame();
@@ -691,7 +689,7 @@ function advanceToNextPlayer(emit) {
     if (next !== -1) {
         emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
     }
-    updateTurnCounter();
+    renderTurnCount(state.turnCount);
     updateCornerWidgets();
 }
 
@@ -840,7 +838,7 @@ function handleGamePause(emit) {
     finishActiveOverlays();
 
     emit({ type: EVENTS.GAME_PAUSED });
-    showPauseMenu();
+    showPauseMenu(state.turnCount);
     goTo(SCREENS.PAUSE);
 
     const overlay = document.getElementById("pause-menu");
