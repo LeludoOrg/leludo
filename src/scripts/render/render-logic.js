@@ -8,6 +8,7 @@ import {playKOCapture} from "./ko-capture.js";
 import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
+import { PAWN_ASPECT } from "./pawn-shape.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
 // even though the wake-lock implementation now lives in its own module.
@@ -217,7 +218,6 @@ const STACK_ANCHOR_BOTTOM = 16;
 // from its just-landed overlap into the fan with this springy, deliberate
 // transition (slight overshoot) instead of wc-token's quick 150ms snap.
 const STACK_BLOOM_TRANSITION = 'transform 320ms cubic-bezier(.34,1.28,.5,1)';
-const PAWN_H = 1.16; // pawn height / width (see pawn-shape.js)
 // Cap a vertical totem's body (bottom pawn base → top pawn head) to 1.25 cells,
 // in % of cell — a 4-tall stack stays readable without eating extra rows.
 const MAX_TOTEM_HEIGHT_PCT = 125;
@@ -228,7 +228,7 @@ const MAX_TOTEM_HEIGHT_PCT = 125;
 // hop animations that translate the whole token between cells.
 function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
     t.style.cssText += `position:absolute;left:${leftPct}%;bottom:${bottomPct}%;` +
-        `width:${wPct}%;height:${wPct * PAWN_H}%;z-index:${z};`;
+        `width:${wPct}%;height:${wPct * PAWN_ASPECT}%;z-index:${z};`;
     const svg = t.firstElementChild;
     if (!svg) return;
     if (rotateDeg) svg.style.setProperty('--pawn-tilt', `${rotateDeg}deg`);
@@ -236,7 +236,7 @@ function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
 }
 
 // A lone pawn on a path cell. The pawn svg is taller than the (square) cell
-// (PAWN_H 1.16), so left in normal flow it top-aligns and its base overflows
+// (PAWN_ASPECT 1.16), so left in normal flow it top-aligns and its base overflows
 // BELOW the cell — where the next-row cell, painted later, crops it. Anchor it
 // to the cell floor at full width so the excess height overflows UPWARD instead
 // (over the earlier-painted cell above), matching how stacked pawns sit. Pinned
@@ -272,7 +272,7 @@ function totemFan(tokens) {
     const K = leaves.length;
     const wPct = K >= 3 ? 80 : 90;
     const stepPct = wPct * 0.40;  // horizontal spacing between totems — a touch tighter (slight overlap)
-    const pawnHPct = wPct * PAWN_H;       // a single pawn is ~1 cell tall
+    const pawnHPct = wPct * PAWN_ASPECT;       // a single pawn is ~1 cell tall
     leaves.forEach((stack, gi) => {
         const off = gi - (K - 1) / 2;
         const leftPct = 50 + off * stepPct - wPct / 2;
@@ -311,7 +311,7 @@ function applyFinishStacking(cell, tokens) {
     if (n === 0) return;
     const playerIdx = parseInt(cell.id[1], 10);
     const wPct = FINISH_PAWN_W;
-    const hPct = wPct * PAWN_H;
+    const hPct = wPct * PAWN_ASPECT;
     const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
     const step = wPct * FINISH_STEP;
 
@@ -538,7 +538,7 @@ function finishLandingTarget(finishCell, containerRect, cellSize) {
     const playerIdx = parseInt(finishCell.id[1], 10);
     const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
     const zone = finishCell.getBoundingClientRect();
-    const h = cellSize * PAWN_H;
+    const h = cellSize * PAWN_ASPECT;
     const centerVX = zone.left + (cx / 100) * zone.width;   // viewport center x
     const centerVY = zone.top + (cy / 100) * zone.height;   // viewport center y
     const bottomV = centerVY + h / 2;                       // pawn feet (body centered on cy)
@@ -710,7 +710,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         // destination FLIP starts from this so a lone landing is a no-op (no
         // settle glide) and a stack-join eases in from the right spot.
         const lonePawnBox = (cellRect) => {
-            const h = cellRect.width * PAWN_H;
+            const h = cellRect.width * PAWN_ASPECT;
             return {
                 left: cellRect.left,
                 top: cellRect.bottom - h,
