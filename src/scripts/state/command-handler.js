@@ -27,7 +27,7 @@ import {
     inactiveTokens,
     isTokenMovable,
     isTripComplete,
-    moveDice,
+    updateCornerWidgets,
     playClickSound,
     releaseWakeLock,
     resumeGame,
@@ -260,7 +260,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
 
     mountTokensFromState();
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 // Online: mount the board from a server snapshot. Mirrors startGame, but the
@@ -297,7 +297,7 @@ function netStartGame(payload, emit) {
 
     mountTokensFromState();
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 // Online: replay the server's dice roll as a visual. The value is the server's
@@ -429,7 +429,7 @@ function netSyncState(cmd, emit) {
 
     setTurnCount(state.turnCount);
     if (cmd.dice > 0 && cmd.dice !== prevFace) updateDiceFace(prevFace, cmd.dice);
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 
     // Snap any drifted token (or ghost pawn) back onto the truth. No-op in the
     // common case, so it never fights the move animation it runs after.
@@ -533,7 +533,7 @@ function resumeSavedGame(emit) {
         advanceToNextPlayer(emit);
     }
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 function rollDice(emit) {
@@ -692,7 +692,7 @@ function advanceToNextPlayer(emit) {
         emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
     }
     updateTurnCounter();
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 function restartGame(emit) {

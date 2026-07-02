@@ -987,7 +987,7 @@ const CORNER_CFG = [
     { anchor: 'b3', layout: 'DT' }, // bottom-left
 ];
 
-function pillMarkup(idx, finished, active) {
+function pillMarkup(idx, active) {
     const type = _playerTypes ? _playerTypes[idx] : null;
     const glyph = `<span class="corner-pill-glyph">${playerTypeGlyph(type, 14)}</span>`;
     const cls = active ? `corner-pill corner-pill--active player-bg-${idx}` : `corner-pill`;
@@ -1017,13 +1017,12 @@ export function updateCornerWidgets() {
         if (!_playerTypes[idx]) return;
 
         const isActive = idx === pi;
-        const finished = _getFinishedCount(idx);
 
         const wrap = document.createElement('div');
         wrap.className = 'corner-widget';
 
         const pill = document.createElement('div');
-        pill.innerHTML = pillMarkup(idx, finished, isActive);
+        pill.innerHTML = pillMarkup(idx, isActive);
         const pillEl = pill.firstElementChild;
 
         const diceBtn = document.createElement('div');
@@ -1096,6 +1095,4 @@ export function setTurnCount(n) {
     renderTurnCount();
 }
 
-export function moveDice() {
-    updateCornerWidgets();
-}
+
