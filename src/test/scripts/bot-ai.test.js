@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { evalState, pickBestMove, PERSONALITIES, randomPersonality } from '../../scripts/core/bot-ai.js';
+import { evalState, pickBestMove, PERSONALITIES, randomPersonality, applyMove } from '../../scripts/core/bot-ai.js';
 
 const HOME = [-1, -1, -1, -1];
 const W = PERSONALITIES.balanced;
@@ -129,4 +129,72 @@ describe('pickBestMove', () => {
         // Either index 0 or 1 acceptable since dedup picks first encountered.
         expect([0, 1]).toContain(result);
     });
+
+    it('pair-safety: 2-stack opponent tokens not captured', () => {
+        // P0 can move token 0 from position 10 by rolling 1 -> lands on position 11.
+        // Position 11 for P0 maps to mark (11+0)%52=11.
+        // P1 has 2 tokens at position 45, which maps to mark (45+13)%52=6 (not 11, different mark).
+        // P1 also has 1 lone token at position 38 -> mark (38+13)%52=51 (not 11).
+        // So P0 rolling 1 should result in 0 captures.
+        // But if we place P1 at a position whose mark is 11: we need mark = 11 for P1.
+        // For P1: mark = (pos + 13) % 52 = 11 => pos = (11 - 13) % 52 = -2 % 52 = 50.
+        // So P1 token at position 50 gives P1 mark = 11.
+        // P0 at 10 rolling 1 -> pos 11, mark 11 collides with P1 at 50 mark 11.
+        // With 2 P1 tokens on pos 50, P0 should NOT capture (pair-safety).
+        const positions = makeBoard([[10, -1, -1, -1], [50, 50, -1, -1], HOME, HOME]);
+        // With only P0 token 0 movable, pickBestMove must pick it (single move).
+        const result = pickBestMove(0, 1, positions, W);
+        expect(result).toBe(0);
+        // Now verify the move itself: apply the move and check caps = 0.
+        const { next: nextPos, caps } = applyMove(0, result, 1, positions);
+        // After move, P0 token 0 should be at position 11.
+        expect(nextPos[0][0]).toBe(11);
+        // No capture should occur (pair-safety): caps should be 0.
+        expect(caps).toBe(0);
+        // P1's 2 tokens at position 50 should still be there.
+        expect(nextPos[1][0]).toBe(50);
+        expect(nextPos[1][1]).toBe(50);
+    });
+
+    it('pair-safety: lone opponent token IS captured when other safe', () => {
+        // P0 token at 10, rolls 1, lands on mark 11.
+        // P1 has 1 token at mark 11 (pos 50), and 1 at safe square 8.
+        // The lone token at 50 should be captured.
+        const positions = makeBoard([[10, -1, -1, -1], [50, 8, -1, -1], HOME, HOME]);
+        const { next: nextPos, caps } = applyMove(0, 0, 1, positions);
+        expect(nextPos[0][0]).toBe(11);
+        // Lone token at 50 captured.
+        expect(caps).toBe(1);
+        expect(nextPos[1][0]).toBe(-1); // sent to yard
+        expect(nextPos[1][1]).toBe(8);  // safe token untouched
+    });
+
+    it('captures: when 1 or 3+ opponent tokens on mark (pair-safe: 2 only)', () => {
+        // P0 token at 10, rolls 1 -> position 11, mark (11+0)%52 = 11.
+        // All opponents on mark 11 (via position offset):
+        // - P1 at mark 11: pos = 50 (mark = (50+13)%52 = 11)
+        // - P2 at mark 11: pos = 37 (mark = (37+26)%52 = 11)
+        // - P3 at mark 11: pos = 24 (mark = (24+39)%52 = 11)
+        // P1: 1 token on mark 11 -> CAPTURED (not pair-safe: len != 2).
+        // P2: 2 tokens on mark 11 -> SAFE (pair-safety rule: len === 2).
+        // P3: 3 tokens on mark 11 -> CAPTURED (not pair-safe: len != 2).
+        // This pins the game-logic rule: only lists of exactly 2 are safe.
+        const positions = makeBoard(
+            [[10, -1, -1, -1],
+             [50, -1, -1, -1],    // P1: 1 token at mark 11 -> CAPTURED
+             [37, 37, -1, -1],    // P2: 2 tokens at mark 11 -> SAFE (pair-safety)
+             [24, 24, 24, -1]]    // P3: 3 tokens at mark 11 -> CAPTURED (all 3)
+        );
+        const { next: nextPos, caps } = applyMove(0, 0, 1, positions);
+        expect(nextPos[0][0]).toBe(11);
+        // P1: 1 token captured = 1. P2: 0 (pair-safe). P3: 3 tokens = 3. Total = 4.
+        expect(caps).toBe(4);
+        expect(nextPos[1][0]).toBe(-1); // P1 token captured -> yard
+        expect(nextPos[2][0]).toBe(37); // P2 tokens safe
+        expect(nextPos[2][1]).toBe(37);
+        expect(nextPos[3][0]).toBe(-1); // P3 all 3 tokens captured -> yard
+        expect(nextPos[3][1]).toBe(-1);
+        expect(nextPos[3][2]).toBe(-1);
+    });
 });
+
