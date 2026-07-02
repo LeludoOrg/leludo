@@ -36,6 +36,7 @@ import {
 } from "./index.js"
 import { STORAGE_KEYS } from "../scripts/platform/storage-keys.js";
 import { applyNativeBarTheme } from "../scripts/platform/native-bars.js";
+import { applyThemeColorMeta } from "../scripts/platform/theme-chrome.js";
 import { getServerChannel, setServerChannel } from "../scripts/net/net-client.js";
 import { readBool, writeBool } from "../scripts/platform/storage-util.js";
 import { SCREENS } from "../scripts/platform/screens.js";
@@ -179,12 +180,8 @@ function updateTheme(theme) {
         theme;
     rootElement.classList.add(themeToApply)
 
-    const headerEl = rootElement.querySelector("#header");
-    if (headerEl) {
-        const navElementStyles = getComputedStyle(headerEl);
-        document.querySelector('meta[name="theme-color"]')
-            .setAttribute('content', navElementStyles.backgroundColor);
-    }
+    // Update the browser chrome (meta theme-color) to the new theme's background.
+    applyThemeColorMeta();
 
     localStorage.setItem(STORAGE_KEYS.THEME, theme)
 

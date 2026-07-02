@@ -65,6 +65,7 @@ import {
 } from "../platform/scheduler.js";
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "../platform/nav-history.js";
 import { finishActiveOverlays } from "../render/overlay-base.js";
+import { applyThemeColorMeta } from "../platform/theme-chrome.js";
 import { dispatch } from "./game-store.js";
 import { isOnlineActive, onlineNet, onlineLocalSelf } from "../net/online-state.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
@@ -177,11 +178,10 @@ function removeGameTokens() {
     clearTokenElementCache();
 }
 
-// Restore the light-theme chrome (status-bar tint + page background)
-// that the in-game play screen overrides.
+// Restore the active theme's chrome (status-bar tint + page background)
+// that the in-game play screen or game-end recap may have overridden.
 function resetThemeChrome() {
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
+    applyThemeColorMeta();
     document.body.style.background = '';
 }
 

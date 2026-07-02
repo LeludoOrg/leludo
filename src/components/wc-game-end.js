@@ -371,7 +371,8 @@ class GameEnd extends HTMLElement {
 
         const themeMeta = document.querySelector('meta[name="theme-color"]');
         if (themeMeta) {
-            this._prevThemeColor = themeMeta.getAttribute('content');
+            // Tint the browser chrome to the recap palette while the end screen
+            // is up; exit paths run resetThemeChrome → applyThemeColorMeta.
             themeMeta.setAttribute(
                 'content',
                 document.documentElement.classList.contains('dark') ? '#1a1410' : '#ede4d3',

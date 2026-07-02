@@ -36,7 +36,8 @@ function systemChrome() {
 // Resolve --color-bg (a raw `hsl(...)` token) to the `#rrggbb` the plugins
 // want by letting the browser compute it: a hidden probe inherits the var as
 // a color, which getComputedStyle reports back as `rgb(r, g, b)`.
-function themeBackgroundHex() {
+// Shared with theme-chrome.js for browser chrome (meta tag) theming.
+export function themeBackgroundHex() {
     const host = document.body || document.documentElement;
     if (!host) return null;
     const probe = document.createElement('span');
