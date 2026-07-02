@@ -31,7 +31,7 @@ import {
 import { makeRng } from '../scripts/core/game-driver.js';
 import { randomBotName } from '../scripts/core/bot-names.js';
 import { spreadPick } from '../scripts/core/seat-allocation.js';
-import { MSG, REASON, ERR } from '../scripts/net/net-protocol.js';
+import { MSG, REASON, ERR, NAME_MAX } from '../scripts/net/net-protocol.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',
@@ -41,9 +41,6 @@ export const PHASES = Object.freeze({
 });
 
 const MIN_PLAYERS = 2;
-// Display-name cap — mirrors the client's online name `maxlength` so a lobby
-// rename can't smuggle a longer name past the input. Trim + clamp server-side.
-const NAME_MAX = 12;
 
 /** Trim a player-supplied display name and clamp it to NAME_MAX. */
 function sanitizeName(raw) {

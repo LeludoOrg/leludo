@@ -6,7 +6,7 @@ import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../script
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor, setUsername, setOnlineColor} from "../scripts/net/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
-import {MSG, ERR} from "../scripts/net/net-protocol.js";
+import {MSG, ERR, NAME_MAX} from "../scripts/net/net-protocol.js";
 import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
 import {SCREENS} from "../scripts/platform/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
@@ -655,7 +655,7 @@ class QuickStart extends HTMLElement {
     }
 
     _myName() {
-        return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
+        return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, NAME_MAX)
     }
 
     // Leave a game we can no longer be in — drop back to the online screen with a
