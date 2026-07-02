@@ -1,12 +1,12 @@
 import {htmlToElement, onClickSound} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/core/bot-names.js";
-import {HUMAN_PREFERRED_POSITIONS} from "../scripts/core/game-logic.js";
+import {getPlayerTypes} from "../scripts/core/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/platform/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor, setUsername, setOnlineColor} from "../scripts/net/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
 import {showSelfReconnect, showSelfGaveUp, hideSelfBanner} from "../scripts/net/net-overlay.js";
-import {MSG, ERR} from "../scripts/net/net-protocol.js";
+import {MSG, ERR, NAME_MAX} from "../scripts/net/net-protocol.js";
 import {STORAGE_KEYS} from "../scripts/platform/storage-keys.js";
 import {SCREENS} from "../scripts/platform/screens.js";
 import {mintRoomCode, ROOM_CODE_CHARS, ROOM_CODE_LENGTH} from "../scripts/core/room-code.js";
@@ -16,12 +16,6 @@ import {DICE_SVG, QUAD_CHIP_SVG, PLAY_ICON_SVG, MINI_BOARD_SVG, PAWN_SVG, ICON_B
 // the customElements.define side effect so the tags upgrade when inserted.
 import "./wc-play-online.js";
 import "./wc-game-room.js";
-
-// Initial release ships private rooms only. The public-matchmaking backend
-// (queue + auto-start) stays wired and tested — this flag just hides the entry
-// UI ("Find a public match"). Flip to true to bring it back; the public e2e
-// suite in test/e2e/online-screens.spec.js is gated on the same switch.
-const PUBLIC_MATCH_ENABLED = false;
 
 // Public match: how long the "Match found!" announcement stays up before the
 // board is revealed. The board mounts and runs underneath immediately — this is
@@ -655,7 +649,7 @@ class QuickStart extends HTMLElement {
     }
 
     _myName() {
-        return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, 12)
+        return (getUsername() || getSavedSeatName('PLAYER', 0) || 'Player').slice(0, NAME_MAX)
     }
 
     // Leave a game we can no longer be in — drop back to the online screen with a
@@ -848,6 +842,12 @@ class QuickStart extends HTMLElement {
         this._pendingJoin = true
     }
 
+    // ----- Public matchmaking (dormant) -----
+    // No UI entry point calls this today — the initial release ships private
+    // rooms only. The server half (matchmaker + MatchmakingDO) stays deployed
+    // and tested; to relaunch public matches, add a button that calls
+    // _enterMatchmaking(size). See src/server/cf/match-do.js for the remaining
+    // client redial work.
     _enterMatchmaking(size) {
         this._isPublic = true
         this.showOnlineSearch(size)
@@ -954,40 +954,44 @@ class QuickStart extends HTMLElement {
     _startGame() {
         const activeSeats = this.seats.filter(s => s.active)
         if (activeSeats.length < 2) return
-
-        const humans = activeSeats.filter(s => s.type === 'PLAYER')
-        const bots = activeSeats.filter(s => s.type === 'BOT')
-        const humanCount = humans.length
-        const botCount = bots.length
-        const humanColors = humans.map(s => s.colorIndex)
-        const botColors = bots.map(s => s.colorIndex)
-
-        const namesByPlayerIndex = new Array(4).fill('')
-        if (humanCount === 4) {
-            humans.forEach((s, idx) => { namesByPlayerIndex[idx] = s.name })
-        } else {
-            const preferredPositions = HUMAN_PREFERRED_POSITIONS
-            const usedPositions = new Set()
-            humans.forEach((s, idx) => {
-                const pos = preferredPositions[idx]
-                namesByPlayerIndex[pos] = s.name
-                usedPositions.add(pos)
-            })
-            let botIdx = 0
-            for (let pos = 0; pos < 4 && botIdx < botCount; pos++) {
-                if (!usedPositions.has(pos)) {
-                    namesByPlayerIndex[pos] = bots[botIdx].name
-                    botIdx++
-                }
-            }
-        }
-
-        // Encode human colours then bot colours, both in seat order, so each
-        // bot keeps its locked seat colour instead of grabbing a leftover one.
-        const quickStartId = `qs,${humanCount},${botCount},${[...humanColors, ...botColors].join(",")}`
+        const { quickStartId, namesByPlayerIndex } = buildQuickStart(this.seats)
         dispatch({ type: COMMANDS.START_GAME, quickStartId, namesByPlayerIndex })
     }
 
+}
+
+/**
+ * Encode the setup screen's seat list into the START_GAME payload. Pure —
+ * exported for tests. The seat-placement algorithm itself lives ONLY in
+ * getPlayerTypes (game-logic); names are derived by mapping its colorMap back
+ * onto the seat rows (each active seat's colorIndex equals its row index), so
+ * the two can't drift.
+ * @param {Array<{active:boolean, type:string, colorIndex:number|null, name:string}>} seats
+ * @returns {{quickStartId: string, namesByPlayerIndex: string[]}}
+ */
+export function buildQuickStart(seats) {
+    const activeSeats = seats.filter(s => s.active)
+    const humans = activeSeats.filter(s => s.type === 'PLAYER')
+    const bots = activeSeats.filter(s => s.type === 'BOT')
+    const humanColors = humans.map(s => s.colorIndex)
+    const botColors = bots.map(s => s.colorIndex)
+
+    // Encode human colours then bot colours, both in seat order, so each
+    // bot keeps its locked seat colour instead of grabbing a leftover one.
+    const quickStartId = `qs,${humans.length},${bots.length},${[...humanColors, ...botColors].join(",")}`
+
+    // colorMap for empty board positions is backfilled with leftover colours
+    // (fillColorMap) that point at inactive seat rows — the active guard skips
+    // those so no name is invented for an empty quad.
+    const playerTypesResult = getPlayerTypes(quickStartId)
+    const namesByPlayerIndex = new Array(4).fill('')
+    playerTypesResult.playerTypes.forEach((pt, pos) => {
+        if (!pt) return
+        const seat = seats[playerTypesResult.colorMap[pos]]
+        if (seat && seat.active) namesByPlayerIndex[pos] = seat.name
+    })
+
+    return { quickStartId, namesByPlayerIndex }
 }
 
 window.customElements.define("wc-quick-start", QuickStart)

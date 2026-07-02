@@ -16,9 +16,6 @@
  */
 import {
     isTokenMovable,
-    getTokenNewPosition,
-    findCapturedOpponents,
-    isTripComplete,
     rollDiceWithPity,
 } from '../scripts/core/game-logic.js';
 import { pickBestMove, PERSONALITIES, randomPersonality } from '../scripts/core/bot-ai.js';
@@ -27,11 +24,12 @@ import {
     getNextPlayerIndex,
     shouldEndGame,
     computeLeftoverRankOrder,
+    grantsAnotherTurn,
 } from '../scripts/core/turn-rules.js';
-import { makeRng } from '../scripts/core/game-driver.js';
+import { makeRng, applyMove } from '../scripts/core/game-driver.js';
 import { randomBotName } from '../scripts/core/bot-names.js';
 import { spreadPick } from '../scripts/core/seat-allocation.js';
-import { MSG, REASON, ERR } from '../scripts/net/net-protocol.js';
+import { MSG, REASON, ERR, NAME_MAX } from '../scripts/net/net-protocol.js';
 
 export const PHASES = Object.freeze({
     LOBBY: 'LOBBY',
@@ -41,9 +39,6 @@ export const PHASES = Object.freeze({
 });
 
 const MIN_PLAYERS = 2;
-// Display-name cap — mirrors the client's online name `maxlength` so a lobby
-// rename can't smuggle a longer name past the input. Trim + clamp server-side.
-const NAME_MAX = 12;
 
 /** Trim a player-supplied display name and clamp it to NAME_MAX. */
 function sanitizeName(raw) {
@@ -60,32 +55,6 @@ function sanitizeName(raw) {
 function asSeatIndex(raw) {
     const n = typeof raw === 'number' ? raw : Number(raw);
     return Number.isInteger(n) && n >= 0 && n < 4 ? n : -1;
-}
-
-function cloneBoard(positions) {
-    return positions.map(p => (p ? p.slice() : null));
-}
-
-/** Apply one move to a board copy + resolve captures. Mirrors game-driver.applyMove. */
-function applyMove(positions, playerIndex, tokenIndex, dice) {
-    const next = cloneBoard(positions);
-    const fromPosition = next[playerIndex][tokenIndex];
-    const newPosition = getTokenNewPosition(fromPosition, dice);
-    next[playerIndex][tokenIndex] = newPosition;
-
-    const captured = findCapturedOpponents(playerIndex, newPosition, next);
-    let captureCount = 0;
-    const capturedList = [];
-    for (let pi = 0; pi < captured.length; pi++) {
-        const list = captured[pi];
-        if (!list) continue;
-        for (const ti of list) {
-            next[pi][ti] = -1;
-            captureCount++;
-            capturedList.push({ playerIndex: pi, tokenIndex: ti });
-        }
-    }
-    return { next, fromPosition, newPosition, captureCount, captured: capturedList, tripComplete: isTripComplete(newPosition) };
 }
 
 export class RoomEngine {
@@ -979,8 +948,7 @@ export class RoomEngine {
 
         if (ended) return this._end(REASON.FINISHED);
 
-        const playsAgain = (dice === 6 || result.captureCount > 0 || result.tripComplete)
-            && !isPlayerFinished(this.positions[pi]);
+        const playsAgain = grantsAnotherTurn(dice, result.captureCount, result.tripComplete, isPlayerFinished(this.positions[pi]));
         if (playsAgain) {
             this.phase = PHASES.AWAIT_ROLL;
             this.currentDiceRoll = 0;

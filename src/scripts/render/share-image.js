@@ -4,7 +4,7 @@
 // fallback. Extracted from components/wc-game-end.js so the recap component is
 // just render + wire.
 
-import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "./pawn-mini.js";
+import { miniPawnSVG } from "./pawn-mini.js";
 import { isCapacitorNative } from "../platform/platform.js";
 
 function playerHsl(playerIndex) {
@@ -14,13 +14,14 @@ function playerHsl(playerIndex) {
 
 function pawnSvgString(playerIndex) {
     const fill = playerHsl(playerIndex);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="320" height="320">
-        <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.25)"/>
-        <path d="${MINI_PAWN_BODY}" fill="${fill}"/>
-        <path d="${MINI_PAWN_HIGHLIGHT}" fill="rgba(255,255,255,0.24)"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="${fill}"/>
-        <rect x="7.5" y="22" width="17" height="1.2" rx="0.6" fill="rgba(255,255,255,0.38)"/>
-    </svg>`;
+    return miniPawnSVG({
+        fill,
+        xmlns: true,
+        width: 320,
+        height: 320,
+        shadow: 0.25,
+        highlight: true,
+    });
 }
 
 function loadSvgImage(svgString) {

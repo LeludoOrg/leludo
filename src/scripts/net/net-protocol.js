@@ -114,3 +114,8 @@ export const BUSY = Object.freeze({
     CONCURRENT: 'BUSY_CONCURRENT',
     DAILY: 'BUSY_DAILY',
 });
+
+/** Display-name cap shared by the server clamp (room-engine sanitizeName) and
+ *  the client inputs (lobby rename maxlength, join-name slice) — one constant
+ *  so the two can't drift. */
+export const NAME_MAX = 12;

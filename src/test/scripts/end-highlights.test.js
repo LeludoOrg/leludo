@@ -12,11 +12,7 @@ function emptyStats(overrides = {}) {
     return {
         playerCaptures: [0, 0, 0, 0],
         sentHomeCount: [0, 0, 0, 0],
-        bestDiceStreak: [null, null, null, null],
-        firstFinishTurn: [-1, -1, -1, -1],
-        firstHomeStretchTurn: [-1, -1, -1, -1],
         distanceTraveled: [0, 0, 0, 0],
-        pawnsAtBaseAtTurn20: [-1, -1, -1, -1],
         turnCount: 30,
         ...overrides,
     };
@@ -95,38 +91,7 @@ describe('selectHighlights', () => {
         expect(cards.find(c => c.title === 'Knockout king')).toBeFalsy();
     });
 
-    // The "Hot dice" highlight (stat rendered as repeated dice faces, e.g.
-    // "666") was removed: with the fair-die change a third six is never dealt
-    // and non-six faces never grant a re-roll, so a >=3-long same-face streak
-    // is unreachable and the card was dead. Guard that it never reappears.
-    it('never emits a Hot dice card, even with a long streak in the stats', () => {
-        const cards = selectHighlights({
-            stats: emptyStats({
-                bestDiceStreak: [
-                    null,
-                    { value: 6, length: 3, atTurn: 14 },
-                    null,
-                    null,
-                ],
-            }),
-            seats: seats4(),
-            winnerIndex: 0,
-        });
-        expect(cards.find(c => c.title === 'Hot dice')).toBeFalsy();
-        expect(cards.every(c => c.type !== 'dice')).toBe(true);
-    });
 
-    // "First home" was removed from the recap; finishing first is now conveyed
-    // by the podium standings, not a duplicate highlight card.
-    it('never emits a First home card', () => {
-        const cards = selectHighlights({
-            stats: emptyStats({ firstFinishTurn: [25, 9, 14, -1] }),
-            seats: seats4(),
-            winnerIndex: 1,
-        });
-        expect(cards.find(c => c.title === 'First home')).toBeFalsy();
-        expect(cards.every(c => c.type !== 'home')).toBe(true);
-    });
 
     it('Rough day triggers at >=3 sent-home', () => {
         const cards = selectHighlights({
@@ -164,12 +129,9 @@ describe('selectHighlights', () => {
     // Long road, Slow start, Champion and the Match-wrap filler were all removed:
     // the podium now conveys placement/finish, so the recap keeps only the three
     // achievement cards (Knockout king, Rough day, Distance run).
-    it('never emits the removed highlight cards, even when their stats are present', () => {
+    it('never emits the removed highlight cards', () => {
         const cards = selectHighlights({
-            stats: emptyStats({
-                firstHomeStretchTurn: [10, 11, 28, 12], // would have been Long road
-                pawnsAtBaseAtTurn20: [3, 1, 0, 0],      // would have been Slow start
-            }),
+            stats: emptyStats(),
             seats: seats4(),
             winnerIndex: 2,
         });
@@ -177,7 +139,6 @@ describe('selectHighlights', () => {
         for (const title of removed) {
             expect(cards.find(c => c.title === title)).toBeFalsy();
         }
-        expect(cards.every(c => c.type !== 'crown')).toBe(true);
         const allowed = new Set(['Knockout king', 'Rough day', 'Distance run']);
         expect(cards.every(c => allowed.has(c.title))).toBe(true);
     });
@@ -197,10 +158,6 @@ describe('selectHighlights', () => {
             stats: emptyStats({
                 playerCaptures: [3, 1, 0, 0],
                 sentHomeCount: [0, 0, 4, 0],
-                bestDiceStreak: [null, { value: 4, length: 3, atTurn: 8 }, null, null],
-                firstFinishTurn: [22, -1, -1, -1],
-                firstHomeStretchTurn: [22, 18, 16, 26],
-                pawnsAtBaseAtTurn20: [-1, -1, -1, -1],
             }),
             seats: seats4(),
             winnerIndex: 0,

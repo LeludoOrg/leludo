@@ -1,13 +1,15 @@
 import {getMarkIndex} from "../core/game-logic.js";
 import {YARD, ENTRY_SQUARE, LAST_TRACK_SQUARE} from "../core/board-constants.js";
 import { SCREENS } from "../platform/screens.js";
-import { MINI_PAWN_BODY } from "./pawn-mini.js";
+import { miniPawnSVG } from "./pawn-mini.js";
 import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
 import {playLaunchStartFX} from "./pawn-launch.js";
 import {playPawnStep} from "./pawn-step.js";
 import {requestWakeLock, releaseWakeLock} from "../platform/wake-lock.js";
+import { PAWN_ASPECT } from "./pawn-shape.js";
+import { DIE_PIPS } from "../core/dice-faces.js";
 
 // Re-exported so the scripts barrel and existing importers keep one entry point
 // even though the wake-lock implementation now lives in its own module.
@@ -217,7 +219,6 @@ const STACK_ANCHOR_BOTTOM = 16;
 // from its just-landed overlap into the fan with this springy, deliberate
 // transition (slight overshoot) instead of wc-token's quick 150ms snap.
 const STACK_BLOOM_TRANSITION = 'transform 320ms cubic-bezier(.34,1.28,.5,1)';
-const PAWN_H = 1.16; // pawn height / width (see pawn-shape.js)
 // Cap a vertical totem's body (bottom pawn base → top pawn head) to 1.25 cells,
 // in % of cell — a 4-tall stack stays readable without eating extra rows.
 const MAX_TOTEM_HEIGHT_PCT = 125;
@@ -228,7 +229,7 @@ const MAX_TOTEM_HEIGHT_PCT = 125;
 // hop animations that translate the whole token between cells.
 function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
     t.style.cssText += `position:absolute;left:${leftPct}%;bottom:${bottomPct}%;` +
-        `width:${wPct}%;height:${wPct * PAWN_H}%;z-index:${z};`;
+        `width:${wPct}%;height:${wPct * PAWN_ASPECT}%;z-index:${z};`;
     const svg = t.firstElementChild;
     if (!svg) return;
     if (rotateDeg) svg.style.setProperty('--pawn-tilt', `${rotateDeg}deg`);
@@ -236,7 +237,7 @@ function placeStackPawn(t, leftPct, bottomPct, wPct, rotateDeg, z) {
 }
 
 // A lone pawn on a path cell. The pawn svg is taller than the (square) cell
-// (PAWN_H 1.16), so left in normal flow it top-aligns and its base overflows
+// (PAWN_ASPECT 1.16), so left in normal flow it top-aligns and its base overflows
 // BELOW the cell — where the next-row cell, painted later, crops it. Anchor it
 // to the cell floor at full width so the excess height overflows UPWARD instead
 // (over the earlier-painted cell above), matching how stacked pawns sit. Pinned
@@ -272,7 +273,7 @@ function totemFan(tokens) {
     const K = leaves.length;
     const wPct = K >= 3 ? 80 : 90;
     const stepPct = wPct * 0.40;  // horizontal spacing between totems — a touch tighter (slight overlap)
-    const pawnHPct = wPct * PAWN_H;       // a single pawn is ~1 cell tall
+    const pawnHPct = wPct * PAWN_ASPECT;       // a single pawn is ~1 cell tall
     leaves.forEach((stack, gi) => {
         const off = gi - (K - 1) / 2;
         const leftPct = 50 + off * stepPct - wPct / 2;
@@ -311,7 +312,7 @@ function applyFinishStacking(cell, tokens) {
     if (n === 0) return;
     const playerIdx = parseInt(cell.id[1], 10);
     const wPct = FINISH_PAWN_W;
-    const hPct = wPct * PAWN_H;
+    const hPct = wPct * PAWN_ASPECT;
     const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
     const step = wPct * FINISH_STEP;
 
@@ -416,14 +417,6 @@ export function updateCellStacking(cell, opts = {}) {
     if (animate) flipTokens(tokens, first, flipTransition);
 }
 
-/**
- *
- * @param {number} playerIndex
- * @param {number} tokenIndex
- * @param {number} currentTokenPosition
- * @param {number} newTokenPosition
- * @returns {Promise<void>}
- */
 function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
     let settled = false;
     const settle = () => {
@@ -546,7 +539,7 @@ function finishLandingTarget(finishCell, containerRect, cellSize) {
     const playerIdx = parseInt(finishCell.id[1], 10);
     const [cx, cy] = FINISH_CENTERS[playerIdx] || [50, 50];
     const zone = finishCell.getBoundingClientRect();
-    const h = cellSize * PAWN_H;
+    const h = cellSize * PAWN_ASPECT;
     const centerVX = zone.left + (cx / 100) * zone.width;   // viewport center x
     const centerVY = zone.top + (cy / 100) * zone.height;   // viewport center y
     const bottomV = centerVY + h / 2;                       // pawn feet (body centered on cy)
@@ -718,7 +711,7 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
         // destination FLIP starts from this so a lone landing is a no-op (no
         // settle glide) and a stack-join eases in from the right spot.
         const lonePawnBox = (cellRect) => {
-            const h = cellRect.width * PAWN_H;
+            const h = cellRect.width * PAWN_ASPECT;
             return {
                 left: cellRect.left,
                 top: cellRect.bottom - h,
@@ -811,11 +804,6 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
     });
 }
 
-/**
- *
- * @param {number} currentPlayerIndex
- * @param {number} tokenIndex
- */
 const _bouncingTokens = new Set();
 
 export function activateToken(currentPlayerIndex, tokenIndex) {
@@ -851,12 +839,11 @@ export function showGame() {
     requestWakeLock()
 }
 
-const PAWN_SVG_MINI = (playerIndex) => `
-    <svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22));">
-        <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.18)"/>
-        <path d="${MINI_PAWN_BODY}" fill="currentColor"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
-    </svg>`;
+const PAWN_SVG_MINI = (playerIndex) => miniPawnSVG({
+    playerIndex,
+    style: 'width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22));',
+    shadow: 0.18,
+});
 
 const botGlyph = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`;
 
@@ -906,7 +893,7 @@ function renderPauseScoreboard() {
     board.innerHTML = rows.join('')
 }
 
-export function showPauseMenu() {
+export function showPauseMenu(turnCount) {
     const overlay = document.getElementById("pause-menu")
     const turnEl = overlay.querySelector("#pm-turn-count")
     if (turnEl) turnEl.textContent = `Turn ${turnCount}`
@@ -923,7 +910,7 @@ export function resumeGame() {
 
 /**
  *
- * @param {number} currentPlayerIndex
+ * @param {number[]} colorMap
  */
 export function applyColorMap(colorMap) {
     const root = document.documentElement
@@ -933,8 +920,6 @@ export function applyColorMap(colorMap) {
         root.style.setProperty(`--player-${position}-path`, `var(--base-color-${originalColor}-light)`)
     })
 }
-
-let turnCount = 0;
 
 let _playerTypes = null;
 let _playerNames = ['', '', '', ''];
@@ -963,16 +948,6 @@ export function resetLastRolls() {
     _lastRollByPlayer = [null, null, null, null];
 }
 
-// Pip layout per face value (grid row/column, 3x3 grid) — mirrors wc-dice.
-const DIE_PIPS = {
-    1: [[2, 2]],
-    2: [[1, 1], [3, 3]],
-    3: [[1, 1], [2, 2], [3, 3]],
-    4: [[1, 1], [1, 3], [3, 1], [3, 3]],
-    5: [[1, 1], [1, 3], [2, 2], [3, 1], [3, 3]],
-    6: [[1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3]],
-};
-
 // Reuses the exact live-dice classes (.die / .dice-face / .dice-dot) so the
 // faded copy inherits identical light/dark styling — only one face, no id.
 function staticDieMarkup(value) {
@@ -1000,7 +975,7 @@ const CORNER_CFG = [
     { anchor: 'b3', layout: 'DT' }, // bottom-left
 ];
 
-function pillMarkup(idx, finished, active) {
+function pillMarkup(idx, active) {
     const type = _playerTypes ? _playerTypes[idx] : null;
     const glyph = `<span class="corner-pill-glyph">${playerTypeGlyph(type, 14)}</span>`;
     const cls = active ? `corner-pill corner-pill--active player-bg-${idx}` : `corner-pill`;
@@ -1030,13 +1005,12 @@ export function updateCornerWidgets() {
         if (!_playerTypes[idx]) return;
 
         const isActive = idx === pi;
-        const finished = _getFinishedCount(idx);
 
         const wrap = document.createElement('div');
         wrap.className = 'corner-widget';
 
         const pill = document.createElement('div');
-        pill.innerHTML = pillMarkup(idx, finished, isActive);
+        pill.innerHTML = pillMarkup(idx, isActive);
         const pillEl = pill.firstElementChild;
 
         const diceBtn = document.createElement('div');
@@ -1080,35 +1054,13 @@ export function updateCornerWidgets() {
     }
 }
 
-// Single place the "Turn N" label is written — every counter mutation paints
-// through here so the DOM never drifts from the variable.
-function renderTurnCount() {
+// Pure paint function: write the "Turn N" label into the DOM with validation.
+// Called by command-handler when state.turnCount is the source of truth.
+// Does NOT manage its own counter — the value is passed as a parameter.
+export function renderTurnCount(n) {
+    const validated = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
     const el = document.getElementById('turn-counter');
-    if (el) el.textContent = `Turn ${turnCount}`;
+    if (el) el.textContent = `Turn ${validated}`;
 }
 
-export function updateTurnCounter() {
-    turnCount++;
-    renderTurnCount();
-}
 
-export function resetTurnCount() {
-    turnCount = 0;
-    renderTurnCount();
-}
-
-export function getTurnCount() {
-    return turnCount;
-}
-
-// Force the counter to an exact value and repaint. Used by resume (restore the
-// saved turn) and online play (the server is authoritative for the turn number,
-// so every client shows the same one).
-export function setTurnCount(n) {
-    turnCount = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-    renderTurnCount();
-}
-
-export function moveDice() {
-    updateCornerWidgets();
-}

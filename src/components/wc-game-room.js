@@ -1,5 +1,6 @@
 import { htmlToElement, onClickSound, emitIntent } from "./index.js";
 import { playClickSound, escapeHtml } from "../scripts/index.js";
+import { NAME_MAX } from "../scripts/net/net-protocol.js";
 import { ICON_BACK, PLAY_ICON_SVG, PAWN_SVG, ICON_SHARE, ICON_USER, ICON_BOT, ICON_CLOSE, ICON_PENCIL } from "./wc-icons.js";
 
 // The "Game room" lobby: the room code to share, the live seat list, and (for
@@ -288,7 +289,7 @@ class GameRoom extends HTMLElement {
         // everyone else's name is static text. The rename commits on blur / Enter.
         const nameHtml = (isMe && joined)
             ? /*html*/ `<label class="seat-name-wrap">
-                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${escapeHtml(name)}" maxlength="12" spellcheck="false" placeholder="Your name" />
+                    <input class="seat-name" data-testid="online-name" type="text" name="ludo-online-name" autocomplete="off" autocorrect="off" autocapitalize="words" data-form-type="other" data-lpignore="true" data-1p-ignore="true" style="caret-color:${colorVar};" value="${escapeHtml(name)}" maxlength="${NAME_MAX}" spellcheck="false" placeholder="Your name" />
                     <span class="seat-name-pencil">${ICON_PENCIL}</span>
                 </label>`
             : `<div class="online-seat-name">${escapeHtml(name)}</div>`

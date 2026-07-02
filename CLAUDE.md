@@ -16,9 +16,9 @@ Browser Ludo game. Vanilla JS + Web Components + hand-written CSS. No Tailwind, 
 │   ├── changelog.css        shared chrome for changelog.html + privacy.html
 │   ├── styles/base.css      design tokens + reset + layout primitives + player color helpers
 │   ├── components/          Web Components (wc-*.js) + per-component CSS (wc-*.css)
-│   ├── scripts/             game logic (game-events, game-logic, render-logic, bot-ai, bot-names)
+│   ├── scripts/             game logic + state + rendering (core/, state/, render/, net/, platform/, listeners/)
 │   ├── assets/              shipped fonts, icons, sounds
-│   ├── server/             multiplayer backend (CF Worker + local dev ws server) — NOT web-served
+│   ├── server/             multiplayer backend (CF Worker + Durable Objects; dev/e2e run it under wrangler dev) — NOT web-served
 │   └── test/               vitest + Playwright suites — NOT web-served
 ├── tools/               build helpers (all Node .mjs) — stays at repo root
 ├── docs/                internal docs (CONTRIBUTING, ATTRIBUTIONS, plans)
@@ -159,22 +159,21 @@ runner refuse to launch with a loud, obvious error.
 Two module trees under `src/`, each with an `index.*.js` barrel that re-exports its tree:
 
 - **`components/`** — Web Components (`wc-board`, `wc-token`, `wc-dice`, `wc-quick-start`, `wc-settings`, `wc-game-end`, etc.) + shared `utils`. Each custom element registers itself on import via `customElements.define`. The components barrel re-exports all.
-- **`scripts/`** — Game state machine and rendering.
-  - `game-logic` — pure functions: dice, mark index, capture detection, safe squares.
-  - `turn-rules` — pure: player rotation, end-game detection, leftover ranking, save/load serialization.
-  - `bot-ai` — expectiminimax with personality-weighted scoring (`balanced`/`aggressive`/`defensive`/`rusher`).
-  - `game-driver` — pure programmatic game loop that composes `game-logic` + `bot-ai` + `turn-rules` with a seedable RNG. Used by integration tests; no DOM.
-  - `render-logic` — DOM/audio side effects.
-  - `game-events` — turn orchestration, input lock, assist flags, bot scheduling. Thin glue between the pure modules and the DOM.
-  - `bot-names` — name lists.
+- **`scripts/`** — Game state machine and rendering, organized into subdirectories:
+  - `core/` — pure logic: `game-logic` (dice, mark index, capture detection, safe squares), `turn-rules` (player rotation, end-game detection, leftover ranking, save/load serialization), `bot-ai` (expectiminimax with personality-weighted scoring), `game-driver` (pure programmatic game loop for integration tests), `bot-names` (name lists), `board-constants`, `board-util`, `rng-util`, `room-code`, `seat-allocation`.
+  - `state/` — event-sourced store: `game-state`, `game-reducer`, `game-store`, `command-handler` (orchestrates commands and turn flow; replaces the old game-events), `god-mode`.
+  - `render/` — DOM/audio side effects: `render-logic`, `audio`, `pawn-shape`, `pawn-mini`, `pawn-step`, `pawn-launch`, `ko-capture`, `overlay-base`, `end-highlights`, `share-image`.
+  - `listeners/` — store subscribers: `bot-listener` (bot/assist scheduling), `persistence-listener` (localStorage save), `audio-listener`, `analytics-listener`.
+  - `net/` — multiplayer client: `net-client`, `net-protocol`, `online-game`, `online-state`, `net-overlay`, `native-socket`, `ws-safe`.
+  - `platform/` — platform glue: `scheduler` (pause-aware queue for `_paused` flag + `scheduleTurn`), `nav-history`, `screens`, `analytics`, `app-update`, `background-suspend`, `native-bars`, `wake-lock`, `platform`, `storage-keys`, `storage-util`.
 
 Entry points wired in [index.html](index.html): components index + scripts index. `wc-board` consumes the scripts barrel for game flow; `render-logic` imports `getMarkIndex` from `game-logic` via the scripts barrel.
 
-Pure logic lives in `scripts/game-logic.js`, `scripts/turn-rules.js`, `scripts/bot-ai.js`, `scripts/game-driver.js` — keep these side-effect-free so tests can import them directly.
+Pure logic lives in `scripts/core/` — keep these modules side-effect-free so tests can import them directly.
 
 ## Pause Model
 
-`game-events` owns a `_paused` flag plus a `scheduleTurn(fn, delay)` helper. **Any bot or autoplay `setTimeout` in the turn flow must go through `scheduleTurn`** — that lets `pauseGameLogic()` clear in-flight timers and defer the next callback into `_pendingResume`, which `resumeGameLogic()` fires on resume. `handleDiceRoll` and `handleOnTokenMove` also early-return when paused.
+`scripts/platform/scheduler.js` owns a `_paused` flag plus a `scheduleTurn(fn, delay)` helper. **Any bot or autoplay `setTimeout` in the turn flow must go through `scheduleTurn`** — that lets `pauseGameLogic()` clear in-flight timers and defer the next callback into `_pendingResume`, which `resumeGameLogic()` fires on resume. Bot/assist scheduling in `scripts/listeners/bot-listener.js` dispatches callbacks through `scheduleTurn`. `rollDice` and `selectToken` in `scripts/state/command-handler.js` also early-return when paused.
 
 Two surfaces pause the game today:
 - The in-game pause button → `handleGamePause` (shows the pause overlay in `index.html`).
@@ -232,15 +231,15 @@ two-token-pair safety apply, same as normal play).
 behaviour.** If a feature (animation, sound, side effect, state
 update) fires when a transition happens via the normal turn flow, it
 must also fire when god-mode produces the same transition. Examples
-already wired in `godTeleport` ([scripts/command-handler.js](scripts/command-handler.js)):
-yard → entry plays `playYardLaunch`, finish-cell arrival plays
-`playFinishArrival`, captures animate via `animateCaptureToHome`. When
+already wired in `godTeleport` ([scripts/state/command-handler.js](src/scripts/state/command-handler.js)):
+yard → entry plays `playYardLaunch` via `updateTokenContainer`, finish-cell arrival plays
+`playFinishSound` via the finish path in `updateTokenContainer`, captures animate via `animateCaptureToHome`. When
 you add a new transition-bound effect, hook it into both
 `updateTokenContainer` / the normal turn path AND `godTeleport` —
 otherwise god-mode silently skips it and the debug surface drifts
 from real gameplay.
 
-Gated by `isGodModeAvailable()` in [scripts/god-mode.js](scripts/god-mode.js),
+Gated by `isGodModeAvailable()` in [scripts/state/god-mode.js](src/scripts/state/god-mode.js),
 which checks `location.hostname === 'localhost' || '127.0.0.1'`. The
 toggle row in [wc-settings.js](components/wc-settings.js) and the
 god-mode branch in [wc-board.js](components/wc-board.js) both
@@ -256,7 +255,7 @@ listener saves to `ludo-save` just like a real move.
 
 ## Test Overrides (URL Params)
 
-`handleGameStart` in `scripts/game-events.*.js` reads two query params for scenario testing — bypasses normal home-start:
+`startGame` in `scripts/state/command-handler.js` reads two query params for scenario testing — bypasses normal home-start:
 
 - `?positions=p0t0,p0t1,p0t2,p0t3,p1t0,...,p3t3` — comma-separated token positions, indexed as `playerIndex * 4 + tokenIndex`. Values: `-1` (home), `0..50` (track), `51..56` (home stretch, `56` = finished). Missing/blank entries stay at `-1`.
 - `?player=N` — force `currentPlayerIndex` (0..3) for first turn.

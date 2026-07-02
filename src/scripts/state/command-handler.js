@@ -27,7 +27,7 @@ import {
     inactiveTokens,
     isTokenMovable,
     isTripComplete,
-    moveDice,
+    updateCornerWidgets,
     playClickSound,
     releaseWakeLock,
     resumeGame,
@@ -38,9 +38,7 @@ import {
     animateCaptureToHome,
     updateDiceFace,
     updateTokenContainer,
-    updateTurnCounter,
-    resetTurnCount,
-    setTurnCount,
+    renderTurnCount,
     initRailDeps,
     setPlayerNames,
     setLastRoll,
@@ -67,6 +65,7 @@ import {
 } from "../platform/scheduler.js";
 import { goTo, replaceTo, back as navBack, registerScreenHandler } from "../platform/nav-history.js";
 import { finishActiveOverlays } from "../render/overlay-base.js";
+import { applyThemeColorMeta } from "../platform/theme-chrome.js";
 import { dispatch } from "./game-store.js";
 import { isOnlineActive, onlineNet, onlineLocalSelf } from "../net/online-state.js";
 import { STORAGE_KEYS } from "../platform/storage-keys.js";
@@ -132,6 +131,49 @@ function isPlayerFinished(playerIndex) {
     return isPlayerFinishedPure(state.playerTokenPositions[playerIndex]);
 }
 
+// Shared capture choreography for the three animated move paths (normal
+// select, online replay, god-mode teleport — parity rule, see CLAUDE.md).
+// Pins each victim, aims the KO arc from the attacker's penultimate cell,
+// and returns a fire() that emits TOKEN_CAPTURED per victim (after an
+// optional beforeCaptures emit) and launches the capture-to-home anims.
+// fire() runs at onArrive; await done() after the mover lands.
+function prepareCaptures({ playerIndex, tokenIndex, toPosition, victims, beforeCaptures, emit }) {
+    for (const v of victims) {
+        const t = getTokenElement(v.playerIndex, v.tokenIndex);
+        if (t) pinTokenForCapture(t);
+    }
+    const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
+    const attack = {
+        attackerPlayerIndex: playerIndex,
+        attackerTokenIndex: tokenIndex,
+        prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
+    };
+    const anims = [];
+    const fire = () => {
+        if (beforeCaptures) beforeCaptures();
+        for (const v of victims) {
+            emit({
+                type: EVENTS.TOKEN_CAPTURED,
+                byPlayerIndex: playerIndex,
+                capturedPlayerIndex: v.playerIndex,
+                capturedTokenIndex: v.tokenIndex,
+            });
+            anims.push(animateCaptureToHome(v.playerIndex, v.tokenIndex, attack));
+        }
+    };
+    return { fire, done: () => Promise.all(anims), count: victims.length };
+}
+
+// findCapturedOpponents returns a per-player array of token-index lists;
+// flatten to the {playerIndex, tokenIndex} list the choreography consumes.
+function flattenCaptures(capturedByPlayer) {
+    const out = [];
+    capturedByPlayer.forEach((tokenIndexes, playerIndex) => {
+        for (const tokenIndex of tokenIndexes) out.push({ playerIndex, tokenIndex });
+    });
+    return out;
+}
+
 // Mount every seated player's tokens into their current cells, then restack the
 // touched cells. Shared by the offline start, the online start, and resume —
 // the `playerTokenPositions` guard is a no-op for startGame (always populated)
@@ -179,11 +221,10 @@ function removeGameTokens() {
     clearTokenElementCache();
 }
 
-// Restore the light-theme chrome (status-bar tint + page background)
-// that the in-game play screen overrides.
+// Restore the active theme's chrome (status-bar tint + page background)
+// that the in-game play screen or game-end recap may have overridden.
 function resetThemeChrome() {
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#EFE9DC');
+    applyThemeColorMeta();
     document.body.style.background = '';
 }
 
@@ -207,7 +248,7 @@ function resetGameDom() {
 function startGame(quickStartId, namesByPlayerIndex, emit) {
     // Allowed from any phase — starting a new game resets the machine.
     resetGameDom();
-    resetTurnCount();
+    renderTurnCount(0);
     initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
 
     const playerTypesResult = getPlayerTypes(quickStartId);
@@ -260,7 +301,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
 
     mountTokensFromState();
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 // Online: mount the board from a server snapshot. Mirrors startGame, but the
@@ -269,7 +310,7 @@ function startGame(quickStartId, namesByPlayerIndex, emit) {
 // driver replays the server's rolls/moves through NET_APPLY_ROLL/MOVE.
 function netStartGame(payload, emit) {
     resetGameDom();
-    resetTurnCount();
+    renderTurnCount(0);
     initRailDeps(state.playerTypes, getCurrentPlayerIndex, getFinishedCount);
     applyColorMap(payload.colorMap || [0, 1, 2, 3]);
 
@@ -297,7 +338,7 @@ function netStartGame(payload, emit) {
 
     mountTokensFromState();
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 // Online: replay the server's dice roll as a visual. The value is the server's
@@ -334,32 +375,17 @@ async function netApplyMove({ playerIndex, tokenIndex, fromPosition, toPosition,
 
     const el = getTokenElement(playerIndex, tokenIndex);
     if (animate && el) {
-        for (const c of captures) {
-            const t = getTokenElement(c.playerIndex, c.tokenIndex);
-            if (t) pinTokenForCapture(t);
-        }
-        const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
-        const attack = {
-            attackerPlayerIndex: playerIndex,
-            attackerTokenIndex: tokenIndex,
-            prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
-        };
         // Fire the captures on contact (onArrive) so the KO overlaps the
         // attacker's settle bounce instead of waiting for it to finish.
-        const captureAnims = [];
-        const fireCaptures = () => {
-            for (const c of captures) {
-                emit({
-                    type: EVENTS.TOKEN_CAPTURED,
-                    byPlayerIndex: playerIndex,
-                    capturedPlayerIndex: c.playerIndex,
-                    capturedTokenIndex: c.tokenIndex,
-                });
-                captureAnims.push(animateCaptureToHome(c.playerIndex, c.tokenIndex, attack));
-            }
-        };
-        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: fireCaptures });
-        await Promise.all(captureAnims);
+        const caps = prepareCaptures({
+            playerIndex,
+            tokenIndex,
+            toPosition,
+            victims: captures,
+            emit,
+        });
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: caps.fire });
+        await caps.done();
     } else {
         for (const c of captures) {
             emit({
@@ -427,9 +453,9 @@ function netSyncState(cmd, emit) {
         ranks: cmd.ranks,
     });
 
-    setTurnCount(state.turnCount);
+    renderTurnCount(state.turnCount);
     if (cmd.dice > 0 && cmd.dice !== prevFace) updateDiceFace(prevFace, cmd.dice);
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 
     // Snap any drifted token (or ghost pawn) back onto the truth. No-op in the
     // common case, so it never fights the move animation it runs after.
@@ -517,7 +543,7 @@ function resumeSavedGame(emit) {
         playerCaptures: saved.capturesArr,
     });
 
-    setTurnCount(state.turnCount);
+    renderTurnCount(state.turnCount);
     setPlayerNames(state.playerNames);
 
     showGame();
@@ -533,7 +559,7 @@ function resumeSavedGame(emit) {
         advanceToNextPlayer(emit);
     }
 
-    moveDice(state.currentPlayerIndex);
+    updateCornerWidgets();
 }
 
 function rollDice(emit) {
@@ -602,45 +628,25 @@ async function selectToken(playerIndex, tokenIndex, emit) {
 
     const tripComplete = isTripComplete(tokenNewPosition);
 
-    const otherPlayerTokensOnThatMarkIndex = findCapturedOpponents(playerIndex, tokenNewPosition, state.playerTokenPositions);
-    for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
-        for (const ti of pt) {
-            const t = getTokenElement(pi, ti);
-            if (t) pinTokenForCapture(t);
-        }
-    }
-
-    const prevPos = tokenNewPosition > 0 ? tokenNewPosition - 1 : tokenNewPosition;
-    const attack = {
-        attackerPlayerIndex: state.currentPlayerIndex,
-        attackerTokenIndex: tokenIndex,
-        prevCellId: getTokenContainerId(state.currentPlayerIndex, tokenIndex, prevPos),
-    };
+    // Capture detection runs on the already-updated state positions.
+    const capturedByPlayer = findCapturedOpponents(playerIndex, tokenNewPosition, state.playerTokenPositions);
+    const victims = flattenCaptures(capturedByPlayer);
 
     // Launch the captures the instant the attacker touches its destination cell
     // (onArrive), so the KO animation overlaps the attacker's settle bounce
     // instead of starting only after the whole landing has played out.
-    let captureCount = 0;
-    const captureAnims = [];
-    const fireCaptures = () => {
-        for (const [pi, pt] of otherPlayerTokensOnThatMarkIndex.entries()) {
-            for (const ti of pt) {
-                emit({
-                    type: EVENTS.TOKEN_CAPTURED,
-                    byPlayerIndex: state.currentPlayerIndex,
-                    capturedPlayerIndex: pi,
-                    capturedTokenIndex: ti,
-                });
-                captureAnims.push(animateCaptureToHome(pi, ti, attack));
-                captureCount++;
-            }
-        }
-    };
+    const caps = prepareCaptures({
+        playerIndex: state.currentPlayerIndex,
+        tokenIndex,
+        toPosition: tokenNewPosition,
+        victims,
+        emit,
+    });
 
-    await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition, { onArrive: fireCaptures });
-    await Promise.all(captureAnims);
+    await updateTokenContainer(playerIndex, tokenIndex, tokenOldPosition, tokenNewPosition, { onArrive: caps.fire });
+    await caps.done();
 
-    handleAfterTokenMove(tripComplete, captureCount, emit);
+    handleAfterTokenMove(tripComplete, caps.count, emit);
 }
 
 function handleAfterTokenMove(tripComplete, captureCount, emit) {
@@ -691,8 +697,8 @@ function advanceToNextPlayer(emit) {
     if (next !== -1) {
         emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: next });
     }
-    updateTurnCounter();
-    moveDice(state.currentPlayerIndex);
+    renderTurnCount(state.turnCount);
+    updateCornerWidgets();
 }
 
 function restartGame(emit) {
@@ -770,38 +776,20 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
     // sees the doomed opponents at their pre-capture positions. Skips safe
     // squares and same-color pairs already.
     const capturedByPlayer = findCapturedOpponents(playerIndex, toPosition, state.playerTokenPositions);
-    for (const [pi, tis] of capturedByPlayer.entries()) {
-        for (const ti of tis) {
-            const t = getTokenElement(pi, ti);
-            if (t) pinTokenForCapture(t);
-        }
-    }
+    const victims = flattenCaptures(capturedByPlayer);
 
     // Mirror selectToken: drive the KO arc from the attacker's penultimate
     // cell so the punch comes from the direction it actually moved.
-    const prevPos = toPosition > 0 ? toPosition - 1 : toPosition;
-    const attack = {
-        attackerPlayerIndex: playerIndex,
-        attackerTokenIndex: tokenIndex,
-        prevCellId: getTokenContainerId(playerIndex, tokenIndex, prevPos),
-    };
     // Record the teleport, then launch its captures — on contact (onArrive) for
     // a walked move so the KO overlaps the settle bounce, just like normal play.
-    const captureAnims = [];
-    const fireCaptures = () => {
-        emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition });
-        for (const [pi, tis] of capturedByPlayer.entries()) {
-            for (const ti of tis) {
-                emit({
-                    type: EVENTS.TOKEN_CAPTURED,
-                    byPlayerIndex: playerIndex,
-                    capturedPlayerIndex: pi,
-                    capturedTokenIndex: ti,
-                });
-                captureAnims.push(animateCaptureToHome(pi, ti, attack));
-            }
-        }
-    };
+    const caps = prepareCaptures({
+        playerIndex,
+        tokenIndex,
+        toPosition,
+        victims,
+        beforeCaptures: () => emit({ type: EVENTS.GOD_TELEPORTED, playerIndex, tokenIndex, toPosition }),
+        emit,
+    });
 
     // Forward teleports walk the player's path cell-by-cell, identical to a
     // normal turn: updateTokenContainer plays the yard launch, the per-step
@@ -809,7 +797,7 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
     // / same-cell teleports have no normal-game analog (getContainerPath builds
     // no reverse path, so the glide would be a no-op), so they snap in place.
     if (getContainerPath(playerIndex, tokenIndex, fromPosition, toPosition).length > 0) {
-        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: fireCaptures });
+        await updateTokenContainer(playerIndex, tokenIndex, fromPosition, toPosition, { onArrive: caps.fire });
     } else {
         // Drop inline stacking styles so the moved token settles cleanly into
         // its new cell's flow before updateCellStacking re-applies them.
@@ -818,10 +806,10 @@ async function godTeleport(playerIndex, tokenIndex, toPosition, emit) {
         targetCell.appendChild(token);
         if (sourceCell && sourceCell !== targetCell) updateCellStacking(sourceCell);
         updateCellStacking(targetCell);
-        fireCaptures();
+        caps.fire();
     }
 
-    await Promise.all(captureAnims);
+    await caps.done();
 }
 
 let _pauseCloseHandler = null;
@@ -840,7 +828,7 @@ function handleGamePause(emit) {
     finishActiveOverlays();
 
     emit({ type: EVENTS.GAME_PAUSED });
-    showPauseMenu();
+    showPauseMenu(state.turnCount);
     goTo(SCREENS.PAUSE);
 
     const overlay = document.getElementById("pause-menu");

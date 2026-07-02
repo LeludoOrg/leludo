@@ -1,12 +1,11 @@
 /**
  * Cloudflare Worker — the multiplayer entry point / router.
  *
- * Production transport shell over the SAME runtime-agnostic modules the local
- * Node `ws` server uses (server/room-engine.js, server/admission.js,
- * server/matchmaker.js). The only thing that differs between local dev and prod
- * is this shell + the Durable Object wrappers in server/cf/* — all game rules
- * stay in scripts/* (see docs/multiplayer-plan.md → "Reuse of existing pure
- * modules").
+ * Transport shell over the runtime-agnostic modules (server/room-engine.js,
+ * server/admission.js, server/matchmaker.js). This Worker is the transport layer
+ * for both production AND dev/e2e: the Durable Objects and dev/Playwright tests
+ * run against the same Worker code (under `wrangler dev` for dev/e2e). All game
+ * rules stay in scripts/* — this shell only moves bytes.
  *
  * The Worker holds NO game state. It terminates `wss://`, then forwards the
  * upgrade to the Durable Object that owns the room:
@@ -29,8 +28,8 @@ export default {
             return json({ ok: true });
         }
         if (url.pathname === '/stats') {
-            // Surface the live admission counters (active rooms, games today, caps)
-            // for monitoring — the same shape as local-server's /stats.
+            // Surface the live admission counters (active rooms, games today,
+            // caps) for monitoring.
             const stub = env.ADMISSION.get(env.ADMISSION.idFromName(ADMISSION_NAME));
             return stub.fetch('https://do/stats');
         }
@@ -40,8 +39,7 @@ export default {
 
         // Dev/e2e only (DEV_TEST_HOOKS): deterministic BUSY so the client busy
         // overlay can be exercised without depending on the real admission
-        // counter (which stays parallel-safe in CI). Mirrors the local-server
-        // TEST_HOOKS `__busy__` / forceBusy path. DEV_TEST_HOOKS is set only by
+        // counter (which stays parallel-safe in CI). DEV_TEST_HOOKS is set only by
         // `wrangler dev --var` for dev + Playwright; deployed prod never sets it,
         // so this is dead code in production.
         if (env.DEV_TEST_HOOKS) {

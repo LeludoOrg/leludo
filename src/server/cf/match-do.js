@@ -3,18 +3,17 @@
  *
  * NOT on the launch path. The shipped client is private-rooms-only
  * (components/wc-quick-start.js), so no client sends `mode=public` yet; this DO
- * is wired for parity with docs/multiplayer-plan.md and to keep the queue logic
- * (server/matchmaker.js) deployed and testable.
+ * stays wired to keep the queue logic (server/matchmaker.js) deployed and
+ * testable.
  *
  * Cross-DO caveat — why this needs one more client change before it's live:
  *   A WebSocket belongs to exactly ONE Durable Object. A socket queued *here*
  *   cannot be transferred into a LudoRoomDO. So when a match forms we mint +
  *   admit a room and send each player `{ t:"matched", room }`, then close their
  *   queue socket — the client is expected to redial `/?room=CODE` (the private
- *   path) to actually enter the game. The local Node server cheats this by
- *   re-binding the same socket in-process; on CF the client must redial. Wiring
- *   that redial (net-client: on `matched`, reopen against the room) is the
- *   remaining task to turn public matchmaking on.
+ *   path) to actually enter the game. The client must redial (there is no way to
+ *   transfer the queued socket). Wiring that redial (net-client: on `matched`,
+ *   reopen against the room) is the remaining task to turn public matchmaking on.
  */
 import { Matchmaker } from '../matchmaker.js';
 import { mintRoomCode } from '../../scripts/core/room-code.js';

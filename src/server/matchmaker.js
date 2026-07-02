@@ -1,15 +1,15 @@
 /**
  * Matchmaker — public random-match queue, runtime-agnostic.
  *
- * The MatchmakingDO from docs/multiplayer-plan.md. Players who pick "public"
+ * Backs the public-match DO (MatchmakingDO). Players who pick "public"
  * join a per-size queue; when `size` players are waiting a match forms. A
  * fill-timeout forms a partial match topped up with bots so a lone player is
  * never stuck forever. Private (room-code) games skip this entirely.
  *
  * It owns no transport and no rooms — the host injects `formMatch(size,
  * entries, withBots)` which mints the room, admits it, and seats the players.
- * That keeps this logic identical across the Node ws server, a Cloudflare DO,
- * and unit tests (which inject a synchronous scheduler).
+ * That keeps this logic identical across the Cloudflare DO and unit tests
+ * (which inject a synchronous scheduler).
  */
 
 export class Matchmaker {

@@ -53,7 +53,17 @@ function listMovableTokenIndexes(playerTokens, dice) {
     return out;
 }
 
-function applyMove(positions, playerIndex, tokenIndex, dice) {
+/**
+ * Apply one move to a board copy and resolve captures. Shared by the headless
+ * driver (runGame below) and the server engine (room-engine.js), so the two
+ * turn machines can't diverge.
+ * @param {number[][]} positions
+ * @param {number} playerIndex
+ * @param {number} tokenIndex
+ * @param {number} dice
+ * @returns {{next: number[][], fromPosition: number, newPosition: number, captureCount: number, captured: Array, tripComplete: boolean}}
+ */
+export function applyMove(positions, playerIndex, tokenIndex, dice) {
     const next = clonePositions(positions, null);
     const fromPos = next[playerIndex][tokenIndex];
     const newPos = getTokenNewPosition(fromPos, dice);

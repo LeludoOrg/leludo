@@ -5,11 +5,7 @@ import {
     playerRanks,
     playerTypes,
     sentHomeCount,
-    firstHomeStretchTurn,
-    firstFinishTurn,
     distanceTraveled,
-    pawnsAtBaseAtTurn20,
-    bestDiceStreak,
     state,
     selectHighlights,
     selectHighlightsBySeat,
@@ -23,7 +19,7 @@ import {
 } from "../scripts/index.js";
 import {trackEvent} from "../scripts/platform/analytics.js";
 import {isOnlineActive, onlineLocalSelf, toServer} from "../scripts/net/online-state.js";
-import {MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT} from "../scripts/render/pawn-mini.js";
+import {miniPawnSVG} from "../scripts/render/pawn-mini.js";
 import {shareGameEnd, primeShareImage} from "../scripts/render/share-image.js";
 
 const CONFETTI_COLORS = ['var(--base-color-0)', 'var(--base-color-1)', 'var(--base-color-2)', 'var(--base-color-3)'];
@@ -65,15 +61,17 @@ function confettiPieces() {
 }
 
 function pawnSvg(playerIndex, size) {
-    return `<svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:${size}px;height:${size}px;">
-        <path d="${MINI_PAWN_BODY}" fill="currentColor"/>
-        <path d="${MINI_PAWN_HIGHLIGHT}" fill="rgba(255,255,255,0.24)"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
-        <rect x="7.5" y="22" width="17" height="1.2" rx="0.6" fill="rgba(255,255,255,0.38)"/>
-    </svg>`;
+    return miniPawnSVG({
+        playerIndex,
+        style: `width:${size}px;height:${size}px;`,
+        highlight: true,
+    });
 }
 
 const ICON_DOWNLOAD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>`;
+// Local 14px back chevron for the home pill. wc-icons.ICON_BACK is 17px
+// (different stroke width + size); using the 17px version here would visibly
+// enlarge the pill's icon. Not imported to avoid visual breakage.
 const ICON_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M15 6l-6 6 6 6"/></svg>`;
 const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>`;
 const CARD_ICONS = {
@@ -200,11 +198,7 @@ function buildStats() {
     return {
         playerCaptures: Array.from(playerCaptures),
         sentHomeCount: Array.from(sentHomeCount),
-        bestDiceStreak: Array.from(bestDiceStreak),
-        firstFinishTurn: Array.from(firstFinishTurn),
-        firstHomeStretchTurn: Array.from(firstHomeStretchTurn),
         distanceTraveled: Array.from(distanceTraveled),
-        pawnsAtBaseAtTurn20: Array.from(pawnsAtBaseAtTurn20),
         turnCount: state.turnCount || 0,
     };
 }
@@ -371,7 +365,8 @@ class GameEnd extends HTMLElement {
 
         const themeMeta = document.querySelector('meta[name="theme-color"]');
         if (themeMeta) {
-            this._prevThemeColor = themeMeta.getAttribute('content');
+            // Tint the browser chrome to the recap palette while the end screen
+            // is up; exit paths run resetThemeChrome → applyThemeColorMeta.
             themeMeta.setAttribute(
                 'content',
                 document.documentElement.classList.contains('dark') ? '#1a1410' : '#ede4d3',

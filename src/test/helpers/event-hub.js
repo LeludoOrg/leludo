@@ -1,9 +1,7 @@
 /**
- * Tiny pub/sub hub shared by the transport channels (in-process +
- * mock-network). Both keep a Set of event handlers and fan each event
- * batch out to all of them, isolating a throwing handler so one bad
- * subscriber can't starve the rest. This is the one source of truth for
- * that pattern.
+ * Tiny pub/sub hub — shared test-helper used by the mock-network channel.
+ * Keeps a Set of event handlers and fans each event batch out to all of them,
+ * isolating a throwing handler so one bad subscriber can't starve the rest.
  *
  *   const hub = makeEventHub('channel handler threw');
  *   const off = hub.subscribe((events) => { ... });
@@ -11,7 +9,7 @@
  *   off();               // unsubscribe
  *
  * @param {string} [errorLabel]  prefix for the console.error when a
- *   handler throws — lets each channel keep its own diagnostic wording.
+ *   handler throws — lets the channel keep its own diagnostic wording.
  */
 export function makeEventHub(errorLabel = 'event handler threw') {
     const handlers = new Set();

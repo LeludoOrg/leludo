@@ -1,4 +1,4 @@
-import { SAFE_SQUARES as SAFE_SQUARES_ARR, DICE_WEIGHTS } from "./game-logic.js";
+import { SAFE_SQUARES as SAFE_SQUARES_ARR, DICE_WEIGHTS, isTokenMovable, getTokenNewPosition, findCapturedOpponents } from "./game-logic.js";
 import {
     YARD,
     ENTRY_SQUARE,
@@ -82,27 +82,30 @@ export function evalState(playerIndex, positions, w) {
 
 /**
  * Simulate a move. Returns next positions + capture count.
+ * Uses shared game-logic functions for position calculation and capture detection
+ * to ensure bot behavior matches the live game rules.
  * @returns {{ next: number[][], caps: number }}
  */
-function applyMove(playerIndex, tokenIndex, dice, positions) {
+export function applyMove(playerIndex, tokenIndex, dice, positions) {
     const next = clonePositions(positions);
     const cur = next[playerIndex][tokenIndex];
-    const np = cur === YARD ? ENTRY_SQUARE : cur + dice;
+    const np = getTokenNewPosition(cur, dice);
     next[playerIndex][tokenIndex] = np;
+
+    // findCapturedOpponents returns a per-player array of captured token indices.
+    // It handles: safe squares (returns all-empty), home-stretch positions (no match),
+    // and two-token pair-safety rule (clears lists of length exactly 2).
+    const capturedByPlayer = findCapturedOpponents(playerIndex, np, next);
+
     let caps = 0;
-    if (np <= LAST_TRACK_SQUARE && !SAFE_SQUARES.has(np)) {
-        const myMark = rawMarkIndex(playerIndex, np);
-        for (let pi = 0; pi < 4; pi++) {
-            if (!next[pi] || pi === playerIndex) continue;
-            const hits = [];
-            for (let ti = 0; ti < 4; ti++) {
-                const op = next[pi][ti];
-                if (op < ENTRY_SQUARE || op > LAST_TRACK_SQUARE) continue;
-                if (rawMarkIndex(pi, op) === myMark) hits.push(ti);
-            }
-            if (hits.length === 1) { next[pi][hits[0]] = YARD; caps++; }
+    for (let pi = 0; pi < 4; pi++) {
+        if (!capturedByPlayer[pi]) continue;
+        for (const ti of capturedByPlayer[pi]) {
+            next[pi][ti] = YARD;
+            caps++;
         }
     }
+
     return { next, caps };
 }
 
@@ -111,11 +114,13 @@ function legalMoves(playerIndex, dice, positions) {
     const seen = new Set();
     for (let ti = 0; ti < 4; ti++) {
         const p = positions[playerIndex][ti];
-        if (dice === 6 && p === YARD) {
-            if (!seen.has(YARD)) { seen.add(YARD); moves.push(ti); }
-            continue;
+        // Use shared isTokenMovable to check legality; keep the seen-position dedup
+        // to treat all YARD tokens as one move option.
+        if (!isTokenMovable(p, dice)) continue;
+        if (!seen.has(p)) {
+            seen.add(p);
+            moves.push(ti);
         }
-        if (p >= ENTRY_SQUARE && p + dice <= FINISH && !seen.has(p)) { seen.add(p); moves.push(ti); }
     }
     return moves;
 }

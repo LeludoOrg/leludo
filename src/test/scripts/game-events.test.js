@@ -7,6 +7,7 @@ import {
 } from '../../scripts/state/command-handler.js';
 import { reducer, EVENTS } from '../../scripts/state/game-reducer.js';
 import { initialGameState, PHASES } from '../../scripts/state/game-state.js';
+import * as renderLogic from '../../scripts/render/render-logic.js';
 
 beforeEach(() => {
     if (isGameLogicPaused()) resumeGameLogic();
@@ -139,5 +140,57 @@ describe('pause / resume scheduler', () => {
     // machine handles double-click protection without any DOM overlay.
     it('the phase machine alone gates input — no page-level overlay exists', () => {
         expect(document.getElementById('input-lock-overlay')).toBeNull();
+    });
+});
+
+describe('turn counter consistency', () => {
+    // Regression: advanceToNextPlayer called updateTurnCounter() unconditionally,
+    // even when getNextPlayerIndex returned -1 (no more active players). This caused
+    // the render-logic's module-local turnCount to outrun state.turnCount. The
+    // persistence-listener then saved the drifted render copy, making a loaded save
+    // have a stale count. After the fix, renderTurnCount is a pure paint function
+    // and state.turnCount is the only source of truth.
+    it('state.turnCount is the single source of truth — render counter deleted', () => {
+        // The old code exported four separate counter-mutation functions:
+        // updateTurnCounter, resetTurnCount, getTurnCount, setTurnCount.
+        // After the fix, only renderTurnCount (pure paint) remains in the exports.
+        // Verify getTurnCount is no longer exported.
+        expect(renderLogic.getTurnCount).toBeUndefined();
+        expect(renderLogic.updateTurnCounter).toBeUndefined();
+        expect(renderLogic.resetTurnCount).toBeUndefined();
+        // setTurnCount is deleted; its name is reused for renderTurnCount.
+        expect(renderLogic.setTurnCount).toBeUndefined();
+        // renderTurnCount is the new pure paint function.
+        expect(typeof renderLogic.renderTurnCount).toBe('function');
+    });
+
+    it('the persisted save always carries state.turnCount (no drifted display copy)', async () => {
+        // Drive the REAL store + persistence listener: the save written to
+        // localStorage must equal the reducer's turnCount, because the old code
+        // saved render-logic's display counter, which advanceToNextPlayer bumped
+        // even on turns where no TURN_ADVANCED was emitted.
+        const { emit } = await import('../../scripts/state/game-store.js');
+        const { state } = await import('../../scripts/state/game-state.js');
+        const { installPersistenceListener } = await import('../../scripts/listeners/persistence-listener.js');
+        const { STORAGE_KEYS } = await import('../../scripts/platform/storage-keys.js');
+
+        installPersistenceListener();
+        emit({
+            type: EVENTS.GAME_STARTED,
+            quickStartId: 'qs,1,1,0,1',
+            gameStartedAt: 1,
+            playerTypes: ['PLAYER', 'BOT', undefined, undefined],
+            botPersonalities: [null, 'balanced', null, null],
+            playerNames: ['Ana', 'Bo', '', ''],
+            playerTokenPositions: [[-1, -1, -1, -1], [-1, -1, -1, -1], undefined, undefined],
+            currentPlayerIndex: 0,
+        });
+        emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 1 });
+        emit({ type: EVENTS.TURN_ADVANCED, nextPlayerIndex: 0 });
+
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVE));
+        expect(state.turnCount).toBe(2);
+        expect(saved.turnCount).toBe(state.turnCount);
+        localStorage.removeItem(STORAGE_KEYS.SAVE);
     });
 });

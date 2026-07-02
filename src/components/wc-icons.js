@@ -3,23 +3,16 @@
 // copy-pasting an SVG string into a component (a drifting copy is a defect:
 // the home pawn rendering a different shape than a lobby pawn, etc.).
 
-import { MINI_PAWN_BODY, MINI_PAWN_HIGHLIGHT } from "../scripts/render/pawn-mini.js";
+import { miniPawnSVG } from "../scripts/render/pawn-mini.js";
+import { DIE_PIPS } from "../scripts/core/dice-faces.js";
 
 export const DICE_SVG = (value, size = 56) => {
-    const PIP_LAYOUTS = {
-        1: [[1,1]],
-        2: [[0,0],[2,2]],
-        3: [[0,0],[1,1],[2,2]],
-        4: [[0,0],[0,2],[2,0],[2,2]],
-        5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
-        6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
-    };
     const pad = size * 0.2;
     const pip = size * 0.15;
     const cell = (size - pad * 2) / 2;
-    const pips = PIP_LAYOUTS[value] || PIP_LAYOUTS[1];
-    const pipSvgs = pips.map(([gr, gc]) =>
-        `<circle cx="${pad + gc * cell}" cy="${pad + gr * cell}" r="${pip/2}" fill="var(--color-fg)"/>`
+    const pips = DIE_PIPS[value] || DIE_PIPS[1];
+    const pipSvgs = pips.map(([r, c]) =>
+        `<circle cx="${pad + (c - 1) * cell}" cy="${pad + (r - 1) * cell}" r="${pip/2}" fill="var(--color-fg)"/>`
     ).join('');
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <rect x="0.5" y="0.5" width="${size - 1}" height="${size - 1}" rx="${size * 0.22}" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="1"/>
@@ -52,14 +45,12 @@ export const QUAD_CHIP_SVG = (size = 26) => MINI_BOARD_SVG(size);
 export const PLAY_ICON_SVG = (size = 14) =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 
-export const PAWN_SVG = (playerIndex) => `
-    <svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:100%;height:100%;filter:drop-shadow(0 1.2px 1.5px rgba(0,0,0,0.28));">
-        <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.18)"/>
-        <path d="${MINI_PAWN_BODY}" fill="currentColor"/>
-        <path d="${MINI_PAWN_HIGHLIGHT}" fill="rgba(255,255,255,0.24)"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
-        <rect x="7.5" y="22" width="17" height="1.2" rx="0.6" fill="rgba(255,255,255,0.38)"/>
-    </svg>`;
+export const PAWN_SVG = (playerIndex) => miniPawnSVG({
+    playerIndex,
+    style: 'width:100%;height:100%;filter:drop-shadow(0 1.2px 1.5px rgba(0,0,0,0.28));',
+    shadow: 0.18,
+    highlight: true,
+});
 
 export const ICON_BACK = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`;
 // In-game top-bar glyphs. Offline shows ICON_PAUSE (opens the pause menu);

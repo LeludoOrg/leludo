@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runGame, makeRng } from '../../scripts/core/game-driver.js';
-import { createMockNetworkPair } from '../../scripts/net/transport/mock-network-channel.js';
+import { createMockNetworkPair } from '../helpers/mock-network-channel.js';
 import { reducer, applyEvents } from '../../scripts/state/game-reducer.js';
 import { initialGameState } from '../../scripts/state/game-state.js';
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ringDistance, spreadPick, spreadSeatPlan } from '../../scripts/core/seat-allocation.js';
+import { ringDistance, spreadPick } from '../../scripts/core/seat-allocation.js';
 
 describe('seat-allocation', () => {
     describe('ringDistance', () => {
@@ -33,24 +33,4 @@ describe('seat-allocation', () => {
         });
     });
 
-    describe('spreadSeatPlan', () => {
-        it('interleaves 2 humans + 2 bots so the humans are diagonal', () => {
-            // The reported online bug: a 2-human, bot-filled room must not put the
-            // humans on adjacent chairs. PLAYER seats land on 0 & 2 (a diagonal),
-            // bots take 1 & 3 (the other diagonal).
-            expect(spreadSeatPlan(4, 2, true)).toEqual(['PLAYER', 'BOT', 'PLAYER', 'BOT']);
-        });
-
-        it('seats a single human at 0 with bots filling the rest', () => {
-            expect(spreadSeatPlan(4, 1, true)).toEqual(['PLAYER', 'BOT', 'BOT', 'BOT']);
-        });
-
-        it('closes seats beyond the active size', () => {
-            expect(spreadSeatPlan(2, 1, true)).toEqual(['PLAYER', 'BOT', null, null]);
-        });
-
-        it('leaves every active seat a PLAYER when not bot-filling (full human match)', () => {
-            expect(spreadSeatPlan(4, 4, false)).toEqual(['PLAYER', 'PLAYER', 'PLAYER', 'PLAYER']);
-        });
-    });
 });

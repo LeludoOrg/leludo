@@ -2,32 +2,21 @@ import { test, expect } from '@playwright/test';
 import { startGame as bootGame } from './helpers.js';
 
 /**
- * Regression for pawn-launch overlay.
+ * Launch start-FX regression tests.
  *
- * Bug: when a pawn left the yard via the launch animation,
- * playYardLaunch hid the whole source seat (`h-<player>-<token>`, the
- * `.home-slot-dot`) for the duration of the overlay. The seat — the
- * spot the pawn launched from — blinked out for ~1.2s and only
- * reappeared (as an empty ring) when the promise resolved.
+ * Originally: the dead playPawnLaunch overlay function tested the full leap
+ * (anticipation/crouch/leap/land keyframes, ghost trail, landing "GO!" chip).
+ * That entire path is now replaced by the LIVE implementation:
+ * updateTokenContainer's yard→entry branch calls playYardLaunch, which triggers
+ * playLaunchStartFX (halo + sparks burst) + playPawnStep (the shared hop).
  *
- * Fix: hide ONLY the live token during the overlay and leave the seat
- * dot visible. The empty ring is exactly how the seat should look once
- * the pawn has launched, so it reads as "vacated" throughout the leap
- * instead of disappearing and snapping back.
- *
- * The assertion below would have failed against the pre-fix code:
- * during the animation `h-0-0`'s inline visibility was `hidden`.
- *
- * Second bug, second assertion: the landing "GO!" chip had
- * `background: currentColor` AND `color: #1a1410` on the same rule,
- * so `currentColor` on the chip resolved to its OWN dark color, not
- * the player color flowing down from `.plnch-label`. The chip
- * rendered as a dark "rounded square" at the entry cell. Fix uses a
- * custom property `--plnch-chip-bg` set on the parent so the player
- * color reaches the chip background.
+ * The assertions below guard the LIVE path:
+ * 1. The launch burst (halo + sparks) renders during yard→entry movement.
+ * 2. The token lands in the entry cell with visibility restored.
+ * 3. The yard seat remains visible (not hidden by the overlay).
  */
 
-test.describe('Pawn launch overlay', () => {
+test.describe('Pawn launch start-FX', () => {
     test('keeps yard seat ring visible while the launch overlay plays', async ({ page }) => {
         // Start a normal game; positions default to all-in-yard.
         await bootGame(page, '?player=0');
@@ -79,87 +68,75 @@ test.describe('Pawn launch overlay', () => {
         expect(seatVisibility).not.toBe('hidden');
     });
 
-    test('landing GO! chip uses player color for the pill, not the dark text color', async ({ page }) => {
-        // Drive a real playPawnLaunch so the module's CSS gets injected
-        // and the chip is constructed by playLandingFX. We sample the
-        // chip ~85% through the run — past the landing phase, before
-        // the overlay DOM is cleaned up. Pre-fix the chip rendered as a
-        // dark pill (bg #1a1410) because `background: currentColor`
-        // resolved against the chip's own `color: #1a1410`.
-        await page.goto('/');
-        const colors = await page.evaluate(async () => {
-            const mod = await import('/scripts/render/pawn-launch.js');
-            const root = document.createElement('div');
-            root.style.cssText = 'position: fixed; inset: 0;';
-            document.body.appendChild(root);
-            const PLAYER = '#cf4a3a';
-            const DURATION = 1000;
-            const p = mod.playPawnLaunch({
-                container: root,
-                yard: { x: 100, y: 100 },
-                entry: { x: 200, y: 200 },
-                color: PLAYER,
-                pawnSize: 48,
-                duration: DURATION,
+    test('renders launch burst (halo + sparks) during yard-to-entry movement', async ({ page }) => {
+        // Guard the LIVE launch-start-FX burst that plays during yard→entry
+        // pawn movement. The burst is a halo glow + upward sparks fan that
+        // render via playLaunchStartFX in render-logic.js, called by playYardLaunch.
+        // This test verifies the FX root and its child elements mount and
+        // animate during the move.
+        await bootGame(page, '?player=0');
+        await expect(page.locator('wc-board:not(.hidden)')).toBeVisible();
+        await page.locator('#h-0-0').waitFor();
+
+        // Trigger yard→entry via GOD_TELEPORT (same as test 1) and check
+        // that the FX overlay root exists with halo + sparks during the move.
+        const fxState = await page.evaluate(async () => {
+            const mod = await import('/scripts/index.js');
+            mod.dispatch({
+                type: mod.COMMANDS.GOD_TELEPORT,
+                playerIndex: 0,
+                tokenIndex: 0,
+                toPosition: 0,
             });
-            // Sample at 85% — chip is already mounted and animating.
-            await new Promise(r => setTimeout(r, Math.round(DURATION * 0.85)));
-            const chip = root.querySelector('.plnch-label-chip');
-            const cs = chip ? getComputedStyle(chip) : null;
-            const out = chip ? { bg: cs.backgroundColor, color: cs.color } : { bg: null, color: null };
-            await p;
-            root.remove();
-            return out;
+            // Poll briefly to catch the FX while it's active.
+            return new Promise((resolve) => {
+                const start = Date.now();
+                const check = () => {
+                    const root = document.querySelector('.plnch-root');
+                    const halo = document.querySelector('.plnch-halo');
+                    const sparks = Array.from(document.querySelectorAll('.plnch-spark'));
+                    const found = {
+                        rootExists: !!root,
+                        haloExists: !!halo,
+                        sparkCount: sparks.length,
+                    };
+                    if (found.rootExists && found.sparkCount > 0 && Date.now() - start < 500) {
+                        // FX is active now; resolve immediately.
+                        resolve(found);
+                    } else if (Date.now() - start < 500) {
+                        // Not yet; retry.
+                        requestAnimationFrame(check);
+                    } else {
+                        // Timeout; resolve with what we have (should have caught it by now).
+                        resolve(found);
+                    }
+                };
+                check();
+            });
         });
 
-        // Player color = #cf4a3a → rgb(207, 74, 58).
-        expect(colors.bg).toBe('rgb(207, 74, 58)');
-        // Text stays dark for readability.
-        expect(colors.color).toBe('rgb(26, 20, 16)');
-    });
+        // Verify the FX rendered: root, halo, and at least one spark.
+        expect(fxState.rootExists).toBe(true);
+        expect(fxState.haloExists).toBe(true);
+        expect(fxState.sparkCount).toBeGreaterThan(0);
 
-    test('launch pawn uses the real wc-token shape, at cell size', async ({ page }) => {
-        // Bug: the launch overlay drew a DIFFERENT pawn than the game.
-        // Fix: the overlay reuses the shared pawn-shape glyph (0 0 100 116
-        // viewBox, body path from pawn-shape.js). pawnSize is a HEIGHT, so the
-        // pawn stands one cell tall with width = height / 1.16. Pins both.
-        await page.goto('/');
-        const pawn = await page.evaluate(async () => {
-            const mod = await import('/scripts/render/pawn-launch.js');
-            const root = document.createElement('div');
-            root.style.cssText = 'position: fixed; inset: 0;';
-            document.body.appendChild(root);
-            const CELL = 40;
-            const p = mod.playPawnLaunch({
-                container: root,
-                yard: { x: 100, y: 100 },
-                entry: { x: 200, y: 200 },
-                color: '#cf4a3a',
-                pawnSize: CELL,
-                duration: 800,
-                label: '',
-            });
-            await new Promise(r => setTimeout(r, 60));
-            const svg = root.querySelector('.plnch-pawn-svg');
-            const out = {
-                viewBox: svg.getAttribute('viewBox'),
-                width: svg.getAttribute('width'),
-                height: svg.getAttribute('height'),
-                // The token body path lives in components/wc-token.js; the
-                // overlay must render the same outline.
-                hasTokenBody: !!svg.querySelector(
-                    'path[d="M30 100 Q22 84 33 60 Q40 49 41 41 L59 41 Q60 49 67 60 Q78 84 70 100 Z"]'
-                ),
+        // After the move completes, the token should be in the entry cell
+        // with visibility restored (the FX overlay is cleaned up).
+        await expect.poll(async () =>
+            page.evaluate(() => document.getElementById('p-0-0').parentElement.id),
+            { timeout: 5000 }
+        ).toMatch(/^m\d+$/);
+
+        const finalToken = await page.evaluate(() => {
+            const token = document.getElementById('p-0-0');
+            return {
+                parentId: token.parentElement.id,
+                visibility: token.style.visibility || 'inherited',
             };
-            await p;
-            root.remove();
-            return out;
         });
-
-        expect(pawn.viewBox).toBe('0 0 100 116');
-        // pawnSize (40) is the pawn WIDTH; height = 40 * 1.16 (taller than wide).
-        expect(pawn.width).toBe('40');
-        expect(pawn.height).toBe(String(40 * 1.16));
-        expect(pawn.hasTokenBody).toBe(true);
+        // Token should be in a track cell (m<idx>) and visibility restored
+        // (not 'hidden'; either explicitly '', or inherited from parent).
+        expect(finalToken.parentId).toMatch(/^m\d+$/);
+        expect(finalToken.visibility).not.toBe('hidden');
     });
 });
