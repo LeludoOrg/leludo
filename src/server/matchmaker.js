@@ -8,8 +8,8 @@
  *
  * It owns no transport and no rooms — the host injects `formMatch(size,
  * entries, withBots)` which mints the room, admits it, and seats the players.
- * That keeps this logic identical across the Node ws server, a Cloudflare DO,
- * and unit tests (which inject a synchronous scheduler).
+ * That keeps this logic identical across the Cloudflare DO and unit tests
+ * (which inject a synchronous scheduler).
  */
 
 export class Matchmaker {

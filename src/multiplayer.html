@@ -6,10 +6,9 @@
     <title>Leludo — Multiplayer (dev harness)</title>
     <!--
       DEV / TEST harness for server-authoritative multiplayer. This is NOT the
-      shipped game UI — it's a thin surface with stable data-testid hooks so the
-      Playwright e2e suite can drive two clients against one room and assert the
-      server is the single source of truth. The real wc-board integration is a
-      later phase (see docs/multiplayer-plan.md → "Client changes").
+      shipped game UI — a thin dev/test surface with stable data-testid hooks so
+      the Playwright e2e suite (test/e2e/multiplayer.spec.js) can drive two
+      clients against one room and assert the server is the single source of truth.
     -->
     <style>
         body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #14151a; color: #e8e8ea; }

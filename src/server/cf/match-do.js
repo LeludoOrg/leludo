@@ -11,10 +11,9 @@
  *   cannot be transferred into a LudoRoomDO. So when a match forms we mint +
  *   admit a room and send each player `{ t:"matched", room }`, then close their
  *   queue socket — the client is expected to redial `/?room=CODE` (the private
- *   path) to actually enter the game. The local Node server cheats this by
- *   re-binding the same socket in-process; on CF the client must redial. Wiring
- *   that redial (net-client: on `matched`, reopen against the room) is the
- *   remaining task to turn public matchmaking on.
+ *   path) to actually enter the game. The client must redial (there is no way to
+ *   transfer the queued socket). Wiring that redial (net-client: on `matched`,
+ *   reopen against the room) is the remaining task to turn public matchmaking on.
  */
 import { Matchmaker } from '../matchmaker.js';
 import { mintRoomCode } from '../../scripts/core/room-code.js';

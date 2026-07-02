@@ -3,8 +3,7 @@
  *
  * This is the *only* place that authorizes a new game room. It is pure JS with
  * an injectable clock so it runs identically inside:
- *   - the local Node `ws` server (dev + Playwright e2e),
- *   - a Cloudflare Durable Object (production),
+ *   - a Cloudflare Durable Object (production AND dev/e2e under `wrangler dev`),
  *   - vitest (unit tests, with `now` advanced by hand).
  *
  * See docs/multiplayer-plan.md → "AdmissionDO". Caps are sized to stay inside
