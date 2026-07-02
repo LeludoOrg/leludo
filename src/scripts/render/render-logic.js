@@ -416,14 +416,6 @@ export function updateCellStacking(cell, opts = {}) {
     if (animate) flipTokens(tokens, first, flipTransition);
 }
 
-/**
- *
- * @param {number} playerIndex
- * @param {number} tokenIndex
- * @param {number} currentTokenPosition
- * @param {number} newTokenPosition
- * @returns {Promise<void>}
- */
 function waitForTransitionEnd(el, onSettle, fallbackMs = 400) {
     let settled = false;
     const settle = () => {
@@ -811,11 +803,6 @@ export function updateTokenContainer(playerIndex, tokenIndex, currentTokenPositi
     });
 }
 
-/**
- *
- * @param {number} currentPlayerIndex
- * @param {number} tokenIndex
- */
 const _bouncingTokens = new Set();
 
 export function activateToken(currentPlayerIndex, tokenIndex) {
@@ -923,7 +910,7 @@ export function resumeGame() {
 
 /**
  *
- * @param {number} currentPlayerIndex
+ * @param {number[]} colorMap
  */
 export function applyColorMap(colorMap) {
     const root = document.documentElement
