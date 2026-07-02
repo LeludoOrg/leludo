@@ -1,7 +1,7 @@
 import {htmlToElement, onClickSound} from "./index.js";
 import {dispatch, COMMANDS, playClickSound, escapeHtml} from "../scripts/index.js";
 import {randomBotName, isDefaultBotName, getSavedSeatName, setSavedSeatName, getActivePoolKey} from "../scripts/core/bot-names.js";
-import {HUMAN_PREFERRED_POSITIONS} from "../scripts/core/game-logic.js";
+import {getPlayerTypes} from "../scripts/core/game-logic.js";
 import {goTo, replaceTo, back as navBack, registerScreenHandler} from "../scripts/platform/nav-history.js";
 import {NetClient, getConfiguredServerUrl, getSessionId, getUsername, getOnlineColor, setUsername, setOnlineColor} from "../scripts/net/net-client.js";
 import {startOnlineGame, handleOnlineMessage, isOnlineGameStarted} from "../scripts/net/online-game.js";
@@ -954,40 +954,44 @@ class QuickStart extends HTMLElement {
     _startGame() {
         const activeSeats = this.seats.filter(s => s.active)
         if (activeSeats.length < 2) return
-
-        const humans = activeSeats.filter(s => s.type === 'PLAYER')
-        const bots = activeSeats.filter(s => s.type === 'BOT')
-        const humanCount = humans.length
-        const botCount = bots.length
-        const humanColors = humans.map(s => s.colorIndex)
-        const botColors = bots.map(s => s.colorIndex)
-
-        const namesByPlayerIndex = new Array(4).fill('')
-        if (humanCount === 4) {
-            humans.forEach((s, idx) => { namesByPlayerIndex[idx] = s.name })
-        } else {
-            const preferredPositions = HUMAN_PREFERRED_POSITIONS
-            const usedPositions = new Set()
-            humans.forEach((s, idx) => {
-                const pos = preferredPositions[idx]
-                namesByPlayerIndex[pos] = s.name
-                usedPositions.add(pos)
-            })
-            let botIdx = 0
-            for (let pos = 0; pos < 4 && botIdx < botCount; pos++) {
-                if (!usedPositions.has(pos)) {
-                    namesByPlayerIndex[pos] = bots[botIdx].name
-                    botIdx++
-                }
-            }
-        }
-
-        // Encode human colours then bot colours, both in seat order, so each
-        // bot keeps its locked seat colour instead of grabbing a leftover one.
-        const quickStartId = `qs,${humanCount},${botCount},${[...humanColors, ...botColors].join(",")}`
+        const { quickStartId, namesByPlayerIndex } = buildQuickStart(this.seats)
         dispatch({ type: COMMANDS.START_GAME, quickStartId, namesByPlayerIndex })
     }
 
+}
+
+/**
+ * Encode the setup screen's seat list into the START_GAME payload. Pure —
+ * exported for tests. The seat-placement algorithm itself lives ONLY in
+ * getPlayerTypes (game-logic); names are derived by mapping its colorMap back
+ * onto the seat rows (each active seat's colorIndex equals its row index), so
+ * the two can't drift.
+ * @param {Array<{active:boolean, type:string, colorIndex:number|null, name:string}>} seats
+ * @returns {{quickStartId: string, namesByPlayerIndex: string[]}}
+ */
+export function buildQuickStart(seats) {
+    const activeSeats = seats.filter(s => s.active)
+    const humans = activeSeats.filter(s => s.type === 'PLAYER')
+    const bots = activeSeats.filter(s => s.type === 'BOT')
+    const humanColors = humans.map(s => s.colorIndex)
+    const botColors = bots.map(s => s.colorIndex)
+
+    // Encode human colours then bot colours, both in seat order, so each
+    // bot keeps its locked seat colour instead of grabbing a leftover one.
+    const quickStartId = `qs,${humans.length},${bots.length},${[...humanColors, ...botColors].join(",")}`
+
+    // colorMap for empty board positions is backfilled with leftover colours
+    // (fillColorMap) that point at inactive seat rows — the active guard skips
+    // those so no name is invented for an empty quad.
+    const playerTypesResult = getPlayerTypes(quickStartId)
+    const namesByPlayerIndex = new Array(4).fill('')
+    playerTypesResult.playerTypes.forEach((pt, pos) => {
+        if (!pt) return
+        const seat = seats[playerTypesResult.colorMap[pos]]
+        if (seat && seat.active) namesByPlayerIndex[pos] = seat.name
+    })
+
+    return { quickStartId, namesByPlayerIndex }
 }
 
 window.customElements.define("wc-quick-start", QuickStart)
