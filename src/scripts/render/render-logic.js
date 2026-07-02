@@ -1,7 +1,7 @@
 import {getMarkIndex} from "../core/game-logic.js";
 import {YARD, ENTRY_SQUARE, LAST_TRACK_SQUARE} from "../core/board-constants.js";
 import { SCREENS } from "../platform/screens.js";
-import { MINI_PAWN_BODY } from "./pawn-mini.js";
+import { miniPawnSVG } from "./pawn-mini.js";
 import {playStepSound, playDiceSound, playLaunchSound, playFinishSound} from "./audio.js";
 import {replaceTo} from "../platform/nav-history.js";
 import {playKOCapture} from "./ko-capture.js";
@@ -839,12 +839,11 @@ export function showGame() {
     requestWakeLock()
 }
 
-const PAWN_SVG_MINI = (playerIndex) => `
-    <svg viewBox="0 0 32 32" class="player-fg-${playerIndex}" style="width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22));">
-        <ellipse cx="16" cy="28" rx="8" ry="1.5" fill="rgba(0,0,0,0.18)"/>
-        <path d="${MINI_PAWN_BODY}" fill="currentColor"/>
-        <rect x="7.5" y="22" width="17" height="3.5" rx="1.4" fill="currentColor"/>
-    </svg>`;
+const PAWN_SVG_MINI = (playerIndex) => miniPawnSVG({
+    playerIndex,
+    style: 'width:100%;height:100%;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22));',
+    shadow: 0.18,
+});
 
 const botGlyph = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`;
 
