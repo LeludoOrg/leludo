@@ -43,6 +43,27 @@
 
                 <article class="cl-entry">
                     <div class="cl-entry-head">
+                        <div class="cl-entry-version">v0.29.15</div>
+                        <div class="cl-entry-date">July 2, 2026</div>
+                    </div>
+
+                    <div class="cl-entry-sections">
+                        <section>
+                            <div class="section-label cl-section-label">Highlights</div>
+                            <div class="surface-card cl-card">
+                                <ul>
+                                    <li>Fixed the turn counter drifting out of sync in saved games &mdash; the save now always records the true turn number, so resuming shows exactly where you left off.</li>
+                                    <li>The browser&rsquo;s address-bar / status-bar tint now follows the dark theme everywhere &mdash; switching themes or exiting a game no longer leaves a light-coloured bar over a dark screen.</li>
+                                    <li>Bots now judge captures with the exact same rule the game itself uses (a stack of two pawns is safe; anything else isn&rsquo;t), fixing a rare case where a bot misread a stacked square.</li>
+                                    <li>Internal code cleanup: deduplicated game-rule helpers shared by the app, the bots and the multiplayer server, removed dead code and stale comments, and consolidated dice/pawn artwork into single sources. No other gameplay or UI changes.</li>
+                                </ul>
+                            </div>
+                        </section>
+                    </div>
+                </article>
+
+                <article class="cl-entry">
+                    <div class="cl-entry-head">
                         <div class="cl-entry-version">v0.29.14</div>
                         <div class="cl-entry-date">June 29, 2026</div>
                     </div>
